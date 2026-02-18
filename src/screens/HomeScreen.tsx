@@ -1,8 +1,23 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Alert, Animated, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Alert,
+  Animated,
+  Platform,
+  TextInput,
+  TouchableOpacity,
+  ScrollView,
+  Keyboard,
+  ActivityIndicator,
+  Pressable,
+} from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import Constants from 'expo-constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCardStack } from '../lib/CardStackContext';
 import { DARK_MAP_STYLE, HEATMAP_GRADIENT } from '../lib/mapConfig';
 import MapView, { Heatmap, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -17,6 +32,16 @@ type HomeScreenProps = {
 };
 
 const NEARBY_RADIUS_METERS = 500;
+const GOOGLE_MAPS_API_KEY =
+  Constants.expoConfig?.ios?.config?.googleMapsApiKey ||
+  Constants.expoConfig?.android?.config?.googleMapsApiKey ||
+  '';
+
+type PlacePrediction = {
+  placeId: string;
+  name: string;
+  description: string;
+};
 
 function getDistanceMeters(
   lat1: number,
@@ -38,13 +63,21 @@ function getDistanceMeters(
 }
 
 export function HomeScreen({ profile }: HomeScreenProps) {
+  const insets = useSafeAreaInsets();
   const { setCardStackOpen } = useCardStack();
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
+  const [searchText, setSearchText] = useState('');
+  const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
   const mapRef = useRef<MapView>(null);
   const hasCenteredOnUser = useRef(false);
   const loadingOpacity = useRef(new Animated.Value(1)).current;
+  const dropdownOpacity = useRef(new Animated.Value(0)).current;
+  const dropdownTranslateY = useRef(new Animated.Value(-10)).current;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchPosts = useCallback(async () => {
     const currentUserId = profile?.id;
@@ -91,6 +124,140 @@ export function HomeScreen({ profile }: HomeScreenProps) {
     }
   }, [postsLoading, loadingOpacity]);
 
+  useEffect(() => {
+    if (showDropdown) {
+      Animated.parallel([
+        Animated.timing(dropdownOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dropdownTranslateY, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(dropdownOpacity, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(dropdownTranslateY, {
+          toValue: -10,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [showDropdown, dropdownOpacity, dropdownTranslateY]);
+
+  async function searchPlaces(query: string): Promise<PlacePrediction[]> {
+    if (!query.trim() || !GOOGLE_MAPS_API_KEY) return [];
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_API_KEY}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+        console.error('Places API error:', data.status);
+        return [];
+      }
+      return (data.predictions || []).map((prediction: any) => ({
+        placeId: prediction.place_id,
+        name: prediction.structured_formatting?.main_text || prediction.description,
+        description: prediction.structured_formatting?.secondary_text || prediction.description,
+      }));
+    } catch (error) {
+      console.error('Places API fetch error:', error);
+      return [];
+    }
+  }
+
+  async function getPlaceDetails(placeId: string): Promise<{ latitude: number; longitude: number } | null> {
+    if (!GOOGLE_MAPS_API_KEY) return null;
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${GOOGLE_MAPS_API_KEY}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data.status !== 'OK' || !data.result?.geometry?.location) {
+        console.error('Place Details API error:', data.status);
+        return null;
+      }
+      return {
+        latitude: data.result.geometry.location.lat,
+        longitude: data.result.geometry.location.lng,
+      };
+    } catch (error) {
+      console.error('Place Details API fetch error:', error);
+      return null;
+    }
+  }
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!searchText.trim()) {
+      setSearchResults([]);
+      setSearchLoading(false);
+      setShowDropdown(false);
+      return;
+    }
+    setSearchLoading(true);
+    setShowDropdown(true);
+    debounceRef.current = setTimeout(async () => {
+      const results = await searchPlaces(searchText);
+      setSearchResults(results);
+      setSearchLoading(false);
+    }, 500);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchText]);
+
+  async function handleSelectPlace(place: PlacePrediction) {
+    Keyboard.dismiss();
+    setSearchText('');
+    setShowDropdown(false);
+    const coords = await getPlaceDetails(place.placeId);
+    if (coords && mapRef.current) {
+      mapRef.current.animateToRegion(
+        {
+          latitude: coords.latitude,
+          longitude: coords.longitude,
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        },
+        1000
+      );
+    }
+  }
+
+  function handleMapPress(event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) {
+    if (showDropdown) {
+      Keyboard.dismiss();
+      setShowDropdown(false);
+      return;
+    }
+    const { latitude, longitude } = event.nativeEvent.coordinate;
+    const nearby = posts.filter((post) => {
+      const distance = getDistanceMeters(
+        latitude,
+        longitude,
+        post.latitude,
+        post.longitude
+      );
+      return distance <= NEARBY_RADIUS_METERS;
+    });
+    if (nearby.length > 0) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const sorted = [...nearby].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setSelectedPosts(sorted);
+    }
+  }
+
   useFocusEffect(
     useCallback(() => {
       fetchPosts();
@@ -133,25 +300,6 @@ export function HomeScreen({ profile }: HomeScreenProps) {
     })();
   }, []);
 
-  function handleMapPress(event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) {
-    const { latitude, longitude } = event.nativeEvent.coordinate;
-    const nearby = posts.filter((post) => {
-      const distance = getDistanceMeters(
-        latitude,
-        longitude,
-        post.latitude,
-        post.longitude
-      );
-      return distance <= NEARBY_RADIUS_METERS;
-    });
-    if (nearby.length > 0) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const sorted = [...nearby].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      setSelectedPosts(sorted);
-    }
-  }
 
   const heatmapPoints = posts.map((post) => ({
     latitude: post.latitude,
@@ -160,6 +308,7 @@ export function HomeScreen({ profile }: HomeScreenProps) {
   }));
 
   const showEmptyState = !postsLoading && posts.length === 0;
+  const showSearchBar = selectedPosts === null;
 
   return (
     <View style={styles.container}>
@@ -186,6 +335,92 @@ export function HomeScreen({ profile }: HomeScreenProps) {
           />
         )}
       </MapView>
+
+      {showSearchBar && (
+        <>
+          <View style={[styles.searchBarContainer, { top: insets.top + theme.spacing.md }]}>
+            <View style={styles.searchBar}>
+              <Feather name="search" size={18} color={theme.colors.textTertiary} style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search a location..."
+                placeholderTextColor={theme.colors.textTertiary}
+                value={searchText}
+                onChangeText={setSearchText}
+                onFocus={() => searchText.trim() && setShowDropdown(true)}
+                returnKeyType="search"
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearchText('');
+                    setShowDropdown(false);
+                    Keyboard.dismiss();
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Feather name="x" size={18} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {showDropdown && (
+              <>
+                <Pressable
+                  style={styles.dropdownBackdrop}
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setShowDropdown(false);
+                  }}
+                />
+                <Animated.View
+                  style={[
+                    styles.dropdown,
+                    {
+                      opacity: dropdownOpacity,
+                      transform: [{ translateY: dropdownTranslateY }],
+                    },
+                  ]}
+                  onStartShouldSetResponder={() => true}
+                >
+                  {searchLoading ? (
+                    <View style={styles.dropdownLoading}>
+                      <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    </View>
+                  ) : searchResults.length === 0 ? (
+                    <View style={styles.dropdownEmpty}>
+                      <Text style={styles.dropdownEmptyText}>No results found</Text>
+                    </View>
+                  ) : (
+                    <ScrollView
+                      style={styles.dropdownScroll}
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {searchResults.map((place) => (
+                        <TouchableOpacity
+                          key={place.placeId}
+                          style={styles.dropdownItem}
+                          onPress={() => handleSelectPlace(place)}
+                          activeOpacity={0.7}
+                        >
+                          <Feather name="map-pin" size={16} color={theme.colors.textSecondary} />
+                          <View style={styles.dropdownItemText}>
+                            <Text style={styles.dropdownItemName}>{place.name}</Text>
+                            {place.description && (
+                              <Text style={styles.dropdownItemDesc}>{place.description}</Text>
+                            )}
+                          </View>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+                </Animated.View>
+              </>
+            )}
+          </View>
+        </>
+      )}
 
       {postsLoading && (
         <Animated.View style={[styles.loadingBar, { opacity: loadingOpacity }]} pointerEvents="none">
@@ -217,6 +452,90 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
     width: '100%',
+  },
+  searchBarContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    paddingHorizontal: theme.spacing.md,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: `${theme.colors.surface}F2`,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.full,
+    height: 44,
+    paddingHorizontal: theme.spacing.md,
+    gap: theme.spacing.sm,
+  },
+  searchIcon: {
+    marginRight: theme.spacing.xs,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: theme.fontSize.md,
+    color: theme.colors.text,
+    padding: 0,
+  },
+  dropdownBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'transparent',
+  },
+  dropdown: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.md,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    maxHeight: 250,
+    marginTop: theme.spacing.xs,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  dropdownScroll: {
+    maxHeight: 250,
+  },
+  dropdownLoading: {
+    padding: theme.spacing.lg,
+    alignItems: 'center',
+  },
+  dropdownEmpty: {
+    padding: theme.spacing.lg,
+    alignItems: 'center',
+  },
+  dropdownEmptyText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textTertiary,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    gap: theme.spacing.sm,
+  },
+  dropdownItemText: {
+    flex: 1,
+  },
+  dropdownItemName: {
+    fontSize: theme.fontSize.md,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: 2,
+  },
+  dropdownItemDesc: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
   },
   loadingBar: {
     position: 'absolute',
