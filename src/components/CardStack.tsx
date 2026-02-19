@@ -21,10 +21,12 @@ import { theme } from '../lib/theme';
 import { Skeleton } from './Skeleton';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
+import { Avatar } from './Avatar';
 
 type CardStackProps = {
   posts: PostWithProfile[];
   onClose: () => void;
+  initialIndex?: number;
 };
 
 function timeAgo(dateString: string): string {
@@ -106,9 +108,13 @@ function CardImage({
   );
 }
 
-export function CardStack({ posts, onClose }: CardStackProps) {
+export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
   const { session } = useAuth();
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const safeInitial = Math.min(
+    Math.max(0, initialIndex ?? 0),
+    Math.max(0, posts.length - 1)
+  );
+  const [currentIndex, setCurrentIndex] = useState(safeInitial);
   const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
   const [userReactions, setUserReactions] = useState<Set<string>>(new Set());
   const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
@@ -335,10 +341,13 @@ export function CardStack({ posts, onClose }: CardStackProps) {
             {post.venue_name ?? 'Unknown location'}
           </Text>
         </View>
-        {post.profiles?.display_name ? (
-          <Text style={styles.posterName} numberOfLines={1}>
-            Posted by {post.profiles.display_name}
-          </Text>
+        {post.profiles ? (
+          <View style={styles.posterRow}>
+            <Avatar uri={post.profiles.avatar_url ?? null} size={24} />
+            <Text style={styles.posterName} numberOfLines={1}>
+              Posted by {post.profiles.display_name ?? 'Unknown'}
+            </Text>
+          </View>
         ) : null}
         {post.caption ? (
           <Text style={styles.caption} numberOfLines={2}>
@@ -509,10 +518,16 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     flex: 1,
   },
+  posterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 2,
+  },
   posterName: {
+    flex: 1,
     fontSize: theme.fontSize.xs,
     color: theme.colors.textSecondary,
-    marginBottom: 2,
   },
   caption: {
     fontSize: theme.fontSize.sm,

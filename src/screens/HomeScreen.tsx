@@ -31,7 +31,7 @@ type HomeScreenProps = {
   profile: Profile | null;
 };
 
-const NEARBY_RADIUS_METERS = 500;
+const NEARBY_RADIUS_METERS = 100;
 const GOOGLE_MAPS_API_KEY =
   Constants.expoConfig?.ios?.config?.googleMapsApiKey ||
   Constants.expoConfig?.android?.config?.googleMapsApiKey ||
@@ -68,6 +68,15 @@ export function HomeScreen({ profile }: HomeScreenProps) {
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
+  const [currentRegion, setCurrentRegion] = useState<{
+    latitude: number;
+    longitude: number;
+    latitudeDelta: number;
+    longitudeDelta: number;
+  } | null>(null);
+  const dynamicRadius = currentRegion
+    ? Math.max(50, Math.min(500, currentRegion.latitudeDelta * 111000 * 0.05))
+    : NEARBY_RADIUS_METERS;
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -247,7 +256,7 @@ export function HomeScreen({ profile }: HomeScreenProps) {
         post.latitude,
         post.longitude
       );
-      return distance <= NEARBY_RADIUS_METERS;
+      return distance <= dynamicRadius;
     });
     if (nearby.length > 0) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -268,6 +277,25 @@ export function HomeScreen({ profile }: HomeScreenProps) {
     setCardStackOpen(selectedPosts !== null);
     return () => setCardStackOpen(false);
   }, [selectedPosts, setCardStackOpen]);
+
+  async function handleRecenter() {
+    try {
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const userRegion = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+      if (mapRef.current) {
+        mapRef.current.animateToRegion(userRegion, 1000);
+      }
+    } catch (err) {
+      console.error('Error getting location:', err);
+    }
+  }
 
   React.useEffect(() => {
     (async () => {
@@ -319,6 +347,14 @@ export function HomeScreen({ profile }: HomeScreenProps) {
         customMapStyle={DARK_MAP_STYLE}
         showsUserLocation={true}
         onPress={handleMapPress}
+        onRegionChangeComplete={(region) =>
+          setCurrentRegion({
+            latitude: region.latitude,
+            longitude: region.longitude,
+            latitudeDelta: region.latitudeDelta,
+            longitudeDelta: region.longitudeDelta,
+          })
+        }
         initialRegion={{
           latitude: 37.78825,
           longitude: -122.4324,
@@ -420,6 +456,16 @@ export function HomeScreen({ profile }: HomeScreenProps) {
             )}
           </View>
         </>
+      )}
+
+      {showSearchBar && (
+        <TouchableOpacity
+          style={[styles.recenterButton, { bottom: insets.bottom + 80 }]}
+          onPress={handleRecenter}
+          activeOpacity={0.8}
+        >
+          <Feather name="navigation" size={20} color={theme.colors.text} />
+        </TouchableOpacity>
       )}
 
       {postsLoading && (
@@ -570,5 +616,17 @@ const styles = StyleSheet.create({
     color: theme.colors.textTertiary,
     marginTop: theme.spacing.xs,
     textAlign: 'center',
+  },
+  recenterButton: {
+    position: 'absolute',
+    left: theme.spacing.md,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: `${theme.colors.surface}E6`,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

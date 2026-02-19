@@ -9,7 +9,7 @@ import { View, TouchableOpacity, ActivityIndicator, StyleSheet, Animated } from 
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
 import { CardStackProvider } from '../lib/CardStackContext';
-import type { RootStackParamList, MainTabParamList } from './types';
+import type { RootStackParamList, MainTabParamList, ProfileStackParamList } from './types';
 import type { Profile } from '../types';
 import { theme } from '../lib/theme';
 import { TabSwipeOverlay } from '../components/TabSwipeOverlay';
@@ -41,9 +41,20 @@ import { HomeScreen } from '../screens/HomeScreen';
 import { UploadScreen } from '../screens/UploadScreen';
 import { FriendsScreen } from '../screens/FriendsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
+import { GalleryScreen } from '../screens/GalleryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
+
+function ProfileStackNavigator() {
+  return (
+    <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
+      <ProfileStack.Screen name="Profile" component={ProfileScreen} />
+      <ProfileStack.Screen name="Gallery" component={GalleryScreen} />
+    </ProfileStack.Navigator>
+  );
+}
 
 function CustomTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
   return (
@@ -102,10 +113,10 @@ function MainTabs({ profile }: { profile: Profile }) {
         />
         <Tab.Screen
           name="Profile"
-        component={ProfileScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => <Feather name="user" size={size ?? 24} color={color} />,
-        }}
+          component={ProfileStackNavigator}
+          options={{
+            tabBarIcon: ({ color, size }) => <Feather name="user" size={size ?? 24} color={color} />,
+          }}
         />
       </Tab.Navigator>
     </CardStackProvider>

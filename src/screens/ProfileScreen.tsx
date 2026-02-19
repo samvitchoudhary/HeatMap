@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,52 +13,40 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
+  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { ProfileStackParamList } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import MapView, { Heatmap, PROVIDER_GOOGLE } from 'react-native-maps';
-import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
-import { DARK_MAP_STYLE, HEATMAP_GRADIENT } from '../lib/mapConfig';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
 import { Skeleton } from '../components/Skeleton';
-
-const NEARBY_RADIUS_METERS = 500;
+import { Avatar } from '../components/Avatar';
 
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
+const GRID_GAP = 4;
+const GRID_PADDING = 24;
 
 function validateUsername(value: string): boolean {
   const normalized = value.toLowerCase().trim();
   return normalized.length > 0 && USERNAME_REGEX.test(normalized) && !/\s/.test(value);
 }
 
-function getDistanceMeters(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number
-): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const GRID_CELL_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3;
 
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList, 'Profile'>>();
   const { profile, session, refreshProfile } = useAuth();
   const { setCardStackOpen } = useCardStack();
   const userId = profile?.id ?? session?.user?.id;
@@ -69,13 +57,13 @@ export function ProfileScreen() {
   const [profileDataReady, setProfileDataReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
+  const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [editUsername, setEditUsername] = useState('');
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const mapRef = useRef<MapView>(null);
-  const hasFittedMap = useRef(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const fetchMyPosts = useCallback(async () => {
     if (!userId) return;
@@ -123,6 +111,7 @@ export function ProfileScreen() {
   async function handleRefresh() {
     setRefreshing(true);
     await Promise.all([fetchMyPosts(), fetchPostsCount(), fetchFriendsCount()]);
+    await refreshProfile();
     setRefreshing(false);
   }
 
@@ -131,37 +120,89 @@ export function ProfileScreen() {
     return () => setCardStackOpen(false);
   }, [selectedPosts, setCardStackOpen]);
 
-  useEffect(() => {
-    if (!mapRef.current || hasFittedMap.current) return;
-    if (posts.length > 0) {
-      hasFittedMap.current = true;
-      const coords = posts.map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
-      mapRef.current.fitToCoordinates(coords, { edgePadding: { top: 50, right: 50, bottom: 50, left: 50 }, animated: true });
-    } else {
-      Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced })
-        .then((loc) => {
-          if (mapRef.current && !hasFittedMap.current) {
-            hasFittedMap.current = true;
-            mapRef.current.animateToRegion({
-              latitude: loc.coords.latitude,
-              longitude: loc.coords.longitude,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            }, 500);
-          }
-        })
-        .catch(() => {});
+  async function pickAndUploadAvatar(getImage: () => Promise<ImagePicker.ImagePickerResult>) {
+    const result = await getImage();
+    if (result.canceled || !result.assets[0]) return;
+    setUploadingAvatar(true);
+    try {
+      const response = await fetch(result.assets[0].uri);
+      const blob = await response.blob();
+      const arrayBuffer = await new Response(blob).arrayBuffer();
+      const filePath = `avatars/${userId}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('posts')
+        .upload(filePath, arrayBuffer, {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+      if (uploadError) throw uploadError;
+      const { data: urlData } = supabase.storage.from('posts').getPublicUrl(filePath);
+      const publicUrl = urlData.publicUrl + '?t=' + Date.now();
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url: publicUrl })
+        .eq('id', userId);
+      if (updateError) throw updateError;
+      await refreshProfile();
+    } catch (err) {
+      console.error('Error uploading avatar:', err);
+      Alert.alert('Error', 'Could not update profile photo. Please try again.');
+    } finally {
+      setUploadingAvatar(false);
     }
-  }, [posts.length]);
+  }
 
-  function handleMapPress(event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) {
-    const { latitude, longitude } = event.nativeEvent.coordinate;
-    const nearby = posts.filter((p) => getDistanceMeters(latitude, longitude, p.latitude, p.longitude) <= NEARBY_RADIUS_METERS);
-    if (nearby.length > 0) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const sorted = [...nearby].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setSelectedPosts(sorted);
-    }
+  async function handleChangeAvatar() {
+    if (!userId || uploadingAvatar) return;
+    Alert.alert(
+      'Profile Photo',
+      'Choose how to add a photo',
+      [
+        {
+          text: 'Take Photo',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert(
+                'Camera Permission Required',
+                'HeatMap needs camera access to take a profile photo.',
+              );
+              return;
+            }
+            await pickAndUploadAvatar(() =>
+              ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.7,
+              })
+            );
+          },
+        },
+        {
+          text: 'Choose from Library',
+          onPress: async () => {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+              Alert.alert(
+                'Photo Library Permission Required',
+                'HeatMap needs access to your photo library to change your profile photo.',
+              );
+              return;
+            }
+            await pickAndUploadAvatar(() =>
+              ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsEditing: true,
+                aspect: [1, 1],
+                quality: 0.7,
+              })
+            );
+          },
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
   }
 
   async function handleLogOut() {
@@ -202,14 +243,27 @@ export function ProfileScreen() {
     await refreshProfile();
   }
 
-  const heatmapPoints = posts.map((p) => ({ latitude: p.latitude, longitude: p.longitude, weight: 1 }));
+  function handleFriendsPress() {
+    navigation.getParent()?.navigate('Friends' as never);
+  }
+
+  function handleViewAllPosts() {
+    navigation.navigate('Gallery');
+  }
+
+  function handlePhotoPress(post: PostWithProfile) {
+    const idx = posts.findIndex((p) => p.id === post.id);
+    setSelectedInitialIndex(idx >= 0 ? idx : 0);
+    setSelectedPosts(posts);
+  }
+
   const displayName = profile?.display_name ?? 'User';
   const username = profile?.username ?? 'username';
   const avatarUrl = profile?.avatar_url;
   const bottomPadding = insets.bottom + 60;
-
   const showProfileSkeletons = !profileDataReady && !!userId;
-  const showEmptyMapState = profileDataReady && posts.length === 0;
+  const gridPosts = posts.slice(0, 9);
+  const hasMorePosts = posts.length > 9;
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -226,17 +280,33 @@ export function ProfileScreen() {
         }
       >
         <View style={styles.header}>
-          <View style={styles.avatarContainer}>
-            {showProfileSkeletons ? (
-              <Skeleton width={80} height={80} borderRadius={40} />
-            ) : avatarUrl ? (
-              <Image source={{ uri: avatarUrl }} style={styles.avatar} />
-            ) : (
-              <View style={styles.avatarPlaceholder}>
-                <Feather name="user" size={36} color={theme.colors.textSecondary} />
+          <TouchableOpacity
+            style={styles.avatarWrapper}
+            onPress={handleChangeAvatar}
+            disabled={showProfileSkeletons || uploadingAvatar}
+            activeOpacity={0.8}
+          >
+            <View style={styles.avatarContainer}>
+              {showProfileSkeletons ? (
+                <Skeleton width={80} height={80} borderRadius={40} />
+              ) : (
+                <>
+                  <Avatar uri={avatarUrl ?? null} size={80} />
+                  {uploadingAvatar && (
+                    <View style={styles.avatarLoadingOverlay}>
+                      <ActivityIndicator size="small" color={theme.colors.text} />
+                    </View>
+                  )}
+                </>
+              )}
+            </View>
+            {!showProfileSkeletons && (
+              <View style={styles.avatarBadge}>
+                <Feather name="camera" size={12} color={theme.colors.text} />
               </View>
             )}
-          </View>
+          </TouchableOpacity>
+
           {showProfileSkeletons ? (
             <>
               <Skeleton width={160} height={22} borderRadius={8} style={{ marginBottom: 4 }} />
@@ -245,8 +315,10 @@ export function ProfileScreen() {
                 <Skeleton width={24} height={16} borderRadius={4} />
                 <Text style={styles.statsLabel}> posts  </Text>
                 <Text style={styles.statsDivider}> |  </Text>
-                <Skeleton width={24} height={16} borderRadius={4} />
-                <Text style={styles.statsLabel}> friends</Text>
+                <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress}>
+                  <Skeleton width={24} height={16} borderRadius={4} />
+                  <Text style={styles.statsLabel}> friends</Text>
+                </TouchableOpacity>
               </View>
             </>
           ) : (
@@ -257,11 +329,14 @@ export function ProfileScreen() {
                 <Text style={styles.statsNumber}>{postsCount}</Text>
                 <Text style={styles.statsLabel}> posts  </Text>
                 <Text style={styles.statsDivider}> |  </Text>
-                <Text style={styles.statsNumber}>{friendsCount}</Text>
-                <Text style={styles.statsLabel}> friends</Text>
+                <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress}>
+                  <Text style={styles.statsNumber}>{friendsCount}</Text>
+                  <Text style={styles.statsLabel}> friends</Text>
+                </TouchableOpacity>
               </View>
             </>
           )}
+
           <TouchableOpacity
             style={styles.editButton}
             onPress={openEditModal}
@@ -272,37 +347,41 @@ export function ProfileScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.mapContainer}>
-          {showEmptyMapState && (
-            <View style={styles.emptyMapOverlay} pointerEvents="none">
+        <View style={styles.gallerySection}>
+          <Text style={styles.galleryHeader}>Recent Posts</Text>
+          {profileDataReady && posts.length === 0 ? (
+            <View style={styles.emptyGallery}>
               <Feather name="camera" size={40} color={theme.colors.textTertiary} />
-              <Text style={styles.emptyMapTitle}>No posts yet</Text>
-              <Text style={styles.emptyMapSubtitle}>Start uploading to see your activity map</Text>
+              <Text style={styles.emptyGalleryText}>No posts yet</Text>
+            </View>
+          ) : (
+            <View style={styles.grid}>
+              {gridPosts.map((post) => (
+                <TouchableOpacity
+                  key={post.id}
+                  style={styles.gridCell}
+                  onPress={() => handlePhotoPress(post)}
+                  activeOpacity={0.8}
+                >
+                  <Image
+                    source={{ uri: post.image_url }}
+                    style={styles.gridImage}
+                    resizeMode="cover"
+                  />
+                </TouchableOpacity>
+              ))}
             </View>
           )}
-          <MapView
-            ref={mapRef}
-            provider={PROVIDER_GOOGLE}
-            style={styles.map}
-            customMapStyle={DARK_MAP_STYLE}
-            showsUserLocation={true}
-            onPress={handleMapPress}
-            initialRegion={{
-              latitude: 37.78825,
-              longitude: -122.4324,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
-            }}
-          >
-            {heatmapPoints.length > 0 && (
-              <Heatmap
-                points={heatmapPoints}
-                radius={80}
-                opacity={0.8}
-                gradient={HEATMAP_GRADIENT}
-              />
-            )}
-          </MapView>
+          {hasMorePosts && (
+            <TouchableOpacity
+              style={styles.viewAllButton}
+              onPress={handleViewAllPosts}
+              activeOpacity={0.7}
+            >
+              <Feather name="grid" size={16} color={theme.colors.textSecondary} />
+              <Text style={styles.viewAllText}>View All Posts</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <TouchableOpacity
@@ -316,7 +395,11 @@ export function ProfileScreen() {
       </ScrollView>
 
       {selectedPosts !== null && selectedPosts.length > 0 && (
-        <CardStack posts={selectedPosts} onClose={() => setSelectedPosts(null)} />
+        <CardStack
+          posts={selectedPosts}
+          onClose={() => setSelectedPosts(null)}
+          initialIndex={selectedInitialIndex}
+        />
       )}
 
       <Modal
@@ -372,7 +455,7 @@ export function ProfileScreen() {
                 <Text style={styles.errorText}>{usernameError}</Text>
               ) : null}
 
-              <Text style={styles.avatarNote}>Avatar upload coming soon</Text>
+              <Text style={styles.avatarNote}>Profile photo: tap your avatar to change it</Text>
 
               <TouchableOpacity
                 style={styles.saveButton}
@@ -399,36 +482,35 @@ export function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: theme.spacing.lg,
-  },
+  container: { flex: 1 },
+  scroll: { flex: 1 },
+  scrollContent: { paddingBottom: theme.spacing.lg },
   header: {
     alignItems: 'center',
     paddingTop: theme.spacing.xl,
     paddingHorizontal: theme.spacing.md,
   },
+  avatarWrapper: { position: 'relative', marginBottom: theme.spacing.sm },
   avatarContainer: {
     width: 80,
     height: 80,
     borderRadius: 40,
     overflow: 'hidden',
-    marginBottom: theme.spacing.sm,
   },
-  avatar: {
-    width: '100%',
-    height: '100%',
+  avatarLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  avatarPlaceholder: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: theme.colors.surface,
-    borderRadius: 40,
+  avatarBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceLight,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -448,19 +530,10 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     marginBottom: theme.spacing.md,
   },
-  statsNumber: {
-    fontSize: theme.fontSize.md,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  statsLabel: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
-  statsDivider: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
+  statTouchable: { flexDirection: 'row', alignItems: 'baseline' },
+  statsNumber: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.colors.text },
+  statsLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary },
+  statsDivider: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, marginHorizontal: 4 },
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -478,37 +551,52 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     fontWeight: '500',
   },
-  mapContainer: {
-    height: 340,
-    marginHorizontal: theme.spacing.md,
+  gallerySection: {
+    paddingHorizontal: theme.spacing.md,
     marginBottom: theme.spacing.lg,
-    borderRadius: theme.borderRadius.lg,
-    overflow: 'hidden',
-    position: 'relative',
   },
-  emptyMapOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 10, 10, 0.75)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: theme.spacing.lg,
-    zIndex: 1,
-  },
-  emptyMapTitle: {
-    fontSize: theme.fontSize.lg,
+  galleryHeader: {
+    fontSize: theme.fontSize.md,
     fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.md,
+    textAlign: 'left',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: GRID_GAP,
+  },
+  gridCell: {
+    width: GRID_CELL_SIZE,
+    height: GRID_CELL_SIZE,
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  gridImage: {
+    width: '100%',
+    height: '100%',
+  },
+  emptyGallery: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: theme.spacing.xl,
+  },
+  emptyGalleryText: {
+    fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
     marginTop: theme.spacing.md,
   },
-  emptyMapSubtitle: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textTertiary,
-    marginTop: theme.spacing.xs,
-    textAlign: 'center',
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.md,
   },
-  map: {
-    width: '100%',
-    height: '100%',
+  viewAllText: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textSecondary,
   },
   logoutButton: {
     flexDirection: 'row',
@@ -517,10 +605,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: theme.spacing.md,
   },
-  logoutText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textTertiary,
-  },
+  logoutText: { fontSize: theme.fontSize.sm, color: theme.colors.textTertiary },
   modalOverlay: {
     flex: 1,
     backgroundColor: theme.colors.overlay,
@@ -528,11 +613,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: theme.spacing.lg,
   },
-  modalCenter: {
-    width: '100%',
-    maxWidth: 340,
-    alignItems: 'stretch',
-  },
+  modalCenter: { width: '100%', maxWidth: 340, alignItems: 'stretch' },
   modalContent: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.lg,
@@ -544,11 +625,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: theme.spacing.lg,
   },
-  modalTitle: {
-    fontSize: theme.fontSize.lg,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
+  modalTitle: { fontSize: theme.fontSize.lg, fontWeight: '700', color: theme.colors.text },
   inputLabel: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
@@ -565,9 +642,7 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: theme.spacing.md,
   },
-  inputError: {
-    borderColor: theme.colors.red,
-  },
+  inputError: { borderColor: theme.colors.red },
   errorText: {
     fontSize: theme.fontSize.xs,
     color: theme.colors.red,
@@ -591,12 +666,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.background,
   },
-  cancelButton: {
-    alignItems: 'center',
-    paddingVertical: theme.spacing.sm,
-  },
-  cancelButtonText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-  },
+  cancelButton: { alignItems: 'center', paddingVertical: theme.spacing.sm },
+  cancelButtonText: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary },
 });

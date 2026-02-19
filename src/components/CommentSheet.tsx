@@ -13,7 +13,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
-
+import { Avatar } from './Avatar';
 
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -39,6 +39,7 @@ type CommentWithProfile = {
   profiles: {
     display_name: string;
     username: string;
+    avatar_url: string | null;
   } | null;
 };
 
@@ -78,7 +79,7 @@ export function CommentSheet({
     setLoading(true);
     const { data, error } = await supabase
       .from('comments')
-      .select('*, profiles(display_name, username)')
+      .select('*, profiles(display_name, username, avatar_url)')
       .eq('post_id', pid)
       .order('created_at', { ascending: true });
     if (error) {
@@ -157,13 +158,21 @@ export function CommentSheet({
             ) : (
               comments.map((comment) => (
                 <View key={comment.id} style={styles.commentRow}>
-                  <Text style={styles.commenterName}>
-                    {comment.profiles?.display_name ?? 'Unknown'}
-                  </Text>
-                  <Text style={styles.commentText}>{comment.content}</Text>
-                  <Text style={styles.commentTime}>
-                    {timeAgo(comment.created_at)}
-                  </Text>
+                  <View style={styles.commentAvatarWrap}>
+                    <Avatar
+                      uri={comment.profiles?.avatar_url ?? null}
+                      size={28}
+                    />
+                  </View>
+                  <View style={styles.commentContent}>
+                    <Text style={styles.commenterName}>
+                      {comment.profiles?.display_name ?? 'Unknown'}
+                    </Text>
+                    <Text style={styles.commentText}>{comment.content}</Text>
+                    <Text style={styles.commentTime}>
+                      {timeAgo(comment.created_at)}
+                    </Text>
+                  </View>
                 </View>
               ))
             )}
@@ -244,7 +253,14 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
   },
   commentRow: {
+    flexDirection: 'row',
     marginBottom: theme.spacing.sm,
+  },
+  commentAvatarWrap: {
+    marginRight: theme.spacing.sm,
+  },
+  commentContent: {
+    flex: 1,
   },
   commenterName: {
     fontSize: theme.fontSize.xs,

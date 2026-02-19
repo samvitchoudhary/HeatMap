@@ -16,3 +16,8 @@ export type MainTabParamList = {
   Friends: undefined;
   Profile: undefined;
 };
+
+export type ProfileStackParamList = {
+  Profile: undefined;
+  Gallery: undefined;
+};

@@ -21,6 +21,7 @@ import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { Profile, Friendship } from '../types';
 import { Skeleton } from '../components/Skeleton';
+import { Avatar } from '../components/Avatar';
 
 type FriendshipWithProfile = Friendship & {
   
@@ -332,7 +333,9 @@ export function FriendsScreen() {
           <View style={styles.listContent}>
             {[1, 2, 3, 4, 5].map((i) => (
               <View key={i} style={styles.friendRow}>
-                <Skeleton width={40} height={40} borderRadius={20} />
+                <View style={styles.avatarWrap}>
+                  <Skeleton width={40} height={40} borderRadius={20} />
+                </View>
                 <View style={styles.skeletonTextBlock}>
                   <Skeleton width={160} height={16} borderRadius={8} />
                   <View style={{ marginTop: 8 }}>
@@ -362,6 +365,9 @@ export function FriendsScreen() {
             }
             renderItem={({ item }) => (
               <View style={styles.friendRow}>
+                <View style={styles.avatarWrap}>
+                  <Avatar uri={item.other_user?.avatar_url ?? null} size={40} />
+                </View>
                 <View style={styles.searchInfo}>
                   <Text style={styles.displayName}>
                     {item.other_user?.display_name || 'No name'}
@@ -383,7 +389,9 @@ export function FriendsScreen() {
               <View style={styles.searchSkeletonList}>
                 {[1, 2, 3, 4].map((i) => (
                   <View key={i} style={styles.searchRow}>
-                    <Skeleton width={40} height={40} borderRadius={20} />
+                    <View style={styles.avatarWrap}>
+                      <Skeleton width={40} height={40} borderRadius={20} />
+                    </View>
                     <View style={styles.skeletonTextBlock}>
                       <Skeleton width={140} height={14} borderRadius={7} />
                       <View style={{ marginTop: 6 }}>
@@ -398,6 +406,9 @@ export function FriendsScreen() {
             ) : (
               searchResults.map((item) => (
                 <View key={item.id} style={styles.searchRow}>
+                  <View style={styles.avatarWrap}>
+                    <Avatar uri={item.avatar_url ?? null} size={40} />
+                  </View>
                   <View style={styles.searchInfo}>
                     <Text style={styles.displayName}>{item.display_name || 'No name'}</Text>
                     <Text style={styles.username}>@{item.username}</Text>
@@ -456,6 +467,9 @@ export function FriendsScreen() {
                       : styles.requestRow;
                     return (
                       <RowWrapper key={item.id} style={rowStyle}>
+                        <View style={styles.avatarWrap}>
+                          <Avatar uri={item.other_user?.avatar_url ?? null} size={40} />
+                        </View>
                         <View style={styles.searchInfo}>
                           <Text style={styles.displayName}>
                             {item.other_user?.display_name || 'No name'}
@@ -579,6 +593,9 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+  },
+  avatarWrap: {
+    marginRight: theme.spacing.md,
   },
   searchInfo: {
     flex: 1,
