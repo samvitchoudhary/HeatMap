@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Image,
   Modal,
-  TextInput,
   Pressable,
   ScrollView,
   Alert,
@@ -25,16 +24,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
+import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
+import { StyledTextInput } from '../components/StyledTextInput';
 
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
-const GRID_GAP = 4;
-const GRID_PADDING = 24;
+const GRID_GAP = 2;
 
 function validateUsername(value: string): boolean {
   const normalized = value.toLowerCase().trim();
@@ -42,13 +42,14 @@ function validateUsername(value: string): boolean {
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const GRID_CELL_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3;
+const GRID_CELL_SIZE = (SCREEN_WIDTH - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
 
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList, 'Profile'>>();
   const { profile, session, refreshProfile } = useAuth();
   const { setCardStackOpen } = useCardStack();
+  const { showToast } = useToast();
   const userId = profile?.id ?? session?.user?.id;
 
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
@@ -64,6 +65,8 @@ export function ProfileScreen() {
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [gridImageErrors, setGridImageErrors] = useState<Record<string, boolean>>({});
+  const hasInitiallyFetched = useRef(false);
 
   const fetchMyPosts = useCallback(async () => {
     if (!userId) return;
@@ -100,7 +103,10 @@ export function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      const isInitial = !hasInitiallyFetched.current;
+      hasInitiallyFetched.current = true;
       let mounted = true;
+      if (isInitial) setProfileDataReady(false);
       Promise.all([fetchMyPosts(), fetchPostsCount(), fetchFriendsCount()]).then(() => {
         if (mounted) setProfileDataReady(true);
       });
@@ -146,7 +152,7 @@ export function ProfileScreen() {
       await refreshProfile();
     } catch (err) {
       console.error('Error uploading avatar:', err);
-      Alert.alert('Error', 'Could not update profile photo. Please try again.');
+      showToast('Could not update profile photo. Please try again.');
     } finally {
       setUploadingAvatar(false);
     }
@@ -236,7 +242,7 @@ export function ProfileScreen() {
         error.code === '23505'
           ? 'That username is already taken.'
           : error.message ?? 'Could not update profile.';
-      Alert.alert('Error', message);
+      showToast(message);
       return;
     }
     setEditModalVisible(false);
@@ -260,22 +266,28 @@ export function ProfileScreen() {
   const displayName = profile?.display_name ?? 'User';
   const username = profile?.username ?? 'username';
   const avatarUrl = profile?.avatar_url;
-  const bottomPadding = insets.bottom + 60;
+  const bottomPadding = insets.bottom + 100;
   const showProfileSkeletons = !profileDataReady && !!userId;
   const gridPosts = posts.slice(0, 9);
   const hasMorePosts = posts.length > 9;
+  const GRID_SLOTS = 9;
+  const gridSlots = Array.from({ length: GRID_SLOTS }, (_, i) => gridPosts[i] ?? null);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView
         style={styles.scroll}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: bottomPadding }]}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top + 20, paddingBottom: bottomPadding },
+        ]}
         showsVerticalScrollIndicator={false}
+        overScrollMode="never"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={theme.colors.textSecondary}
+            tintColor={theme.colors.text}
           />
         }
       >
@@ -315,7 +327,7 @@ export function ProfileScreen() {
                 <Skeleton width={24} height={16} borderRadius={4} />
                 <Text style={styles.statsLabel}> posts  </Text>
                 <Text style={styles.statsDivider}> |  </Text>
-                <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress}>
+                <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress} activeOpacity={0.7}>
                   <Skeleton width={24} height={16} borderRadius={4} />
                   <Text style={styles.statsLabel}> friends</Text>
                 </TouchableOpacity>
@@ -329,7 +341,7 @@ export function ProfileScreen() {
                 <Text style={styles.statsNumber}>{postsCount}</Text>
                 <Text style={styles.statsLabel}> posts  </Text>
                 <Text style={styles.statsDivider}> |  </Text>
-                <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress}>
+                <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress} activeOpacity={0.7}>
                   <Text style={styles.statsNumber}>{friendsCount}</Text>
                   <Text style={styles.statsLabel}> friends</Text>
                 </TouchableOpacity>
@@ -338,12 +350,12 @@ export function ProfileScreen() {
           )}
 
           <TouchableOpacity
-            style={styles.editButton}
+            style={styles.secondaryButton}
             onPress={openEditModal}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
           >
             <Feather name="edit-2" size={14} color={theme.colors.text} />
-            <Text style={styles.editButtonText}>Edit Profile</Text>
+            <Text style={styles.secondaryButtonText}>Edit Profile</Text>
           </TouchableOpacity>
         </View>
 
@@ -356,27 +368,38 @@ export function ProfileScreen() {
             </View>
           ) : (
             <View style={styles.grid}>
-              {gridPosts.map((post) => (
-                <TouchableOpacity
-                  key={post.id}
-                  style={styles.gridCell}
-                  onPress={() => handlePhotoPress(post)}
-                  activeOpacity={0.8}
-                >
-                  <Image
-                    source={{ uri: post.image_url }}
-                    style={styles.gridImage}
-                    resizeMode="cover"
-                  />
-                </TouchableOpacity>
-              ))}
+              {gridSlots.map((post, i) =>
+                post ? (
+                  <TouchableOpacity
+                    key={post.id}
+                    style={styles.gridCell}
+                    onPress={() => handlePhotoPress(post)}
+                    activeOpacity={0.7}
+                  >
+                    {gridImageErrors[post.id] ? (
+                      <View style={[styles.gridCellEmpty, styles.gridImagePlaceholder]}>
+                        <Feather name="image" size={24} color={theme.colors.textTertiary} />
+                      </View>
+                    ) : (
+                      <Image
+                        source={{ uri: post.image_url }}
+                        style={styles.gridImage}
+                        resizeMode="cover"
+                        onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
+                      />
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <View key={`empty-${i}`} style={[styles.gridCell, styles.gridCellEmpty]} />
+                )
+              )}
             </View>
           )}
           {hasMorePosts && (
             <TouchableOpacity
               style={styles.viewAllButton}
               onPress={handleViewAllPosts}
-              activeOpacity={0.7}
+              activeOpacity={0.6}
             >
               <Feather name="grid" size={16} color={theme.colors.textSecondary} />
               <Text style={styles.viewAllText}>View All Posts</Text>
@@ -385,12 +408,12 @@ export function ProfileScreen() {
         </View>
 
         <TouchableOpacity
-          style={styles.logoutButton}
+          style={styles.destructiveButton}
           onPress={handleLogOut}
-          activeOpacity={0.7}
+          activeOpacity={0.6}
         >
           <Feather name="log-out" size={16} color={theme.colors.textTertiary} />
-          <Text style={styles.logoutText}>Log Out</Text>
+          <Text style={styles.destructiveButtonText}>Log Out</Text>
         </TouchableOpacity>
       </ScrollView>
 
@@ -423,23 +446,23 @@ export function ProfileScreen() {
                 <TouchableOpacity
                   onPress={() => setEditModalVisible(false)}
                   hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  activeOpacity={0.7}
                 >
                   <Feather name="x" size={24} color={theme.colors.text} />
                 </TouchableOpacity>
               </View>
 
               <Text style={styles.inputLabel}>Display Name</Text>
-              <TextInput
+              <StyledTextInput
                 style={styles.input}
                 value={editDisplayName}
                 onChangeText={setEditDisplayName}
                 placeholder="Display name"
-                placeholderTextColor={theme.colors.textTertiary}
                 autoCapitalize="words"
               />
 
               <Text style={styles.inputLabel}>Username</Text>
-              <TextInput
+              <StyledTextInput
                 style={[styles.input, usernameError && styles.inputError]}
                 value={editUsername}
                 onChangeText={(t) => {
@@ -447,7 +470,6 @@ export function ProfileScreen() {
                   setUsernameError(null);
                 }}
                 placeholder="username"
-                placeholderTextColor={theme.colors.textTertiary}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -458,7 +480,7 @@ export function ProfileScreen() {
               <Text style={styles.avatarNote}>Profile photo: tap your avatar to change it</Text>
 
               <TouchableOpacity
-                style={styles.saveButton}
+                style={[styles.primaryButton, saving && styles.buttonDisabled]}
                 onPress={handleSaveProfile}
                 disabled={saving}
                 activeOpacity={0.8}
@@ -467,11 +489,11 @@ export function ProfileScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.cancelButton}
+                style={styles.secondaryButtonModal}
                 onPress={() => setEditModalVisible(false)}
-                activeOpacity={0.7}
+                activeOpacity={0.8}
               >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
@@ -487,8 +509,8 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: theme.spacing.lg },
   header: {
     alignItems: 'center',
-    paddingTop: theme.spacing.xl,
-    paddingHorizontal: theme.spacing.md,
+    paddingTop: theme.spacing.lg,
+    paddingHorizontal: theme.screenPadding,
   },
   avatarWrapper: { position: 'relative', marginBottom: theme.spacing.sm },
   avatarContainer: {
@@ -499,7 +521,7 @@ const styles = StyleSheet.create({
   },
   avatarLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: theme.colors.overlayMedium,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -515,51 +537,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   displayName: {
-    fontSize: 22,
+    fontSize: theme.fontSize.title,
     fontWeight: '700',
     color: theme.colors.text,
     marginBottom: 4,
   },
   username: {
-    fontSize: 15,
+    fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
   },
   statsRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
   },
   statTouchable: { flexDirection: 'row', alignItems: 'baseline' },
-  statsNumber: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.colors.text },
-  statsLabel: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary },
+  statsNumber: { fontSize: theme.fontSize.md, fontWeight: '600', color: theme.colors.text },
+  statsLabel: { fontSize: theme.fontSize.xs, fontWeight: '400', color: theme.colors.textSecondary },
   statsDivider: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, marginHorizontal: 4 },
-  editButton: {
+  secondaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
-    paddingVertical: theme.spacing.sm,
+    height: theme.button.secondaryHeight,
     paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.borderRadius.full,
+    borderRadius: theme.button.borderRadius,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     marginBottom: theme.spacing.lg,
   },
-  editButtonText: {
-    fontSize: theme.fontSize.sm,
+  secondaryButtonText: {
+    fontSize: theme.fontSize.button,
+    fontWeight: '600',
     color: theme.colors.text,
-    fontWeight: '500',
   },
   gallerySection: {
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: theme.screenPadding,
     marginBottom: theme.spacing.lg,
   },
   galleryHeader: {
-    fontSize: theme.fontSize.md,
+    fontSize: theme.fontSize.title,
     fontWeight: '700',
     color: theme.colors.text,
-    marginBottom: theme.spacing.md,
+    marginBottom: theme.spacing.lg,
     textAlign: 'left',
   },
   grid: {
@@ -570,8 +594,15 @@ const styles = StyleSheet.create({
   gridCell: {
     width: GRID_CELL_SIZE,
     height: GRID_CELL_SIZE,
-    borderRadius: 4,
     overflow: 'hidden',
+  },
+  gridCellEmpty: {
+    backgroundColor: theme.colors.surface,
+  },
+  gridImagePlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   gridImage: {
     width: '100%',
@@ -584,6 +615,7 @@ const styles = StyleSheet.create({
   },
   emptyGalleryText: {
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
     marginTop: theme.spacing.md,
   },
@@ -596,16 +628,9 @@ const styles = StyleSheet.create({
   },
   viewAllText: {
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
   },
-  logoutButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: theme.spacing.md,
-  },
-  logoutText: { fontSize: theme.fontSize.sm, color: theme.colors.textTertiary },
   modalOverlay: {
     flex: 1,
     backgroundColor: theme.colors.overlay,
@@ -625,21 +650,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: theme.spacing.lg,
   },
-  modalTitle: { fontSize: theme.fontSize.lg, fontWeight: '700', color: theme.colors.text },
+  modalTitle: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.text },
   inputLabel: {
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
     marginBottom: theme.spacing.xs,
   },
   input: {
-    backgroundColor: theme.colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: 12,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
     marginBottom: theme.spacing.md,
   },
   inputError: { borderColor: theme.colors.red },
@@ -654,18 +672,39 @@ const styles = StyleSheet.create({
     color: theme.colors.textTertiary,
     marginBottom: theme.spacing.lg,
   },
-  saveButton: {
-    backgroundColor: theme.colors.text,
-    paddingVertical: theme.spacing.md,
-    borderRadius: theme.borderRadius.md,
+  primaryButton: {
+    backgroundColor: theme.colors.light,
+    height: theme.button.primaryHeight,
+    borderRadius: theme.button.borderRadius,
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: theme.spacing.sm,
   },
+  buttonDisabled: { opacity: 0.8 },
   saveButtonText: {
-    fontSize: theme.fontSize.md,
+    fontSize: theme.fontSize.button,
     fontWeight: '600',
-    color: theme.colors.background,
+    color: theme.colors.textOnLight,
   },
-  cancelButton: { alignItems: 'center', paddingVertical: theme.spacing.sm },
-  cancelButtonText: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary },
+  secondaryButtonModal: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: theme.button.secondaryHeight,
+    borderRadius: theme.button.borderRadius,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  destructiveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: theme.spacing.md,
+  },
+  destructiveButtonText: {
+    fontSize: theme.fontSize.sm,
+    fontWeight: '600',
+    color: theme.colors.red,
+  },
 });

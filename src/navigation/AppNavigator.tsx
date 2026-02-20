@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
   createBottomTabNavigator,
@@ -6,6 +6,7 @@ import {
   type BottomTabNavigationProp,
 } from '@react-navigation/bottom-tabs';
 import { View, TouchableOpacity, ActivityIndicator, StyleSheet, Animated } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
 import { CardStackProvider } from '../lib/CardStackContext';
@@ -14,25 +15,36 @@ import type { Profile } from '../types';
 import { theme } from '../lib/theme';
 import { TabSwipeOverlay } from '../components/TabSwipeOverlay';
 
+const TAB_ICON_SIZE = 24;
+
+function TabIcon({
+  name,
+  focused,
+}: {
+  name: React.ComponentProps<typeof Feather>['name'];
+  focused: boolean;
+}) {
+  const scale = useRef(new Animated.Value(focused ? 1.1 : 1)).current;
+  useEffect(() => {
+    Animated.timing(scale, {
+      toValue: focused ? 1.1 : 1,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [focused, scale]);
+  const color = focused ? theme.colors.text : theme.colors.textTertiary;
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Feather name={name} size={TAB_ICON_SIZE} color={color} />
+    </Animated.View>
+  );
+}
+
 function AnimatedTabButton(
   props: { children: React.ReactNode; onPress?: () => void; [key: string]: unknown }
 ) {
   const { children, onPress, ...rest } = props;
-  const scale = useRef(new Animated.Value(1)).current;
-  return (
-    <TouchableOpacity
-      {...rest}
-      onPress={() => {
-        Animated.sequence([
-          Animated.spring(scale, { toValue: 1.15, useNativeDriver: true, speed: 100, bounciness: 4 }),
-          Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 100, bounciness: 4 }),
-        ]).start();
-        onPress?.();
-      }}
-    >
-      <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>
-    </TouchableOpacity>
-  );
+  return <TouchableOpacity {...rest} onPress={onPress} activeOpacity={0.7}>{children}</TouchableOpacity>;
 }
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
@@ -71,6 +83,7 @@ function CustomTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
 }
 
 function MainTabs({ profile }: { profile: Profile }) {
+  const insets = useSafeAreaInsets();
   return (
     <CardStackProvider>
       <Tab.Navigator
@@ -78,21 +91,28 @@ function MainTabs({ profile }: { profile: Profile }) {
         screenOptions={{
           headerShown: false,
           tabBarStyle: {
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
             backgroundColor: theme.colors.background,
             borderTopColor: theme.colors.border,
             borderTopWidth: 1,
-            height: 60,
+            height: 50 + insets.bottom,
+            elevation: 0,
+            shadowOpacity: 0,
           },
           tabBarActiveTintColor: theme.colors.text,
           tabBarInactiveTintColor: theme.colors.textTertiary,
           tabBarShowLabel: false,
+          tabBarIconStyle: { marginBottom: 0 },
           tabBarButton: (props) => <AnimatedTabButton {...props} />,
         }}
       >
         <Tab.Screen
           name="Map"
           options={{
-            tabBarIcon: ({ color, size }) => <Feather name="map" size={size ?? 24} color={color} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="map" focused={focused} />,
           }}
         >
           {() => <HomeScreen profile={profile} />}
@@ -101,21 +121,21 @@ function MainTabs({ profile }: { profile: Profile }) {
           name="Upload"
           component={UploadScreen}
           options={{
-            tabBarIcon: ({ color, size }) => <Feather name="plus-circle" size={size ?? 24} color={color} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="plus-circle" focused={focused} />,
           }}
         />
         <Tab.Screen
-        name="Friends"
-        component={FriendsScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => <Feather name="users" size={size ?? 24} color={color} />,
-        }}
+          name="Friends"
+          component={FriendsScreen}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon name="users" focused={focused} />,
+          }}
         />
         <Tab.Screen
           name="Profile"
           component={ProfileStackNavigator}
           options={{
-            tabBarIcon: ({ color, size }) => <Feather name="user" size={size ?? 24} color={color} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="user" focused={focused} />,
           }}
         />
       </Tab.Navigator>
@@ -129,7 +149,7 @@ export function AppNavigator() {
   if (loading || (session?.user?.id && profile === undefined)) {
     return (
       <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#FFF" />
+        <ActivityIndicator size="large" color={theme.colors.text} />
       </View>
     );
   }
@@ -169,7 +189,7 @@ export function AppNavigator() {
   );
 }
 
-const TAB_BAR_HEIGHT = 60;
+const TAB_BAR_HEIGHT = 50;
 
 const styles = StyleSheet.create({
   tabBarContainer: {

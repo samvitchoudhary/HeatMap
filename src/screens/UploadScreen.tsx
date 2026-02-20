@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -10,6 +9,8 @@ import {
   ScrollView,
   Image,
   Animated,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -17,9 +18,12 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
+import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
+import { StyledTextInput } from '../components/StyledTextInput';
 import type { MainTabParamList } from '../navigation/types';
 
 const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
@@ -28,8 +32,10 @@ const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
 };
 
 export function UploadScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList, 'Upload'>>();
   const { session } = useAuth();
+  const { showToast } = useToast();
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [venueName, setVenueName] = useState('');
   const [caption, setCaption] = useState('');
@@ -213,25 +219,39 @@ export function UploadScreen() {
       }, 1200);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to post. Please try again.';
-      Alert.alert('Post Failed', message);
+      showToast(message);
     } finally {
       setIsPosting(false);
     }
   }
 
   return (
+    <KeyboardAvoidingView
+      style={[styles.container, { backgroundColor: theme.colors.background, flex: 1 }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={0}
+    >
     <ScrollView
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
-      contentContainerStyle={styles.content}
+      style={styles.scroll}
+      contentContainerStyle={[
+        styles.content,
+        {
+          paddingTop: insets.top + 16,
+          paddingBottom: insets.bottom + 80,
+        },
+      ]}
+      showsVerticalScrollIndicator={false}
+      overScrollMode="never"
+      keyboardShouldPersistTaps="handled"
     >
       {!selectedImageUri ? (
         <View style={styles.photoSelection}>
-          <TouchableOpacity style={styles.photoTile} onPress={handleTakePhoto}>
-            <Feather name="camera" size={32} color="#FFF" />
+          <TouchableOpacity style={styles.photoTile} onPress={handleTakePhoto} activeOpacity={0.8}>
+            <Feather name="camera" size={32} color={theme.colors.text} />
             <Text style={styles.photoTileLabel}>Camera</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.photoTile} onPress={handleChooseFromLibrary}>
-            <Feather name="image" size={32} color="#FFF" />
+          <TouchableOpacity style={styles.photoTile} onPress={handleChooseFromLibrary} activeOpacity={0.8}>
+            <Feather name="image" size={32} color={theme.colors.text} />
             <Text style={styles.photoTileLabel}>Library</Text>
           </TouchableOpacity>
         </View>
@@ -241,47 +261,48 @@ export function UploadScreen() {
             <Image source={{ uri: selectedImageUri }} style={styles.preview} resizeMode="cover" />
           </Animated.View>
 
-          <TextInput
+          <StyledTextInput
             style={styles.input}
             placeholder={isDetectingLocation ? 'Detecting location...' : 'Venue'}
-            placeholderTextColor={theme.colors.textTertiary}
             value={venueName}
             onChangeText={setVenueName}
             editable={!isDetectingLocation}
           />
 
-          <TextInput
+          <StyledTextInput
             style={styles.input}
             placeholder="Add a caption..."
-            placeholderTextColor={theme.colors.textTertiary}
             value={caption}
             onChangeText={setCaption}
           />
 
           <TouchableOpacity
-            style={[styles.postButton, (isPosting || postSuccess) && styles.buttonDisabled]}
+            style={[styles.primaryButton, (isPosting || postSuccess) && styles.buttonDisabled]}
             onPress={handlePost}
             disabled={isPosting}
+            activeOpacity={0.8}
           >
             {isPosting ? (
-              <ActivityIndicator color={theme.colors.background} />
+              <ActivityIndicator color={theme.colors.textOnLight} />
             ) : postSuccess ? (
-              <Feather name="check" size={24} color={theme.colors.background} />
+              <Feather name="check" size={24} color={theme.colors.textOnLight} />
             ) : (
               <Text style={styles.postButtonText}>Post</Text>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.cancelButton}
+            style={styles.secondaryButton}
             onPress={handleCancel}
             disabled={isPosting}
+            activeOpacity={0.8}
           >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+            <Text style={styles.secondaryButtonText}>Cancel</Text>
           </TouchableOpacity>
         </>
       )}
     </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -289,9 +310,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scroll: {
+    flex: 1,
+  },
   content: {
-    padding: theme.spacing.lg,
-    paddingBottom: 48,
+    padding: theme.screenPadding,
   },
   photoSelection: {
     flexDirection: 'row',
@@ -309,6 +332,7 @@ const styles = StyleSheet.create({
   photoTileLabel: {
     marginTop: theme.spacing.sm,
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
   },
   previewWrap: {
@@ -321,36 +345,36 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
-    backgroundColor: theme.colors.surface,
   },
-  postButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
+  primaryButton: {
+    backgroundColor: theme.colors.light,
+    height: theme.button.primaryHeight,
+    borderRadius: theme.button.borderRadius,
     alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: theme.spacing.sm,
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: 0.8,
   },
   postButtonText: {
-    color: '#000000',
-    fontSize: theme.fontSize.md,
-    fontWeight: '700',
+    color: theme.colors.textOnLight,
+    fontSize: theme.fontSize.button,
+    fontWeight: '600',
   },
-  cancelButton: {
-    padding: theme.spacing.md,
+  secondaryButton: {
+    backgroundColor: theme.colors.surface,
+    height: theme.button.secondaryHeight,
+    borderRadius: theme.button.borderRadius,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  cancelButtonText: {
-    color: theme.colors.textSecondary,
-    fontSize: theme.fontSize.md,
+  secondaryButtonText: {
+    color: theme.colors.text,
+    fontSize: theme.fontSize.button,
+    fontWeight: '600',
   },
 });

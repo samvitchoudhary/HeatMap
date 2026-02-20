@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -13,13 +12,18 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
+import { useToast } from '../lib/ToastContext';
+import { StyledTextInput } from '../components/StyledTextInput';
 import { theme } from '../lib/theme';
 
 type SignUpNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
 
 export function SignUpScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<SignUpNavigationProp>();
+  const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -48,7 +52,7 @@ export function SignUpScreen() {
       // Auth state change will automatically navigate to ProfileSetup
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'An error occurred during sign up.';
-      Alert.alert('Sign Up Failed', message);
+      showToast(message);
     } finally {
       setLoading(false);
     }
@@ -56,17 +60,25 @@ export function SignUpScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.colors.background,
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
     >
       <View style={styles.form}>
         <Text style={styles.title}>HeatMap</Text>
         <Text style={styles.subtitle}>Sign Up</Text>
 
-        <TextInput
+        <StyledTextInput
           style={styles.input}
           placeholder="Email"
-          placeholderTextColor={theme.colors.textTertiary}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -74,31 +86,30 @@ export function SignUpScreen() {
           keyboardType="email-address"
         />
 
-        <TextInput
+        <StyledTextInput
           style={styles.input}
           placeholder="Password"
-          placeholderTextColor={theme.colors.textTertiary}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
         />
 
-        <TextInput
+        <StyledTextInput
           style={styles.input}
           placeholder="Confirm Password"
-          placeholderTextColor={theme.colors.textTertiary}
           value={confirmPassword}
           onChangeText={setConfirmPassword}
           secureTextEntry
         />
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[styles.primaryButton, loading && styles.buttonDisabled]}
           onPress={handleSignUp}
           disabled={loading}
+          activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color="#000" />
+            <ActivityIndicator color={theme.colors.textOnLight} />
           ) : (
             <Text style={styles.buttonText}>Sign Up</Text>
           )}
@@ -107,6 +118,7 @@ export function SignUpScreen() {
         <TouchableOpacity
           style={styles.link}
           onPress={() => navigation.navigate('Login')}
+          activeOpacity={0.6}
         >
           <Text style={styles.linkText}>Already have an account? Log in</Text>
         </TouchableOpacity>
@@ -126,7 +138,7 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   title: {
-    fontSize: 28,
+    fontSize: theme.fontSize.xxl,
     fontWeight: '700',
     letterSpacing: 0.5,
     color: theme.colors.text,
@@ -134,36 +146,31 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.title,
     fontWeight: '600',
     color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: theme.spacing.lg,
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
-    backgroundColor: theme.colors.surface,
   },
-  button: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
+  primaryButton: {
+    backgroundColor: theme.colors.light,
+    height: theme.button.primaryHeight,
+    borderRadius: theme.button.borderRadius,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
     marginTop: theme.spacing.sm,
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: 0.8,
   },
   buttonText: {
-    color: '#000000',
-    fontSize: theme.fontSize.md,
-    fontWeight: '700',
+    color: theme.colors.textOnLight,
+    fontSize: theme.fontSize.button,
+    fontWeight: '600',
   },
   link: {
     marginTop: theme.spacing.lg,

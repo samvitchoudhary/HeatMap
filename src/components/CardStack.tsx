@@ -83,7 +83,7 @@ function CardImage({
   if (failed) {
     return (
       <View style={[s.cardImage, s.cardImagePlaceholder]}>
-        <Feather name="image" size={40} color={theme.colors.textTertiary} />
+        <Feather name="image" size={24} color={theme.colors.textTertiary} />
         <Text style={s.cardImageErrorText}>Image unavailable</Text>
       </View>
     );
@@ -124,7 +124,7 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
   const secondScale = useRef(new Animated.Value(0.97)).current;
   const secondOpacity = useRef(new Animated.Value(0.9)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
-  const cardScale = useRef(new Animated.Value(0.9)).current;
+  const cardScale = useRef(new Animated.Value(0.95)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const currentIndexRef = useRef(0);
   const postsLengthRef = useRef(0);
@@ -134,17 +134,17 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.timing(cardScale, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.timing(cardOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.timing(overlayOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(cardScale, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
   }, [overlayOpacity, cardScale, cardOpacity]);
 
   const handleClose = useCallback(() => {
     Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
-      Animated.timing(cardScale, { toValue: 0.9, duration: 250, useNativeDriver: true }),
-      Animated.timing(cardOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.timing(overlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(cardScale, { toValue: 0.95, duration: 200, useNativeDriver: true }),
+      Animated.timing(cardOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => onClose());
   }, [onClose, overlayOpacity, cardScale, cardOpacity]);
 
@@ -250,23 +250,26 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
           Animated.parallel([
             Animated.timing(translateX, {
               toValue,
-              duration: 200,
+              duration: 220,
               useNativeDriver: true,
             }),
-            Animated.timing(secondTranslateY, {
+            Animated.spring(secondTranslateY, {
               toValue: 0,
-              duration: 200,
               useNativeDriver: true,
+              tension: 80,
+              friction: 12,
             }),
-            Animated.timing(secondScale, {
+            Animated.spring(secondScale, {
               toValue: 1,
-              duration: 200,
               useNativeDriver: true,
+              tension: 80,
+              friction: 12,
             }),
-            Animated.timing(secondOpacity, {
+            Animated.spring(secondOpacity, {
               toValue: 1,
-              duration: 200,
               useNativeDriver: true,
+              tension: 80,
+              friction: 12,
             }),
           ]).start(() => {
             secondTranslateY.setValue(8);
@@ -279,7 +282,8 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
           Animated.spring(translateX, {
             toValue: 0,
             useNativeDriver: true,
-            bounciness: 8,
+            tension: 65,
+            friction: 10,
           }).start();
         }
       },
@@ -334,6 +338,7 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
         style={styles.cardInfoScroll}
         contentContainerStyle={styles.cardInfo}
         showsVerticalScrollIndicator={false}
+        overScrollMode="never"
       >
         <View style={styles.venueRow}>
           <Feather name="map-pin" size={14} color={theme.colors.textSecondary} />
@@ -380,6 +385,7 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
         style={styles.closeButton}
         onPress={handleClose}
         hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+        activeOpacity={0.7}
       >
         <Feather name="x" size={24} color={theme.colors.text} />
       </TouchableOpacity>
@@ -514,7 +520,7 @@ const styles = StyleSheet.create({
   },
   venueName: {
     fontSize: theme.fontSize.md,
-    fontWeight: '700',
+    fontWeight: '600',
     color: theme.colors.text,
     flex: 1,
   },
@@ -526,11 +532,13 @@ const styles = StyleSheet.create({
   },
   posterName: {
     flex: 1,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
   },
   caption: {
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
     marginBottom: 4,
   },
@@ -541,12 +549,14 @@ const styles = StyleSheet.create({
   },
   timestamp: {
     fontSize: theme.fontSize.xs,
+    fontWeight: '400',
     color: theme.colors.textTertiary,
   },
   indicator: {
     position: 'absolute',
     bottom: 48,
+    fontSize: theme.fontSize.xs,
+    fontWeight: '400',
     color: theme.colors.textTertiary,
-    fontSize: theme.fontSize.sm,
   },
 });

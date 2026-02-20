@@ -1,8 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   FlatList,
@@ -17,11 +17,13 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
+import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { Profile, Friendship } from '../types';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
+import { StyledTextInput } from '../components/StyledTextInput';
 
 type FriendshipWithProfile = Friendship & {
   
@@ -38,6 +40,7 @@ const DEBOUNCE_MS = 500;
 export function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { showToast } = useToast();
   const userId = session?.user?.id;
 
   const [friends, setFriends] = useState<FriendshipWithProfile[]>([]);
@@ -50,6 +53,7 @@ export function FriendsScreen() {
   const requestSlideX = useRef(new Animated.Value(0)).current;
   const requestOpacity = useRef(new Animated.Value(1)).current;
 
+  const [searchFocused, setSearchFocused] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [searchProfiles, setSearchProfiles] = useState<Profile[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -86,9 +90,9 @@ export function FriendsScreen() {
     setFriendships((data ?? []) as Friendship[]);
   }, [userId]);
 
-  const fetchFriends = useCallback(async () => {
+  const fetchFriends = useCallback(async (showLoading = true) => {
     if (!userId) return;
-    setFriendsLoading(true);
+    if (showLoading) setFriendsLoading(true);
     const { data, error } = await supabase
       .from('friendships')
       .select('*')
@@ -157,17 +161,21 @@ export function FriendsScreen() {
     );
   }, [userId]);
 
-  useEffect(() => {
-    fetchFriendships();
-  }, [fetchFriendships]);
+  const hasInitiallyFetched = useRef(false);
 
-  useEffect(() => {
-    fetchFriends();
-  }, [fetchFriends]);
-
-  useEffect(() => {
-    fetchRequests();
-  }, [fetchRequests]);
+  useFocusEffect(
+    useCallback(() => {
+      const isInitial = !hasInitiallyFetched.current;
+      hasInitiallyFetched.current = true;
+      fetchFriendships();
+      fetchRequests();
+      if (isInitial) {
+        fetchFriends();
+      } else {
+        fetchFriends(false);
+      }
+    }, [fetchFriendships, fetchRequests, fetchFriends])
+  );
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -214,7 +222,7 @@ export function FriendsScreen() {
       status: 'pending',
     });
     if (error) {
-      Alert.alert('Error', error.message);
+      showToast(error.message);
       return;
     }
     await fetchFriendships();
@@ -227,7 +235,7 @@ export function FriendsScreen() {
       .update({ status: 'accepted' })
       .eq('id', friendshipId);
     if (error) {
-      Alert.alert('Error', error.message);
+      showToast(error.message);
       return;
     }
     setAnimatingRequestId(friendshipId);
@@ -240,7 +248,7 @@ export function FriendsScreen() {
       .update({ status: 'declined' })
       .eq('id', friendshipId);
     if (error) {
-      Alert.alert('Error', error.message);
+      showToast(error.message);
       return;
     }
     setAnimatingRequestId(friendshipId);
@@ -265,24 +273,24 @@ export function FriendsScreen() {
     if (item.buttonState === 'accept') {
       return (
         <TouchableOpacity
-          style={[styles.searchBtn, styles.addBtn]}
+          style={[styles.searchBtn, styles.primarySearchBtn]}
+          activeOpacity={0.8}
           onPress={() => item.friendshipId && handleAccept(item.friendshipId)}
-          activeOpacity={0.7}
         >
-          <Feather name="user-check" size={16} color="#000" />
-          <Text style={[styles.searchBtnText, { color: '#000', marginLeft: 6 }]}>Accept</Text>
+          <Feather name="user-check" size={16} color={theme.colors.textOnLight} />
+          <Text style={[styles.searchBtnText, { color: theme.colors.textOnLight, marginLeft: 6 }]}>Accept</Text>
         </TouchableOpacity>
       );
     }
     if (item.buttonState === 'add') {
       return (
         <TouchableOpacity
-          style={[styles.searchBtn, styles.addBtn]}
+          style={[styles.searchBtn, styles.primarySearchBtn]}
+          activeOpacity={0.8}
           onPress={() => handleAddFriend(item.id)}
-          activeOpacity={0.7}
         >
-          <Feather name="user-plus" size={16} color={theme.colors.background} />
-          <Text style={[styles.searchBtnText, { color: theme.colors.background, marginLeft: 6 }]}>Add</Text>
+          <Feather name="user-plus" size={16} color={theme.colors.textOnLight} />
+          <Text style={[styles.searchBtnText, { color: theme.colors.textOnLight, marginLeft: 6 }]}>Add</Text>
         </TouchableOpacity>
       );
     }
@@ -304,7 +312,7 @@ export function FriendsScreen() {
 
   if (!userId) return null;
 
-  const top = insets.top + (Platform.OS === 'ios' ? 0 : 8);
+  const top = insets.top + 16;
   const bottom = insets.bottom;
 
   return (
@@ -314,6 +322,7 @@ export function FriendsScreen() {
           style={styles.bellButton}
           onPress={() => setRequestsModalVisible(true)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          activeOpacity={0.7}
         >
           <Feather name="bell" size={24} color={theme.colors.text} />
           {requests.length > 0 && (
@@ -355,12 +364,15 @@ export function FriendsScreen() {
           <FlatList
             data={friends}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[styles.listContent, { paddingBottom: bottom + 140 }]}
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
+            bounces={true}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={handleRefresh}
-                tintColor={theme.colors.textSecondary}
+                tintColor={theme.colors.text}
               />
             }
             renderItem={({ item }) => (
@@ -382,9 +394,9 @@ export function FriendsScreen() {
         )}
       </View>
 
-      <View style={[styles.searchSection, { paddingBottom: bottom + theme.spacing.md }]}>
+      <View style={[styles.searchSection, { paddingBottom: bottom + 70 }]}>
         {searchResultsVisible && searchText.trim() && (
-          <ScrollView style={styles.searchResults} keyboardShouldPersistTaps="handled">
+          <ScrollView style={styles.searchResults} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} overScrollMode="never">
             {searchLoading ? (
               <View style={styles.searchSkeletonList}>
                 {[1, 2, 3, 4].map((i) => (
@@ -419,15 +431,24 @@ export function FriendsScreen() {
             )}
           </ScrollView>
         )}
-        <View style={styles.searchInputContainer}>
+        <View
+          style={[
+            styles.searchInputContainer,
+            { borderColor: searchFocused ? theme.colors.textSecondary : theme.colors.border },
+          ]}
+        >
           <Feather name="search" size={18} color={theme.colors.textTertiary} style={styles.searchIcon} />
-          <TextInput
+          <StyledTextInput
+            embedded
             style={styles.searchInput}
             placeholder="Add friends by username..."
-            placeholderTextColor={theme.colors.textTertiary}
             value={searchText}
             onChangeText={setSearchText}
-            onFocus={() => searchText.trim() && setSearchResultsVisible(true)}
+            onFocus={() => {
+              setSearchFocused(true);
+              searchText.trim() && setSearchResultsVisible(true);
+            }}
+            onBlur={() => setSearchFocused(false)}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -452,6 +473,7 @@ export function FriendsScreen() {
                   <TouchableOpacity
                     onPress={() => setRequestsModalVisible(false)}
                     hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                    activeOpacity={0.7}
                   >
                     <Feather name="x" size={24} color={theme.colors.text} />
                   </TouchableOpacity>
@@ -480,22 +502,22 @@ export function FriendsScreen() {
                         </View>
                         <View style={styles.requestActions}>
                           <TouchableOpacity
-                            style={[styles.searchBtn, styles.acceptBtn]}
+                            style={[styles.searchBtn, styles.primarySearchBtn]}
                             onPress={() => handleAccept(item.id)}
-                            activeOpacity={0.7}
+                            activeOpacity={0.8}
                             disabled={!!animatingRequestId}
                           >
-                            <Feather name="check" size={16} color={theme.colors.background} />
-                            <Text style={[styles.searchBtnText, { color: theme.colors.background, marginLeft: 6 }]}>Accept</Text>
+                            <Feather name="check" size={16} color={theme.colors.textOnLight} />
+                            <Text style={[styles.searchBtnText, { color: theme.colors.textOnLight, marginLeft: 6 }]}>Accept</Text>
                           </TouchableOpacity>
                           <TouchableOpacity
-                            style={[styles.searchBtn, styles.declineBtn]}
+                            style={[styles.searchBtn, styles.secondarySearchBtn]}
                             onPress={() => handleDecline(item.id)}
-                            activeOpacity={0.7}
+                            activeOpacity={0.8}
                             disabled={!!animatingRequestId}
                           >
-                            <Feather name="x" size={16} color={theme.colors.textSecondary} />
-                            <Text style={[styles.searchBtnText, { color: theme.colors.textSecondary, marginLeft: 6 }]}>Decline</Text>
+                            <Feather name="x" size={16} color={theme.colors.text} />
+                            <Text style={[styles.searchBtnText, { color: theme.colors.text, marginLeft: 6 }]}>Decline</Text>
                           </TouchableOpacity>
                         </View>
                       </RowWrapper>
@@ -517,7 +539,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: theme.screenPadding,
     paddingVertical: theme.spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
@@ -538,12 +560,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: theme.fontSize.xs,
     fontWeight: '700',
-    color: '#FFF',
+    color: theme.colors.light,
   },
   title: {
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.title,
     fontWeight: '700',
     color: theme.colors.text,
   },
@@ -565,7 +587,7 @@ const styles = StyleSheet.create({
     padding: theme.spacing.xl,
   },
   emptyTitle: {
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.title,
     fontWeight: '700',
     color: theme.colors.textSecondary,
     marginTop: theme.spacing.md,
@@ -584,13 +606,13 @@ const styles = StyleSheet.create({
     padding: theme.spacing.md,
   },
   listContent: {
-    padding: theme.spacing.md,
+    padding: theme.screenPadding,
     paddingBottom: theme.spacing.lg,
   },
   friendRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: theme.spacing.md,
+    paddingVertical: theme.listRowGap,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
@@ -602,16 +624,17 @@ const styles = StyleSheet.create({
   },
   displayName: {
     fontSize: theme.fontSize.md,
-    fontWeight: '700',
+    fontWeight: '600',
     color: theme.colors.text,
   },
   username: {
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
     marginTop: 2,
   },
   searchSection: {
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: theme.screenPadding,
     paddingTop: theme.spacing.sm,
     backgroundColor: theme.colors.background,
     borderTopWidth: 1,
@@ -636,7 +659,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: theme.spacing.sm,
+    paddingVertical: theme.listRowGap,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
@@ -646,6 +669,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.full,
     paddingHorizontal: theme.spacing.md,
+    minHeight: theme.inputHeight,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
@@ -654,23 +678,26 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    paddingVertical: theme.spacing.md,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
+    paddingVertical: 0,
   },
   searchBtn: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    borderRadius: theme.borderRadius.sm,
     minWidth: 80,
   },
-  addBtn: {
-    backgroundColor: '#FFFFFF',
+  primarySearchBtn: {
+    backgroundColor: theme.colors.light,
+    height: theme.button.secondaryHeight,
+    borderRadius: theme.button.borderRadius,
   },
-  acceptBtn: {
-    backgroundColor: '#FFFFFF',
+  secondarySearchBtn: {
+    backgroundColor: theme.colors.surface,
+    height: theme.button.secondaryHeight,
+    borderRadius: theme.button.borderRadius,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   pendingBtn: {
     backgroundColor: theme.colors.surfaceLight,
@@ -682,7 +709,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   searchBtnText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.button,
     fontWeight: '600',
   },
   modalOverlay: {
@@ -708,7 +735,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
   },
   requestsTitle: {
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.title,
     fontWeight: '700',
     color: theme.colors.text,
   },
@@ -721,7 +748,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: theme.spacing.md,
+    paddingVertical: theme.listRowGap,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },

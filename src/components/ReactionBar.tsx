@@ -50,7 +50,7 @@ export function ReactionBar({
             key={emoji}
             style={[styles.reactionButton, isSelected && styles.reactionButtonSelected]}
             onPress={() => handlePress(emoji, index)}
-            activeOpacity={1}
+            activeOpacity={0.8}
           >
             <Animated.View
               style={[
@@ -95,11 +95,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emoji: {
-    fontSize: 20,
+    fontSize: theme.fontSize.lg,
     marginBottom: 2,
   },
   count: {
-    fontSize: 10,
+    fontSize: theme.fontSize.xs,
     color: theme.colors.textSecondary,
   },
 });

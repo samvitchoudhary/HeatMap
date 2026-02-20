@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/lib/AuthContext';
+import { ToastProvider } from './src/lib/ToastContext';
 import { AppNavigator } from './src/navigation/AppNavigator';
 
 export default function App() {
@@ -9,9 +10,11 @@ export default function App() {
     <SafeAreaProvider>
       <StatusBar style="light" />
       <AuthProvider>
-        <NavigationContainer>
-          <AppNavigator />
-        </NavigationContainer>
+        <ToastProvider>
+          <NavigationContainer>
+            <AppNavigator />
+          </NavigationContainer>
+        </ToastProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

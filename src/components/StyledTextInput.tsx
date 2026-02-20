@@ -1,0 +1,50 @@
+import React, { useState } from 'react';
+import { TextInput, StyleSheet, type TextInputProps } from 'react-native';
+import { theme } from '../lib/theme';
+
+type StyledTextInputProps = TextInputProps & {
+  style?: TextInputProps['style'];
+  /** When true, no border/background — for inputs inside a custom container (e.g. search bar) */
+  embedded?: boolean;
+};
+
+export function StyledTextInput({ style, embedded, onFocus, onBlur, ...props }: StyledTextInputProps) {
+  const [focused, setFocused] = useState(false);
+
+  return (
+    <TextInput
+      style={[
+        styles.input,
+        embedded ? styles.embedded : { borderColor: focused ? theme.colors.textSecondary : theme.colors.border },
+        style,
+      ]}
+      placeholderTextColor={theme.colors.textTertiary}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
+      {...props}
+    />
+  );
+}
+
+const styles = StyleSheet.create({
+  input: {
+    height: 48,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    fontSize: 16,
+    color: theme.colors.text,
+  },
+  embedded: {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+  },
+});

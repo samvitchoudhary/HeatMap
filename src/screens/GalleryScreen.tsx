@@ -31,6 +31,7 @@ type Props = NativeStackScreenProps<ProfileStackParamList, 'Gallery'>;
 export function GalleryScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { profile, session } = useAuth();
+  const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const { setCardStackOpen } = useCardStack();
   const userId = profile?.id ?? session?.user?.id;
 
@@ -76,6 +77,7 @@ export function GalleryScreen({ navigation }: Props) {
           onPress={() => navigation.goBack()}
           style={styles.backButton}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          activeOpacity={0.7}
         >
           <Feather name="arrow-left" size={24} color={theme.colors.text} />
         </TouchableOpacity>
@@ -87,6 +89,7 @@ export function GalleryScreen({ navigation }: Props) {
         style={styles.scroll}
         contentContainerStyle={styles.gridContainer}
         showsVerticalScrollIndicator={false}
+        overScrollMode="never"
       >
         <View style={styles.grid}>
           {posts.map((post) => (
@@ -94,13 +97,20 @@ export function GalleryScreen({ navigation }: Props) {
               key={post.id}
               style={styles.gridCell}
               onPress={() => handlePhotoPress(post)}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
-              <Image
-                source={{ uri: post.image_url }}
-                style={styles.gridImage}
-                resizeMode="cover"
-              />
+              {imageErrors[post.id] ? (
+                <View style={styles.gridImagePlaceholder}>
+                  <Feather name="image" size={24} color={theme.colors.textTertiary} />
+                </View>
+              ) : (
+                <Image
+                  source={{ uri: post.image_url }}
+                  style={styles.gridImage}
+                  resizeMode="cover"
+                  onError={() => setImageErrors((prev) => ({ ...prev, [post.id]: true }))}
+                />
+              )}
             </TouchableOpacity>
           ))}
         </View>
@@ -123,20 +133,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: theme.screenPadding,
     paddingVertical: theme.spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
   backButton: {},
   title: {
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.title,
     fontWeight: '700',
     color: theme.colors.text,
   },
   headerSpacer: { width: 24 },
   scroll: { flex: 1 },
-  gridContainer: { padding: theme.spacing.md, paddingBottom: theme.spacing.xl },
+  gridContainer: { padding: theme.screenPadding, paddingBottom: theme.spacing.xl },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -149,4 +159,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   gridImage: { width: '100%', height: '100%' },
+  gridImagePlaceholder: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+    backgroundColor: theme.colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });

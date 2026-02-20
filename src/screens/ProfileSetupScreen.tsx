@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -10,14 +9,19 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../lib/supabase';
+import { StyledTextInput } from '../components/StyledTextInput';
 import { useAuth } from '../lib/AuthContext';
+import { useToast } from '../lib/ToastContext';
 import { theme } from '../lib/theme';
 
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
 
 export function ProfileSetupScreen() {
+  const insets = useSafeAreaInsets();
   const { refreshProfile } = useAuth();
+  const { showToast } = useToast();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -68,7 +72,7 @@ export function ProfileSetupScreen() {
         Alert.alert('Username Taken', 'This username is already in use. Please choose another.');
       } else {
         const message = err.message ?? 'An error occurred. Please try again.';
-        Alert.alert('Setup Failed', message);
+        showToast(message);
       }
     } finally {
       setLoading(false);
@@ -77,38 +81,46 @@ export function ProfileSetupScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.colors.background,
+          paddingTop: insets.top,
+          paddingBottom: insets.bottom,
+          paddingLeft: insets.left,
+          paddingRight: insets.right,
+        },
+      ]}
     >
       <View style={styles.form}>
         <Text style={styles.title}>HeatMap</Text>
         <Text style={styles.subtitle}>Profile Setup</Text>
 
-        <TextInput
+        <StyledTextInput
           style={styles.input}
           placeholder="Username (lowercase, no spaces)"
-          placeholderTextColor={theme.colors.textTertiary}
           value={username}
           onChangeText={(v) => setUsername(v.toLowerCase())}
           autoCapitalize="none"
           autoCorrect={false}
         />
 
-        <TextInput
+        <StyledTextInput
           style={styles.input}
           placeholder="Display Name"
-          placeholderTextColor={theme.colors.textTertiary}
           value={displayName}
           onChangeText={setDisplayName}
         />
 
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[styles.primaryButton, loading && styles.buttonDisabled]}
           onPress={handleCompleteSetup}
           disabled={loading}
+          activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color="#000" />
+            <ActivityIndicator color={theme.colors.textOnLight} />
           ) : (
             <Text style={styles.buttonText}>Complete Setup</Text>
           )}
@@ -129,7 +141,7 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   title: {
-    fontSize: 28,
+    fontSize: theme.fontSize.xxl,
     fontWeight: '700',
     letterSpacing: 0.5,
     color: theme.colors.text,
@@ -137,35 +149,30 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.title,
     fontWeight: '600',
     color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: theme.spacing.lg,
   },
   input: {
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
     marginBottom: theme.spacing.md,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
-    backgroundColor: theme.colors.surface,
   },
-  button: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: theme.borderRadius.md,
-    padding: theme.spacing.md,
+  primaryButton: {
+    backgroundColor: theme.colors.light,
+    height: theme.button.primaryHeight,
+    borderRadius: theme.button.borderRadius,
     alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
     marginTop: theme.spacing.sm,
   },
   buttonDisabled: {
-    opacity: 0.7,
+    opacity: 0.8,
   },
   buttonText: {
-    color: '#000000',
-    fontSize: theme.fontSize.md,
-    fontWeight: '700',
+    color: theme.colors.textOnLight,
+    fontSize: theme.fontSize.button,
+    fontWeight: '600',
   },
 });

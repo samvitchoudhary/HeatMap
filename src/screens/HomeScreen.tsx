@@ -6,7 +6,6 @@ import {
   Alert,
   Animated,
   Platform,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   Keyboard,
@@ -26,6 +25,7 @@ import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { Profile, PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
+import { StyledTextInput } from '../components/StyledTextInput';
 
 type HomeScreenProps = {
   profile: Profile | null;
@@ -81,45 +81,51 @@ export function HomeScreen({ profile }: HomeScreenProps) {
   const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const mapRef = useRef<MapView>(null);
   const hasCenteredOnUser = useRef(false);
   const loadingOpacity = useRef(new Animated.Value(1)).current;
   const dropdownOpacity = useRef(new Animated.Value(0)).current;
-  const dropdownTranslateY = useRef(new Animated.Value(-10)).current;
+  const dropdownTranslateY = useRef(new Animated.Value(-12)).current;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchPosts = useCallback(async () => {
-    const currentUserId = profile?.id;
-    if (!currentUserId) {
-      setPostsLoading(false);
-      return;
-    }
-    setPostsLoading(true);
-    const { data: friendships } = await supabase
-      .from('friendships')
-      .select('requester_id, addressee_id')
-      .or(`requester_id.eq.${currentUserId},addressee_id.eq.${currentUserId}`)
-      .eq('status', 'accepted');
+  const hasInitiallyFetched = useRef(false);
 
-    const friendIds =
-      friendships?.map((f) =>
-        f.requester_id === currentUserId ? f.addressee_id : f.requester_id
-      ) ?? [];
-    const allowedIds = [currentUserId, ...friendIds];
+  const fetchPosts = useCallback(
+    async (showLoading: boolean) => {
+      const currentUserId = profile?.id;
+      if (!currentUserId) {
+        setPostsLoading(false);
+        return;
+      }
+      if (showLoading) setPostsLoading(true);
+      const { data: friendships } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${currentUserId},addressee_id.eq.${currentUserId}`)
+        .eq('status', 'accepted');
 
-    const { data, error } = await supabase
-      .from('posts')
-      .select('*, profiles(username, display_name, avatar_url)')
-      .in('user_id', allowedIds)
-      .order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching posts:', error);
+      const friendIds =
+        friendships?.map((f) =>
+          f.requester_id === currentUserId ? f.addressee_id : f.requester_id
+        ) ?? [];
+      const allowedIds = [currentUserId, ...friendIds];
+
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*, profiles(username, display_name, avatar_url)')
+        .in('user_id', allowedIds)
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('Error fetching posts:', error);
+        setPostsLoading(false);
+        return;
+      }
+      setPosts((data ?? []) as PostWithProfile[]);
       setPostsLoading(false);
-      return;
-    }
-    setPosts((data ?? []) as PostWithProfile[]);
-    setPostsLoading(false);
-  }, [profile?.id]);
+    },
+    [profile?.id]
+  );
 
   useEffect(() => {
     if (!postsLoading) {
@@ -155,13 +161,23 @@ export function HomeScreen({ profile }: HomeScreenProps) {
           useNativeDriver: true,
         }),
         Animated.timing(dropdownTranslateY, {
-          toValue: -10,
+          toValue: -12,
           duration: 150,
           useNativeDriver: true,
         }),
       ]).start();
     }
   }, [showDropdown, dropdownOpacity, dropdownTranslateY]);
+
+  const heatmapPoints = posts.map((post) => ({
+    latitude: post.latitude,
+    longitude: post.longitude,
+    weight: 1,
+  }));
+
+  if (__DEV__) {
+    console.log('Heatmap points:', heatmapPoints.length);
+  }
 
   async function searchPlaces(query: string): Promise<PlacePrediction[]> {
     if (!query.trim() || !GOOGLE_MAPS_API_KEY) return [];
@@ -269,7 +285,9 @@ export function HomeScreen({ profile }: HomeScreenProps) {
 
   useFocusEffect(
     useCallback(() => {
-      fetchPosts();
+      const isInitial = !hasInitiallyFetched.current;
+      hasInitiallyFetched.current = true;
+      fetchPosts(isInitial);
     }, [fetchPosts])
   );
 
@@ -329,12 +347,6 @@ export function HomeScreen({ profile }: HomeScreenProps) {
   }, []);
 
 
-  const heatmapPoints = posts.map((post) => ({
-    latitude: post.latitude,
-    longitude: post.longitude,
-    weight: 1,
-  }));
-
   const showEmptyState = !postsLoading && posts.length === 0;
   const showSearchBar = selectedPosts === null;
 
@@ -374,16 +386,25 @@ export function HomeScreen({ profile }: HomeScreenProps) {
 
       {showSearchBar && (
         <>
-          <View style={[styles.searchBarContainer, { top: insets.top + theme.spacing.md }]}>
-            <View style={styles.searchBar}>
+          <View style={[styles.searchBarContainer, { top: insets.top + 12 }]} pointerEvents="box-none">
+            <View
+              style={[
+                styles.searchBar,
+                { borderColor: searchFocused ? theme.colors.textSecondary : theme.colors.border },
+              ]}
+            >
               <Feather name="search" size={18} color={theme.colors.textTertiary} style={styles.searchIcon} />
-              <TextInput
+              <StyledTextInput
+                embedded
                 style={styles.searchInput}
                 placeholder="Search a location..."
-                placeholderTextColor={theme.colors.textTertiary}
                 value={searchText}
                 onChangeText={setSearchText}
-                onFocus={() => searchText.trim() && setShowDropdown(true)}
+                onFocus={() => {
+                  setSearchFocused(true);
+                  searchText.trim() && setShowDropdown(true);
+                }}
+                onBlur={() => setSearchFocused(false)}
                 returnKeyType="search"
               />
               {searchText.length > 0 && (
@@ -394,6 +415,7 @@ export function HomeScreen({ profile }: HomeScreenProps) {
                     Keyboard.dismiss();
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  activeOpacity={0.7}
                 >
                   <Feather name="x" size={18} color={theme.colors.textSecondary} />
                 </TouchableOpacity>
@@ -421,7 +443,7 @@ export function HomeScreen({ profile }: HomeScreenProps) {
                 >
                   {searchLoading ? (
                     <View style={styles.dropdownLoading}>
-                      <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                      <ActivityIndicator size="small" color={theme.colors.text} />
                     </View>
                   ) : searchResults.length === 0 ? (
                     <View style={styles.dropdownEmpty}>
@@ -432,6 +454,7 @@ export function HomeScreen({ profile }: HomeScreenProps) {
                       style={styles.dropdownScroll}
                       keyboardShouldPersistTaps="handled"
                       showsVerticalScrollIndicator={false}
+                      overScrollMode="never"
                     >
                       {searchResults.map((place) => (
                         <TouchableOpacity
@@ -460,7 +483,7 @@ export function HomeScreen({ profile }: HomeScreenProps) {
 
       {showSearchBar && (
         <TouchableOpacity
-          style={[styles.recenterButton, { bottom: insets.bottom + 80 }]}
+          style={[styles.recenterButton, { bottom: insets.bottom + 90 }]}
           onPress={handleRecenter}
           activeOpacity={0.8}
         >
@@ -504,17 +527,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 1000,
-    paddingHorizontal: theme.spacing.md,
+    paddingHorizontal: theme.screenPadding,
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: `${theme.colors.surface}F2`,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.full,
-    height: 44,
-    paddingHorizontal: theme.spacing.md,
+    height: theme.inputHeight,
+    paddingHorizontal: theme.screenPadding,
     gap: theme.spacing.sm,
   },
   searchIcon: {
@@ -522,8 +545,6 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: theme.fontSize.md,
-    color: theme.colors.text,
     padding: 0,
   },
   dropdownBackdrop: {
@@ -541,7 +562,7 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     maxHeight: 250,
     marginTop: theme.spacing.xs,
-    shadowColor: '#000',
+    shadowColor: theme.colors.background,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -575,12 +596,13 @@ const styles = StyleSheet.create({
   },
   dropdownItemName: {
     fontSize: theme.fontSize.md,
-    fontWeight: '700',
+    fontWeight: '600',
     color: theme.colors.text,
     marginBottom: 2,
   },
   dropdownItemDesc: {
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
   },
   loadingBar: {
@@ -606,7 +628,7 @@ const styles = StyleSheet.create({
     padding: theme.spacing.xl,
   },
   emptyTitle: {
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.title,
     fontWeight: '700',
     color: theme.colors.textSecondary,
     marginTop: theme.spacing.md,
@@ -619,11 +641,11 @@ const styles = StyleSheet.create({
   },
   recenterButton: {
     position: 'absolute',
-    left: theme.spacing.md,
-    width: 44,
-    height: 44,
+    left: theme.screenPadding,
+    width: theme.inputHeight,
+    height: theme.inputHeight,
     borderRadius: 22,
-    backgroundColor: `${theme.colors.surface}E6`,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
     justifyContent: 'center',

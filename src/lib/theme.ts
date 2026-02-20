@@ -11,7 +11,10 @@ export const theme = {
     red: '#FF4444',
     green: '#44CC44',
     overlay: 'rgba(0, 0, 0, 0.85)',
+    overlayMedium: 'rgba(0, 0, 0, 0.5)',
     cardBackground: '#151515',
+    textOnLight: '#000000',
+    light: '#FFFFFF',
   },
   spacing: {
     xs: 4,
@@ -34,5 +37,15 @@ export const theme = {
     lg: 20,
     xl: 24,
     xxl: 32,
+    title: 22,
+    button: 15,
+  },
+  screenPadding: 20,
+  inputHeight: 48,
+  listRowGap: 12,
+  button: {
+    primaryHeight: 48,
+    secondaryHeight: 40,
+    borderRadius: 12,
   },
 };

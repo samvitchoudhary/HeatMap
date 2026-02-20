@@ -2,7 +2,6 @@ import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   StyleSheet,
@@ -14,6 +13,7 @@ import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { Avatar } from './Avatar';
+import { StyledTextInput } from './StyledTextInput';
 
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -134,7 +134,7 @@ export function CommentSheet({
     <View style={styles.wrapper}>
       {children}
       <View style={styles.toggleContainer}>
-        <TouchableOpacity style={styles.toggleButton} onPress={handleToggle}>
+        <TouchableOpacity style={styles.toggleButton} onPress={handleToggle} activeOpacity={0.7}>
           <Feather name="message-circle" size={16} color={theme.colors.textSecondary} />
           <Text style={styles.toggleButtonText}>{buttonLabel}</Text>
         </TouchableOpacity>
@@ -150,9 +150,11 @@ export function CommentSheet({
             contentContainerStyle={styles.commentListContent}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={false}
+            overScrollMode="never"
           >
             {loading ? (
-              <ActivityIndicator size="small" color="#666" style={styles.loader} />
+              <ActivityIndicator size="small" color={theme.colors.text} style={styles.loader} />
             ) : comments.length === 0 ? (
               <Text style={styles.emptyText}>No comments yet.</Text>
             ) : (
@@ -179,10 +181,9 @@ export function CommentSheet({
           </ScrollView>
 
           <View style={styles.inputRow}>
-            <TextInput
+            <StyledTextInput
               style={styles.input}
               placeholder="Write a comment..."
-              placeholderTextColor={theme.colors.textTertiary}
               value={inputText}
               onChangeText={setInputText}
               multiline={false}
@@ -190,14 +191,15 @@ export function CommentSheet({
               returnKeyType="send"
             />
             <TouchableOpacity
-              style={[styles.postButton, (!inputText.trim() || posting) && styles.postButtonDisabled]}
+              style={[styles.primaryCommentButton, (!inputText.trim() || posting) && styles.postButtonDisabled]}
               onPress={handlePostComment}
               disabled={!inputText.trim() || posting}
+              activeOpacity={0.8}
             >
               {posting ? (
-                <ActivityIndicator size="small" color="#000" />
+                <ActivityIndicator size="small" color={theme.colors.textOnLight} />
               ) : (
-                <Feather name="send" size={18} color="#FFF" />
+                <Feather name="send" size={18} color={theme.colors.textOnLight} />
               )}
             </TouchableOpacity>
           </View>
@@ -224,8 +226,8 @@ const styles = StyleSheet.create({
   },
   toggleButtonText: {
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.textSecondary,
-    fontWeight: '500',
   },
   overlay: {
     position: 'absolute',
@@ -254,7 +256,7 @@ const styles = StyleSheet.create({
   },
   commentRow: {
     flexDirection: 'row',
-    marginBottom: theme.spacing.sm,
+    marginBottom: theme.listRowGap,
   },
   commentAvatarWrap: {
     marginRight: theme.spacing.sm,
@@ -263,18 +265,20 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   commenterName: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: '700',
+    fontSize: theme.fontSize.md,
+    fontWeight: '600',
     color: theme.colors.text,
     marginBottom: 2,
   },
   commentText: {
     fontSize: theme.fontSize.sm,
+    fontWeight: '400',
     color: theme.colors.text,
     marginBottom: 2,
   },
   commentTime: {
-    fontSize: 11,
+    fontSize: theme.fontSize.xs,
+    fontWeight: '400',
     color: theme.colors.textTertiary,
   },
   inputRow: {
@@ -287,17 +291,15 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    backgroundColor: theme.colors.surfaceLight,
     borderRadius: theme.borderRadius.full,
-    paddingHorizontal: theme.spacing.md,
-    paddingVertical: theme.spacing.sm,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.text,
   },
-  postButton: {
-    backgroundColor: theme.colors.surface,
-    padding: theme.spacing.sm,
-    borderRadius: theme.borderRadius.full,
+  primaryCommentButton: {
+    backgroundColor: theme.colors.light,
+    width: theme.button.primaryHeight,
+    height: theme.button.primaryHeight,
+    borderRadius: theme.button.borderRadius,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   postButtonDisabled: {
     opacity: 0.5,
