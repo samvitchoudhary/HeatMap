@@ -9,12 +9,14 @@ type ReactionBarProps = {
   counts: Record<string, number>;
   userReactions: Set<string>;
   onEmojiPress: (emoji: string) => void;
+  compact?: boolean;
 };
 
 export function ReactionBar({
   counts,
   userReactions,
   onEmojiPress,
+  compact = false,
 }: ReactionBarProps) {
   const scaleVal = useRef(new Animated.Value(1)).current;
   const [animatingIndex, setAnimatingIndex] = useState<number | null>(null);
@@ -48,17 +50,22 @@ export function ReactionBar({
         return (
           <TouchableOpacity
             key={emoji}
-            style={[styles.reactionButton, isSelected && styles.reactionButtonSelected]}
+            style={[
+              styles.reactionButton,
+              compact && styles.reactionButtonCompact,
+              isSelected && styles.reactionButtonSelected,
+            ]}
             onPress={() => handlePress(emoji, index)}
             activeOpacity={0.8}
           >
             <Animated.View
               style={[
                 styles.emojiWrap,
+                compact && styles.emojiWrapCompact,
                 isAnimating && { transform: [{ scale: scaleVal }] },
               ]}
             >
-              <Text style={styles.emoji}>{emoji}</Text>
+              <Text style={[styles.emoji, compact && styles.emojiCompact]}>{emoji}</Text>
               {count > 0 && (
                 <Text style={styles.count}>{count}</Text>
               )}
@@ -85,6 +92,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 20,
   },
+  reactionButtonCompact: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
   reactionButtonSelected: {
     backgroundColor: theme.colors.surfaceLight,
     borderWidth: 1,
@@ -97,6 +109,11 @@ const styles = StyleSheet.create({
   emoji: {
     fontSize: theme.fontSize.lg,
     marginBottom: 2,
+  },
+  emojiWrapCompact: {},
+  emojiCompact: {
+    fontSize: 16,
+    marginBottom: 1,
   },
   count: {
     fontSize: theme.fontSize.xs,

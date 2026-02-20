@@ -5,7 +5,7 @@ import type { ParamListBase } from '@react-navigation/native';
 import type { MainTabParamList } from '../navigation/types';
 import { useCardStack } from '../lib/CardStackContext';
 
-const TAB_ORDER: (keyof MainTabParamList)[] = ['Map', 'Upload', 'Friends', 'Profile'];
+const TAB_ORDER: (keyof MainTabParamList)[] = ['Map', 'Feed', 'Upload', 'Friends', 'Profile'];
 const EDGE_WIDTH = 20;
 const SWIPE_THRESHOLD = 60;
 

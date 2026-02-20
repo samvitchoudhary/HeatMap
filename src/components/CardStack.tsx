@@ -11,6 +11,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -27,6 +28,7 @@ type CardStackProps = {
   posts: PostWithProfile[];
   onClose: () => void;
   initialIndex?: number;
+  onPostDeleted?: (postId: string) => void;
 };
 
 function timeAgo(dateString: string): string {
@@ -108,7 +110,7 @@ function CardImage({
   );
 }
 
-export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
+export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardStackProps) {
   const { session } = useAuth();
   const safeInitial = Math.min(
     Math.max(0, initialIndex ?? 0),
@@ -139,6 +141,35 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
       Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
     ]).start();
   }, [overlayOpacity, cardScale, cardOpacity]);
+
+  const handleDeletePost = useCallback(
+    async (post: PostWithProfile) => {
+      Alert.alert('Delete Post', "Are you sure? This can't be undone.", [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
+              if (imagePath) {
+                await supabase.storage.from('posts').remove([imagePath]);
+              }
+              await supabase.from('posts').delete().eq('id', post.id);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              onPostDeleted?.(post.id);
+              if (posts.length <= 1) {
+                onClose();
+              }
+            } catch (err) {
+              console.error('Error deleting post:', err);
+            }
+          },
+        },
+      ]);
+    },
+    [onPostDeleted, onClose, posts.length]
+  );
 
   const handleClose = useCallback(() => {
     Animated.parallel([
@@ -183,6 +214,14 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
       setUserReactions(new Set());
     }
   }, [currentIndex, posts, fetchReactions]);
+
+  useEffect(() => {
+    if (posts.length === 0) {
+      onClose();
+      return;
+    }
+    setCurrentIndex((prev) => Math.min(prev, posts.length - 1));
+  }, [posts.length, onClose]);
 
   const handleReactionToggle = useCallback(
     async (emoji: string) => {
@@ -313,6 +352,8 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
     extrapolate: 'clamp',
   });
 
+  const currentUserId = session?.user?.id;
+
   const renderCard = (post: PostWithProfile, isCurrent: boolean) => (
     <CommentSheet
       key={post.id}
@@ -321,7 +362,8 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
       cardHeight={CARD_HEIGHT}
       cardWidth={CARD_WIDTH}
     >
-      <CardImage
+      <View style={styles.cardImageContainer}>
+        <CardImage
         post={post}
         imageLoaded={imageLoaded}
         setImageLoaded={setImageLoaded}
@@ -334,6 +376,16 @@ export function CardStack({ posts, onClose, initialIndex }: CardStackProps) {
           cardImageErrorText: styles.cardImageErrorText,
         }}
       />
+        {post.user_id === currentUserId && (
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => handleDeletePost(post)}
+            activeOpacity={0.7}
+          >
+            <Feather name="trash-2" size={18} color={theme.colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+      </View>
       <ScrollView
         style={styles.cardInfoScroll}
         contentContainerStyle={styles.cardInfo}
@@ -447,6 +499,22 @@ const styles = StyleSheet.create({
   },
   overlayBg: {
     backgroundColor: theme.colors.overlay,
+  },
+  cardImageContainer: {
+    position: 'relative',
+    width: '100%',
+  },
+  deleteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.surfaceLight,
+    opacity: 0.9,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   cardImageWrap: {
     width: '100%',

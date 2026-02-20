@@ -21,6 +21,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
@@ -263,6 +264,31 @@ export function ProfileScreen() {
     setSelectedPosts(posts);
   }
 
+  function handleLongPressDelete(post: PostWithProfile) {
+    Alert.alert('Delete Post', "Are you sure? This can't be undone.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
+            if (imagePath) {
+              await supabase.storage.from('posts').remove([imagePath]);
+            }
+            await supabase.from('posts').delete().eq('id', post.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setPosts((prev) => prev.filter((p) => p.id !== post.id));
+            setPostsCount((prev) => Math.max(0, prev - 1));
+            setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
+          } catch (err) {
+            console.error('Error deleting post:', err);
+          }
+        },
+      },
+    ]);
+  }
+
   const displayName = profile?.display_name ?? 'User';
   const username = profile?.username ?? 'username';
   const avatarUrl = profile?.avatar_url;
@@ -374,6 +400,7 @@ export function ProfileScreen() {
                     key={post.id}
                     style={styles.gridCell}
                     onPress={() => handlePhotoPress(post)}
+                    onLongPress={() => handleLongPressDelete(post)}
                     activeOpacity={0.7}
                   >
                     {gridImageErrors[post.id] ? (
@@ -422,6 +449,11 @@ export function ProfileScreen() {
           posts={selectedPosts}
           onClose={() => setSelectedPosts(null)}
           initialIndex={selectedInitialIndex}
+          onPostDeleted={(postId) => {
+            setPosts((prev) => prev.filter((p) => p.id !== postId));
+            setPostsCount((prev) => Math.max(0, prev - 1));
+            setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
+          }}
         />
       )}
 

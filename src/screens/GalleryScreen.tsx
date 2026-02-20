@@ -7,7 +7,9 @@ import {
   Image,
   ScrollView,
   Dimensions,
+  Alert,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/types';
@@ -70,6 +72,30 @@ export function GalleryScreen({ navigation }: Props) {
     setSelectedPosts(posts);
   }
 
+  async function handleLongPressDelete(post: PostWithProfile) {
+    Alert.alert('Delete Post', "Are you sure? This can't be undone.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
+            if (imagePath) {
+              await supabase.storage.from('posts').remove([imagePath]);
+            }
+            await supabase.from('posts').delete().eq('id', post.id);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            setPosts((prev) => prev.filter((p) => p.id !== post.id));
+            setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
+          } catch (err) {
+            console.error('Error deleting post:', err);
+          }
+        },
+      },
+    ]);
+  }
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <View style={[styles.header, { paddingTop: insets.top + theme.spacing.md }]}>
@@ -97,6 +123,7 @@ export function GalleryScreen({ navigation }: Props) {
               key={post.id}
               style={styles.gridCell}
               onPress={() => handlePhotoPress(post)}
+              onLongPress={() => handleLongPressDelete(post)}
               activeOpacity={0.7}
             >
               {imageErrors[post.id] ? (
@@ -121,6 +148,10 @@ export function GalleryScreen({ navigation }: Props) {
           posts={selectedPosts}
           onClose={() => setSelectedPosts(null)}
           initialIndex={selectedInitialIndex}
+          onPostDeleted={(postId) => {
+            setPosts((prev) => prev.filter((p) => p.id !== postId));
+            setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
+          }}
         />
       )}
     </View>

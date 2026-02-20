@@ -50,6 +50,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
 import { ProfileSetupScreen } from '../screens/ProfileSetupScreen';
 import { HomeScreen } from '../screens/HomeScreen';
+import { FeedScreen } from '../screens/FeedScreen';
 import { UploadScreen } from '../screens/UploadScreen';
 import { FriendsScreen } from '../screens/FriendsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
@@ -115,8 +116,15 @@ function MainTabs({ profile }: { profile: Profile }) {
             tabBarIcon: ({ focused }) => <TabIcon name="map" focused={focused} />,
           }}
         >
-          {() => <HomeScreen profile={profile} />}
+          {({ route }) => <HomeScreen profile={profile} route={route} />}
         </Tab.Screen>
+        <Tab.Screen
+          name="Feed"
+          component={FeedScreen}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon name="activity" focused={focused} />,
+          }}
+        />
         <Tab.Screen
           name="Upload"
           component={UploadScreen}

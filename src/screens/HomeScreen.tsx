@@ -12,7 +12,8 @@ import {
   ActivityIndicator,
   Pressable,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
@@ -24,11 +25,13 @@ import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { Profile, PostWithProfile } from '../types';
+import type { MainTabParamList } from '../navigation/types';
 import { CardStack } from '../components/CardStack';
 import { StyledTextInput } from '../components/StyledTextInput';
 
 type HomeScreenProps = {
   profile: Profile | null;
+  route?: RouteProp<MainTabParamList, 'Map'>;
 };
 
 const NEARBY_RADIUS_METERS = 100;
@@ -62,8 +65,9 @@ function getDistanceMeters(
   return R * c;
 }
 
-export function HomeScreen({ profile }: HomeScreenProps) {
+export function HomeScreen({ profile, route }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const { setCardStackOpen } = useCardStack();
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
@@ -315,6 +319,25 @@ export function HomeScreen({ profile }: HomeScreenProps) {
     }
   }
 
+  useFocusEffect(
+    useCallback(() => {
+      const lat = route?.params?.latitude;
+      const lng = route?.params?.longitude;
+      if (typeof lat === 'number' && typeof lng === 'number' && mapRef.current) {
+        mapRef.current.animateToRegion(
+          {
+            latitude: lat,
+            longitude: lng,
+            latitudeDelta: 0.005,
+            longitudeDelta: 0.005,
+          },
+          1000
+        );
+        (navigation as { setParams: (p: object) => void }).setParams({ latitude: undefined, longitude: undefined });
+      }
+    }, [route?.params?.latitude, route?.params?.longitude, navigation])
+  );
+
   React.useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -508,7 +531,14 @@ export function HomeScreen({ profile }: HomeScreenProps) {
       )}
 
       {selectedPosts !== null && selectedPosts.length > 0 && (
-        <CardStack posts={selectedPosts} onClose={() => setSelectedPosts(null)} />
+        <CardStack
+          posts={selectedPosts}
+          onClose={() => setSelectedPosts(null)}
+          onPostDeleted={(postId) => {
+            setPosts((prev) => prev.filter((p) => p.id !== postId));
+            setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
+          }}
+        />
       )}
     </View>
   );

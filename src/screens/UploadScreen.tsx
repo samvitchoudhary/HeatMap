@@ -227,36 +227,52 @@ export function UploadScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { backgroundColor: theme.colors.background, flex: 1 }]}
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
-    <ScrollView
-      style={styles.scroll}
-      contentContainerStyle={[
-        styles.content,
-        {
-          paddingTop: insets.top + 16,
-          paddingBottom: insets.bottom + 80,
-        },
-      ]}
-      showsVerticalScrollIndicator={false}
-      overScrollMode="never"
-      keyboardShouldPersistTaps="handled"
-    >
       {!selectedImageUri ? (
-        <View style={styles.photoSelection}>
-          <TouchableOpacity style={styles.photoTile} onPress={handleTakePhoto} activeOpacity={0.8}>
-            <Feather name="camera" size={32} color={theme.colors.text} />
-            <Text style={styles.photoTileLabel}>Camera</Text>
+        <View
+          style={[
+            styles.photoSelection,
+            {
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom + 80,
+            },
+          ]}
+        >
+          <TouchableOpacity
+            style={styles.photoOptionTop}
+            onPress={handleTakePhoto}
+            activeOpacity={0.7}
+          >
+            <Feather name="camera" size={48} color="#FFF" />
+            <Text style={styles.photoOptionLabel}>Take Photo</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.photoTile} onPress={handleChooseFromLibrary} activeOpacity={0.8}>
-            <Feather name="image" size={32} color={theme.colors.text} />
-            <Text style={styles.photoTileLabel}>Library</Text>
+          <TouchableOpacity
+            style={styles.photoOptionBottom}
+            onPress={handleChooseFromLibrary}
+            activeOpacity={0.7}
+          >
+            <Feather name="image" size={48} color="#FFF" />
+            <Text style={styles.photoOptionLabel}>Choose from Library</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingTop: insets.top + 16,
+              paddingBottom: insets.bottom + 80,
+            },
+          ]}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          keyboardShouldPersistTaps="handled"
+        >
+          <>
           <Animated.View style={[styles.previewWrap, { opacity: previewOpacity }]}>
             <Image source={{ uri: selectedImageUri }} style={styles.preview} resizeMode="cover" />
           </Animated.View>
@@ -300,8 +316,8 @@ export function UploadScreen() {
             <Text style={styles.secondaryButtonText}>Cancel</Text>
           </TouchableOpacity>
         </>
+        </ScrollView>
       )}
-    </ScrollView>
     </KeyboardAvoidingView>
   );
 }
@@ -317,23 +333,27 @@ const styles = StyleSheet.create({
     padding: theme.screenPadding,
   },
   photoSelection: {
-    flexDirection: 'row',
-    gap: theme.spacing.md,
-    marginTop: theme.spacing.xl,
-  },
-  photoTile: {
     flex: 1,
-    aspectRatio: 1,
+  },
+  photoOptionTop: {
+    flex: 1,
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.borderRadius.lg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  photoOptionBottom: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  photoTileLabel: {
+  photoOptionLabel: {
     marginTop: theme.spacing.sm,
-    fontSize: theme.fontSize.sm,
-    fontWeight: '400',
-    color: theme.colors.textSecondary,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFF',
   },
   previewWrap: {
     marginBottom: theme.spacing.lg,
