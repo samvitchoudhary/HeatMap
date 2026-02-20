@@ -304,8 +304,8 @@ export function HomeScreen({ profile }: HomeScreenProps) {
       const userRegion = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-        latitudeDelta: 0.05,
-        longitudeDelta: 0.05,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
       };
       if (mapRef.current) {
         mapRef.current.animateToRegion(userRegion, 1000);

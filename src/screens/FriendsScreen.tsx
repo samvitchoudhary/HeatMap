@@ -4,6 +4,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   FlatList,
   Modal,
@@ -254,6 +255,37 @@ export function FriendsScreen() {
     setAnimatingRequestId(friendshipId);
   }
 
+  function handleLongPressFriend(item: FriendshipWithProfile) {
+    const username = item.other_user?.username ?? 'unknown';
+    Alert.alert(
+      'Remove Friend',
+      `Are you sure you want to remove @${username} as a friend?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => removeFriend(item.id),
+        },
+      ]
+    );
+  }
+
+  async function removeFriend(friendshipId: string) {
+    const { error } = await supabase
+      .from('friendships')
+      .delete()
+      .eq('id', friendshipId);
+    if (error) {
+      console.log('Remove friend failed:', error);
+      showToast(error.message);
+      return;
+    }
+    setFriends((prev) => prev.filter((f) => f.id !== friendshipId));
+    setFriendships((prev) => prev.filter((f) => f.id !== friendshipId));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
   useEffect(() => {
     if (!animatingRequestId) return;
     requestSlideX.setValue(0);
@@ -376,7 +408,13 @@ export function FriendsScreen() {
               />
             }
             renderItem={({ item }) => (
-              <View style={styles.friendRow}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.friendRow,
+                  pressed && { backgroundColor: theme.colors.surfaceLight },
+                ]}
+                onLongPress={() => handleLongPressFriend(item)}
+              >
                 <View style={styles.avatarWrap}>
                   <Avatar uri={item.other_user?.avatar_url ?? null} size={40} />
                 </View>
@@ -388,7 +426,7 @@ export function FriendsScreen() {
                     @{item.other_user?.username ?? 'unknown'}
                   </Text>
                 </View>
-              </View>
+              </Pressable>
             )}
           />
         )}
