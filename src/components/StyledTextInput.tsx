@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, forwardRef } from 'react';
 import { TextInput, StyleSheet, type TextInputProps } from 'react-native';
 import { theme } from '../lib/theme';
 
@@ -8,29 +8,32 @@ type StyledTextInputProps = TextInputProps & {
   embedded?: boolean;
 };
 
-export function StyledTextInput({ style, embedded, onFocus, onBlur, ...props }: StyledTextInputProps) {
-  const [focused, setFocused] = useState(false);
+export const StyledTextInput = forwardRef<TextInput, StyledTextInputProps>(
+  function StyledTextInput({ style, embedded, onFocus, onBlur, ...props }, ref) {
+    const [focused, setFocused] = useState(false);
 
-  return (
-    <TextInput
-      style={[
-        styles.input,
-        embedded ? styles.embedded : { borderColor: focused ? theme.colors.textSecondary : theme.colors.border },
-        style,
-      ]}
-      placeholderTextColor={theme.colors.textTertiary}
-      onFocus={(e) => {
-        setFocused(true);
-        onFocus?.(e);
-      }}
-      onBlur={(e) => {
-        setFocused(false);
-        onBlur?.(e);
-      }}
-      {...props}
-    />
-  );
-}
+    return (
+      <TextInput
+        ref={ref}
+        style={[
+          styles.input,
+          embedded ? styles.embedded : { borderColor: focused ? theme.colors.textSecondary : theme.colors.border },
+          style,
+        ]}
+        placeholderTextColor={theme.colors.textTertiary}
+        onFocus={(e) => {
+          setFocused(true);
+          onFocus?.(e);
+        }}
+        onBlur={(e) => {
+          setFocused(false);
+          onBlur?.(e);
+        }}
+        {...props}
+      />
+    );
+  }
+);
 
 const styles = StyleSheet.create({
   input: {

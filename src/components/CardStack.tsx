@@ -22,8 +22,6 @@ import { theme } from '../lib/theme';
 import { Skeleton } from './Skeleton';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
-import { Avatar } from './Avatar';
-
 type CardStackProps = {
   posts: PostWithProfile[];
   onClose: () => void;
@@ -47,10 +45,12 @@ function timeAgo(dateString: string): string {
 }
 
 const SWIPE_THRESHOLD = 120;
+const BOTTOM_BAR_HEIGHT = 50;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const CARD_WIDTH = SCREEN_WIDTH * 0.85;
-const CARD_HEIGHT = SCREEN_HEIGHT * 0.68;
-const IMAGE_HEIGHT = CARD_HEIGHT * 0.55;
+const CARD_WIDTH = SCREEN_WIDTH * 0.9;
+/** Card height fits within screen: photo flexes, info compact, bar fixed 50px */
+const CARD_HEIGHT = Math.min(SCREEN_HEIGHT * 0.75, CARD_WIDTH * 1.5);
+const CARD_BORDER_RADIUS = 20;
 
 type CardImageStyles = {
   cardImageWrap: object;
@@ -93,15 +93,15 @@ function CardImage({
   return (
     <View style={s.cardImageWrap}>
       {!loaded && (
-        <View style={StyleSheet.absoluteFill}>
-          <Skeleton width="100%" height={IMAGE_HEIGHT} borderRadius={theme.borderRadius.lg} />
+          <View style={StyleSheet.absoluteFill}>
+          <Skeleton width="100%" height="100%" borderRadius={CARD_BORDER_RADIUS} />
         </View>
       )}
       <Animated.View style={[s.cardImage, { opacity: imageOpacity }]}>
         <Image
           source={{ uri: post.image_url }}
           style={StyleSheet.absoluteFill}
-          resizeMode="cover"
+          resizeMode="contain"
           onLoad={() => setImageLoaded((prev) => ({ ...prev, [post.id]: true }))}
           onError={() => setImageError((prev) => ({ ...prev, [post.id]: true }))}
         />
@@ -118,7 +118,7 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
   );
   const [currentIndex, setCurrentIndex] = useState(safeInitial);
   const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
-  const [userReactions, setUserReactions] = useState<Set<string>>(new Set());
+  const [userReaction, setUserReaction] = useState<string | null>(null);
   const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
   const [imageError, setImageError] = useState<Record<string, boolean>>({});
   const translateX = useRef(new Animated.Value(0)).current;
@@ -130,9 +130,12 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const currentIndexRef = useRef(0);
   const postsLengthRef = useRef(0);
+  const postsRef = useRef<PostWithProfile[]>([]);
+  const flippedByPostIdRef = useRef<Record<string, boolean>>({});
   const swipeHapticFired = useRef(false);
   currentIndexRef.current = currentIndex;
   postsLengthRef.current = posts.length;
+  postsRef.current = posts;
 
   useEffect(() => {
     Animated.parallel([
@@ -191,16 +194,16 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
         return;
       }
       const counts: Record<string, number> = {};
-      const userSet = new Set<string>();
+      let myReaction: string | null = null;
       for (const row of data ?? []) {
         const emoji = row.emoji as string;
         counts[emoji] = (counts[emoji] ?? 0) + 1;
         if (row.user_id === userId) {
-          userSet.add(emoji);
+          myReaction = emoji;
         }
       }
       setReactionCounts(counts);
-      setUserReactions(userSet);
+      setUserReaction(myReaction);
     },
     [session?.user?.id]
   );
@@ -211,12 +214,13 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
       fetchReactions(post.id);
     } else {
       setReactionCounts({});
-      setUserReactions(new Set());
+      setUserReaction(null);
     }
   }, [currentIndex, posts, fetchReactions]);
 
   useEffect(() => {
     if (posts.length === 0) {
+      flippedByPostIdRef.current = {};
       onClose();
       return;
     }
@@ -230,38 +234,69 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
       const userId = session?.user?.id;
       if (!post?.id || !userId) return;
 
-      const alreadyReacted = userReactions.has(emoji);
-      if (alreadyReacted) {
+      const prevReaction = userReaction;
+      const prevCounts = { ...reactionCounts };
+
+      if (prevReaction === emoji) {
+        setUserReaction(null);
+        setReactionCounts((c) => ({
+          ...c,
+          [emoji]: Math.max(0, (c[emoji] ?? 1) - 1),
+        }));
+      } else {
+        setUserReaction(emoji);
+        setReactionCounts((c) => {
+          const next = { ...c };
+          if (prevReaction) {
+            next[prevReaction] = Math.max(0, (next[prevReaction] ?? 1) - 1);
+          }
+          next[emoji] = (next[emoji] ?? 0) + 1;
+          return next;
+        });
+      }
+
+      if (prevReaction === emoji) {
         const { error } = await supabase
           .from('reactions')
           .delete()
           .eq('post_id', post.id)
-          .eq('user_id', userId)
-          .eq('emoji', emoji);
+          .eq('user_id', userId);
         if (error) {
+          setUserReaction(prevReaction);
+          setReactionCounts(prevCounts);
           console.error('Error deleting reaction:', error);
           return;
         }
       } else {
+        if (prevReaction) {
+          await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+        }
         const { error } = await supabase.from('reactions').insert({
           post_id: post.id,
           user_id: userId,
           emoji,
         });
         if (error) {
+          setUserReaction(prevReaction);
+          setReactionCounts(prevCounts);
           console.error('Error inserting reaction:', error);
           return;
         }
       }
-      await fetchReactions(post.id);
     },
-    [currentIndex, posts, session?.user?.id, userReactions, fetchReactions]
+    [currentIndex, posts, session?.user?.id, userReaction, reactionCounts]
   );
+
+  const handleFlippedChange = useCallback((postId: string, flipped: boolean) => {
+    flippedByPostIdRef.current[postId] = flipped;
+  }, []);
 
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
+        const currentPost = postsRef.current[currentIndexRef.current];
+        if (currentPost && flippedByPostIdRef.current[currentPost.id]) return false;
         const { dx } = gestureState;
         return Math.abs(dx) > 5;
       },
@@ -358,69 +393,76 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
     <CommentSheet
       key={post.id}
       postId={post.id}
+      post={{ image_url: post.image_url, venue_name: post.venue_name }}
       userId={session?.user?.id}
       cardHeight={CARD_HEIGHT}
       cardWidth={CARD_WIDTH}
+      cardBorderRadius={CARD_BORDER_RADIUS}
+      onFlippedChange={handleFlippedChange}
     >
-      <View style={styles.cardImageContainer}>
-        <CardImage
-        post={post}
-        imageLoaded={imageLoaded}
-        setImageLoaded={setImageLoaded}
-        imageError={imageError}
-        setImageError={setImageError}
-        s={{
-          cardImageWrap: styles.cardImageWrap,
-          cardImage: styles.cardImage,
-          cardImagePlaceholder: styles.cardImagePlaceholder,
-          cardImageErrorText: styles.cardImageErrorText,
-        }}
-      />
-        {post.user_id === currentUserId && (
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDeletePost(post)}
-            activeOpacity={0.7}
-          >
-            <Feather name="trash-2" size={18} color={theme.colors.textTertiary} />
-          </TouchableOpacity>
-        )}
-      </View>
-      <ScrollView
-        style={styles.cardInfoScroll}
-        contentContainerStyle={styles.cardInfo}
-        showsVerticalScrollIndicator={false}
-        overScrollMode="never"
-      >
-        <View style={styles.venueRow}>
-          <Feather name="map-pin" size={14} color={theme.colors.textSecondary} />
-          <Text style={styles.venueName} numberOfLines={1}>
-            {post.venue_name ?? 'Unknown location'}
-          </Text>
-        </View>
-        {post.profiles ? (
-          <View style={styles.posterRow}>
-            <Avatar uri={post.profiles.avatar_url ?? null} size={24} />
-            <Text style={styles.posterName} numberOfLines={1}>
-              Posted by {post.profiles.display_name ?? 'Unknown'}
-            </Text>
+      {({ onCommentPress, commentCount }) => (
+        <View style={styles.cardFront}>
+          <View style={styles.photoSection}>
+            <CardImage
+              post={post}
+              imageLoaded={imageLoaded}
+              setImageLoaded={setImageLoaded}
+              imageError={imageError}
+              setImageError={setImageError}
+              s={{
+                cardImageWrap: styles.cardImageWrap,
+                cardImage: styles.cardImage,
+                cardImagePlaceholder: styles.cardImagePlaceholder,
+                cardImageErrorText: styles.cardImageErrorText,
+              }}
+            />
+            {post.user_id === currentUserId && (
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => handleDeletePost(post)}
+                activeOpacity={0.7}
+              >
+                <Feather name="trash-2" size={16} color={theme.colors.text} />
+              </TouchableOpacity>
+            )}
           </View>
-        ) : null}
-        {post.caption ? (
-          <Text style={styles.caption} numberOfLines={2}>
-            {post.caption}
-          </Text>
-        ) : null}
-        <View style={styles.timestampRow}>
-          <Feather name="clock" size={12} color={theme.colors.textTertiary} />
-          <Text style={styles.timestamp}>{timeAgo(post.created_at)}</Text>
+          <View style={styles.infoSection}>
+            <Text style={styles.infoDisplayName} numberOfLines={1}>
+              {post.profiles?.display_name ?? 'Unknown'}
+            </Text>
+            <View style={styles.infoVenueRow}>
+              <Feather name="map-pin" size={12} color={theme.colors.textSecondary} />
+              <Text style={styles.infoVenueText} numberOfLines={1}>
+                {post.venue_name ?? 'Unknown location'}
+              </Text>
+            </View>
+            {post.caption?.trim() ? (
+              <Text style={styles.infoCaption} numberOfLines={1}>
+                {post.caption}
+              </Text>
+            ) : null}
+            <Text style={styles.infoTimestamp}>{timeAgo(post.created_at)}</Text>
+          </View>
+          <View style={styles.bottomBar}>
+            <View style={styles.reactionsSection}>
+              <ReactionBar
+                counts={isCurrent ? reactionCounts : {}}
+                userReaction={isCurrent ? userReaction : null}
+                onEmojiPress={handleReactionToggle}
+                cardStackBar
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.commentButton}
+              onPress={onCommentPress}
+              activeOpacity={0.7}
+            >
+              <Feather name="message-circle" size={20} color={theme.colors.textSecondary} />
+              <Text style={styles.commentCountText}>{commentCount}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-        <ReactionBar
-          counts={isCurrent ? reactionCounts : {}}
-          userReactions={isCurrent ? userReactions : new Set()}
-          onEmojiPress={handleReactionToggle}
-        />
-      </ScrollView>
+      )}
     </CommentSheet>
   );
 
@@ -500,26 +542,88 @@ const styles = StyleSheet.create({
   overlayBg: {
     backgroundColor: theme.colors.overlay,
   },
-  cardImageContainer: {
+  cardFront: {
+    flex: 1,
+    flexDirection: 'column',
+    minHeight: 0,
+  },
+  photoSection: {
+    flex: 1,
+    minHeight: 0,
     position: 'relative',
     width: '100%',
+    backgroundColor: theme.colors.cardBackground,
+  },
+  infoSection: {
+    padding: 12,
+    flexShrink: 0,
+    backgroundColor: theme.colors.cardBackground,
+  },
+  infoDisplayName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 2,
+  },
+  infoVenueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  infoVenueText: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    flex: 1,
+  },
+  infoCaption: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginBottom: 2,
+  },
+  infoTimestamp: {
+    fontSize: 11,
+    color: theme.colors.textTertiary,
   },
   deleteButton: {
     position: 'absolute',
     top: 12,
     right: 12,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.surfaceLight,
-    opacity: 0.9,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
+  bottomBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: BOTTOM_BAR_HEIGHT,
+    paddingHorizontal: 12,
+    flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+    backgroundColor: theme.colors.cardBackground,
+  },
+  reactionsSection: {
+    flex: 1,
+  },
+  commentButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  commentCountText: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
   cardImageWrap: {
-    width: '100%',
-    height: IMAGE_HEIGHT,
-    position: 'relative',
+    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
   },
   cardImagePlaceholder: {
     justifyContent: 'center',
@@ -549,10 +653,8 @@ const styles = StyleSheet.create({
     height: CARD_HEIGHT,
     maxHeight: CARD_HEIGHT,
     backgroundColor: theme.colors.cardBackground,
-    borderRadius: theme.borderRadius.lg,
+    borderRadius: CARD_BORDER_RADIUS,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   stackCardThird: {
     zIndex: 1,
@@ -567,58 +669,11 @@ const styles = StyleSheet.create({
     transform: [{ translateY: 0 }],
   },
   cardImage: {
-    width: '100%',
-    height: IMAGE_HEIGHT,
-    borderTopLeftRadius: theme.borderRadius.lg,
-    borderTopRightRadius: theme.borderRadius.lg,
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.colors.cardBackground,
+    borderTopLeftRadius: CARD_BORDER_RADIUS,
+    borderTopRightRadius: CARD_BORDER_RADIUS,
     overflow: 'hidden',
-  },
-  cardInfoScroll: {
-    flex: 1,
-  },
-  cardInfo: {
-    padding: theme.spacing.md,
-    paddingBottom: theme.spacing.sm,
-  },
-  venueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  venueName: {
-    fontSize: theme.fontSize.md,
-    fontWeight: '600',
-    color: theme.colors.text,
-    flex: 1,
-  },
-  posterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 2,
-  },
-  posterName: {
-    flex: 1,
-    fontSize: theme.fontSize.sm,
-    fontWeight: '400',
-    color: theme.colors.textSecondary,
-  },
-  caption: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: '400',
-    color: theme.colors.textSecondary,
-    marginBottom: 4,
-  },
-  timestampRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  timestamp: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: '400',
-    color: theme.colors.textTertiary,
   },
   indicator: {
     position: 'absolute',

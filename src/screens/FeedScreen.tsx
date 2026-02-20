@@ -18,7 +18,7 @@ import type { PostWithProfile } from '../types';
 import { FeedCard, type FeedLatestComment } from '../components/FeedCard';
 
 export type FeedReactionCounts = Record<string, Record<string, number>>;
-export type FeedUserReactions = Record<string, Set<string>>;
+export type FeedUserReactions = Record<string, string | null>;
 export type FeedCommentCounts = Record<string, number>;
 
 export function FeedScreen() {
@@ -114,15 +114,14 @@ export function FeedScreen() {
         .order('created_at', { ascending: false });
 
       const countsByPost: Record<string, Record<string, number>> = {};
-      const userReactionsByPost: Record<string, Set<string>> = {};
+      const userReactionsByPost: Record<string, string | null> = {};
       for (const row of reactions ?? []) {
         const pid = row.post_id as string;
         const emoji = row.emoji as string;
         if (!countsByPost[pid]) countsByPost[pid] = {};
         countsByPost[pid][emoji] = (countsByPost[pid][emoji] ?? 0) + 1;
         if (row.user_id === userId) {
-          if (!userReactionsByPost[pid]) userReactionsByPost[pid] = new Set();
-          userReactionsByPost[pid].add(emoji);
+          userReactionsByPost[pid] = emoji;
         }
       }
 
@@ -238,12 +237,12 @@ export function FeedScreen() {
             <FeedCard
               post={item}
               reactionCounts={reactionsByPostId[item.id] ?? {}}
-              userReactions={userReactionsByPostId[item.id] ?? new Set()}
+              userReaction={userReactionsByPostId[item.id] ?? null}
               commentCount={commentCountByPostId[item.id] ?? 0}
               latestComment={latestCommentByPostId[item.id] ?? null}
-              onReactionChange={(counts, userSet) => {
+              onReactionChange={(counts, userReaction) => {
                 setReactionsByPostId((prev) => ({ ...prev, [item.id]: counts }));
-                setUserReactionsByPostId((prev) => ({ ...prev, [item.id]: userSet }));
+                setUserReactionsByPostId((prev) => ({ ...prev, [item.id]: userReaction }));
               }}
               onCommentPosted={(count, latestComment) => {
                 setCommentCountByPostId((prev) => ({ ...prev, [item.id]: count }));

@@ -15,16 +15,19 @@ import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
-import { Avatar } from './Avatar';
 import { Skeleton } from './Skeleton';
 import { ReactionBar } from './ReactionBar';
-import { FeedCommentModal } from './FeedCommentModal';
+import { CommentSheet } from './CommentSheet';
 
 const CARD_MARGIN_H = 20;
-const CARD_MARGIN_V = 8;
+const PHOTO_ASPECT_RATIO = 4 / 5;
+const INFO_SECTION_HEIGHT = 60;
+const BOTTOM_BAR_HEIGHT = 50;
+const CARD_BORDER_RADIUS = 16;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_WIDTH = SCREEN_WIDTH - CARD_MARGIN_H * 2;
-const IMAGE_MAX_HEIGHT = 400;
+const IMAGE_HEIGHT = CARD_WIDTH / PHOTO_ASPECT_RATIO;
+const CARD_HEIGHT = IMAGE_HEIGHT + INFO_SECTION_HEIGHT + BOTTOM_BAR_HEIGHT;
 
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -50,10 +53,10 @@ export type FeedLatestComment = {
 type FeedCardProps = {
   post: PostWithProfile;
   reactionCounts: Record<string, number>;
-  userReactions: Set<string>;
+  userReaction: string | null;
   commentCount: number;
   latestComment: FeedLatestComment | null;
-  onReactionChange?: (counts: Record<string, number>, userReactions: Set<string>) => void;
+  onReactionChange?: (counts: Record<string, number>, userReaction: string | null) => void;
   onCommentPosted?: (count: number, latestComment: FeedLatestComment | null) => void;
   onVenuePress?: (latitude: number, longitude: number) => void;
   onDeletePost?: (post: PostWithProfile) => void;
@@ -64,7 +67,7 @@ type FeedCardProps = {
 export function FeedCard({
   post,
   reactionCounts: initialReactionCounts,
-  userReactions: initialUserReactions,
+  userReaction: initialUserReaction,
   commentCount,
   latestComment,
   onReactionChange,
@@ -79,7 +82,6 @@ export function FeedCard({
 
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [commentModalVisible, setCommentModalVisible] = useState(false);
   const imageOpacity = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(1)).current;
 
@@ -107,34 +109,41 @@ export function FeedCard({
     (emoji: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (!userId) return;
-      const alreadyReacted = initialUserReactions.has(emoji);
-      const nextUser = new Set(initialUserReactions);
-      const nextCounts = { ...initialReactionCounts };
-      if (alreadyReacted) {
-        nextUser.delete(emoji);
-        nextCounts[emoji] = Math.max(0, (nextCounts[emoji] ?? 1) - 1);
-      } else {
-        nextUser.add(emoji);
-        nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
-      }
-      onReactionChange?.(nextCounts, nextUser);
+      const prevReaction = initialUserReaction;
+      const prevCounts = { ...initialReactionCounts };
 
-      if (alreadyReacted) {
+      if (prevReaction === emoji) {
+        onReactionChange?.(
+          { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) },
+          null
+        );
+      } else {
+        const nextCounts = { ...prevCounts };
+        if (prevReaction) {
+          nextCounts[prevReaction] = Math.max(0, (nextCounts[prevReaction] ?? 1) - 1);
+        }
+        nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
+        onReactionChange?.(nextCounts, emoji);
+      }
+
+      if (prevReaction === emoji) {
         supabase
           .from('reactions')
           .delete()
           .eq('post_id', post.id)
           .eq('user_id', userId)
-          .eq('emoji', emoji)
           .then(() => {});
       } else {
+        if (prevReaction) {
+          supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId).then(() => {});
+        }
         supabase
           .from('reactions')
           .insert({ post_id: post.id, user_id: userId, emoji })
           .then(() => {});
       }
     },
-    [post.id, userId, initialUserReactions, initialReactionCounts, onReactionChange]
+    [post.id, userId, initialUserReaction, initialReactionCounts, onReactionChange]
   );
 
   const handleCommentPosted = useCallback(async () => {
@@ -174,254 +183,198 @@ export function FeedCard({
 
   return (
     <Animated.View style={[styles.card, { opacity: cardOpacity }]}>
-      <View style={styles.headerRow}>
-        <Avatar uri={post.profiles?.avatar_url ?? null} size={36} />
-        <View style={styles.headerInfo}>
-          <Text style={styles.displayName} numberOfLines={1}>
-            {displayName}
-          </Text>
-          <TouchableOpacity
-            style={styles.venueRow}
-            onPress={() => {
-              const lat = post.latitude;
-              const lng = post.longitude;
-              if (typeof lat === 'number' && typeof lng === 'number' && onVenuePress) {
-                onVenuePress(lat, lng);
-              }
-            }}
-            activeOpacity={0.7}
-            disabled={!onVenuePress || typeof post.latitude !== 'number' || typeof post.longitude !== 'number'}
-          >
-            <Feather name="map-pin" size={12} color={theme.colors.textSecondary} />
-            <Text style={[styles.venueName, onVenuePress && styles.venueNameTappable]} numberOfLines={1}>
-              {venueName}
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {onDeletePost && post.user_id === userId && (
-          <TouchableOpacity
-            style={styles.moreButton}
-            onPress={handleDeletePress}
-            activeOpacity={0.7}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Feather name="more-horizontal" size={18} color={theme.colors.textTertiary} />
-          </TouchableOpacity>
-        )}
-        <Text style={styles.timestamp}>{timeAgo(post.created_at)}</Text>
-      </View>
-
-      <View style={styles.photoWrap}>
-        {!imageLoaded && !imageError && (
-          <View style={styles.skeletonWrap}>
-            <Skeleton width="100%" height={IMAGE_MAX_HEIGHT} borderRadius={0} />
-          </View>
-        )}
-        {imageError ? (
-          <View style={[styles.photoPlaceholder, styles.photoError]}>
-            <Feather name="image" size={24} color={theme.colors.textTertiary} />
-          </View>
-        ) : (
-          <Animated.View style={[styles.photo, { opacity: imageOpacity }]}>
-            <Image
-              source={{ uri: post.image_url }}
-              style={StyleSheet.absoluteFill}
-              resizeMode="cover"
-              onLoad={() => setImageLoaded(true)}
-              onError={() => setImageError(true)}
-            />
-          </Animated.View>
-        )}
-      </View>
-
-      <View style={styles.interactionRow}>
-        <ReactionBar
-          counts={initialReactionCounts}
-          userReactions={initialUserReactions}
-          onEmojiPress={handleReactionToggle}
-          compact
-        />
-        <TouchableOpacity
-          style={styles.commentButton}
-          onPress={() => setCommentModalVisible(true)}
-          activeOpacity={0.7}
-        >
-          <Feather name="message-circle" size={18} color={theme.colors.textSecondary} />
-          {commentCount > 0 && (
-            <Text style={styles.commentCount}>{commentCount}</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {post.caption?.trim() ? (
-        <View style={styles.captionRow}>
-          <Text style={styles.captionText}>
-            <Text style={styles.captionName}>{displayName} </Text>
-            {post.caption}
-          </Text>
-        </View>
-      ) : null}
-
-      {latestComment ? (
-        <View style={styles.commentsPreview}>
-          <Text style={styles.commentPreviewText} numberOfLines={1}>
-            <Text style={styles.commentPreviewName}>
-              {latestComment.profiles?.display_name ?? 'Unknown'}
-            </Text>
-            {' '}
-            {latestComment.content}
-          </Text>
-          {commentCount > 1 && (
-            <TouchableOpacity
-              onPress={() => setCommentModalVisible(true)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.viewAllComments}>
-                View all {commentCount} comments
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      ) : commentCount > 0 ? (
-        <TouchableOpacity
-          style={styles.viewAllWrap}
-          onPress={() => setCommentModalVisible(true)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.viewAllComments}>
-            View all {commentCount} comments
-          </Text>
-        </TouchableOpacity>
-      ) : null}
-
-      <FeedCommentModal
-        visible={commentModalVisible}
+      <CommentSheet
         postId={post.id}
+        post={{ image_url: post.image_url, venue_name: post.venue_name }}
         userId={userId}
-        onClose={() => setCommentModalVisible(false)}
+        cardHeight={CARD_HEIGHT}
+        cardWidth={CARD_WIDTH}
+        cardBorderRadius={CARD_BORDER_RADIUS}
         onCommentPosted={handleCommentPosted}
-      />
+      >
+        {({ onCommentPress, commentCount: sheetCommentCount }) => (
+          <>
+            <View style={styles.photoSection}>
+              {!imageLoaded && !imageError && (
+                <View style={styles.skeletonWrap}>
+                  <Skeleton width="100%" height="100%" borderRadius={0} />
+                </View>
+              )}
+              {imageError ? (
+                <View style={[styles.photoPlaceholder, styles.photoError]}>
+                  <Feather name="image" size={24} color={theme.colors.textTertiary} />
+                </View>
+              ) : (
+                <Animated.View style={[styles.photo, { opacity: imageOpacity }]}>
+                  <Image
+                    source={{ uri: post.image_url }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="contain"
+                    onLoad={() => setImageLoaded(true)}
+                    onError={() => setImageError(true)}
+                  />
+                </Animated.View>
+              )}
+              {onDeletePost && post.user_id === userId && (
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={handleDeletePress}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="trash-2" size={16} color={theme.colors.text} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.infoSection}>
+              <Text style={styles.infoDisplayName} numberOfLines={1}>
+                {displayName}
+              </Text>
+              <TouchableOpacity
+                style={styles.infoVenueRow}
+                onPress={() => {
+                  const lat = post.latitude;
+                  const lng = post.longitude;
+                  if (typeof lat === 'number' && typeof lng === 'number' && onVenuePress) {
+                    onVenuePress(lat, lng);
+                  }
+                }}
+                activeOpacity={0.7}
+                disabled={
+                  !onVenuePress ||
+                  typeof post.latitude !== 'number' ||
+                  typeof post.longitude !== 'number'
+                }
+              >
+                <Feather name="map-pin" size={12} color={theme.colors.textSecondary} />
+                <Text style={styles.infoVenueText} numberOfLines={1}>
+                  {venueName}
+                </Text>
+              </TouchableOpacity>
+              {post.caption?.trim() ? (
+                <Text style={styles.infoCaption} numberOfLines={1}>
+                  {post.caption}
+                </Text>
+              ) : null}
+              <Text style={styles.infoTimestamp}>{timeAgo(post.created_at)}</Text>
+            </View>
+            <View style={styles.bottomBar}>
+              <View style={styles.reactionsSection}>
+                <ReactionBar
+                  counts={initialReactionCounts}
+                  userReaction={initialUserReaction}
+                  onEmojiPress={handleReactionToggle}
+                  cardStyle
+                />
+              </View>
+              <TouchableOpacity
+                style={styles.commentButton}
+                onPress={onCommentPress}
+                activeOpacity={0.7}
+              >
+                <Feather name="message-circle" size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.commentCountText}>{sheetCommentCount}</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </CommentSheet>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: theme.colors.surface,
-    borderRadius: 16,
+    backgroundColor: theme.colors.cardBackground,
+    borderRadius: CARD_BORDER_RADIUS,
     marginHorizontal: CARD_MARGIN_H,
-    marginVertical: CARD_MARGIN_V,
+    marginVertical: 8,
     overflow: 'hidden',
   },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-  },
-  headerInfo: {
-    flex: 1,
-    marginLeft: theme.spacing.sm,
-  },
-  displayName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  venueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
-  },
-  venueName: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-    flex: 1,
-  },
-  venueNameTappable: {
-    color: theme.colors.text,
-    textDecorationLine: 'underline',
-    textDecorationColor: theme.colors.textSecondary,
-  },
-  moreButton: {
-    padding: 4,
-  },
-  timestamp: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-  },
-  photoWrap: {
+  photoSection: {
+    position: 'relative',
     width: '100%',
-    maxHeight: IMAGE_MAX_HEIGHT,
-    backgroundColor: theme.colors.surfaceLight,
+    aspectRatio: 4 / 5,
+    backgroundColor: theme.colors.cardBackground,
   },
   skeletonWrap: {
-    width: '100%',
-    height: IMAGE_MAX_HEIGHT,
-  },
-  photo: {
-    width: '100%',
-    height: IMAGE_MAX_HEIGHT,
+    ...StyleSheet.absoluteFillObject,
   },
   photoPlaceholder: {
-    width: '100%',
-    height: 200,
+    ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
   },
   photoError: {
     backgroundColor: theme.colors.surface,
   },
-  interactionRow: {
+  photo: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.colors.cardBackground,
+    borderTopLeftRadius: CARD_BORDER_RADIUS,
+    borderTopRightRadius: CARD_BORDER_RADIUS,
+    overflow: 'hidden',
+  },
+  infoSection: {
+    padding: 12,
+    minHeight: INFO_SECTION_HEIGHT,
+    backgroundColor: theme.colors.cardBackground,
+  },
+  infoDisplayName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 2,
+  },
+  infoVenueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 2,
+  },
+  infoVenueText: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    flex: 1,
+  },
+  infoCaption: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginBottom: 2,
+  },
+  infoTimestamp: {
+    fontSize: 11,
+    color: theme.colors.textTertiary,
+  },
+  deleteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 14,
+    height: BOTTOM_BAR_HEIGHT,
+    paddingHorizontal: 16,
+    backgroundColor: theme.colors.cardBackground,
+  },
+  reactionsSection: {
+    flex: 1,
   },
   commentButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
+    paddingVertical: 8,
   },
-  commentCount: {
+  commentCountText: {
     fontSize: 14,
     color: theme.colors.textSecondary,
-  },
-  captionRow: {
-    paddingHorizontal: 14,
-    paddingTop: 0,
-    paddingBottom: 14,
-  },
-  captionText: {
-    fontSize: 14,
-    color: theme.colors.text,
-  },
-  captionName: {
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
-  commentsPreview: {
-    paddingHorizontal: 14,
-    paddingBottom: 14,
-  },
-  commentPreviewText: {
-    fontSize: 13,
-    color: theme.colors.textSecondary,
-  },
-  commentPreviewName: {
-    fontWeight: '600',
-    color: theme.colors.textSecondary,
-  },
-  viewAllComments: {
-    fontSize: 13,
-    color: theme.colors.textTertiary,
-    marginTop: 4,
-  },
-  viewAllWrap: {
-    paddingHorizontal: 14,
-    paddingBottom: 14,
   },
 });

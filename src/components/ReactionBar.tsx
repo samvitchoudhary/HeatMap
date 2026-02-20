@@ -7,16 +7,23 @@ export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
 
 type ReactionBarProps = {
   counts: Record<string, number>;
-  userReactions: Set<string>;
+  /** The single emoji the current user has selected, or null if none */
+  userReaction: string | null;
   onEmojiPress: (emoji: string) => void;
   compact?: boolean;
+  /** Card stack bottom bar style: 32x32 touch targets, 11px count */
+  cardStyle?: boolean;
+  /** Card stack reaction bar: 36x36 touch targets, 16px emoji, 11px count, evenly spaced */
+  cardStackBar?: boolean;
 };
 
 export function ReactionBar({
   counts,
-  userReactions,
+  userReaction,
   onEmojiPress,
   compact = false,
+  cardStyle = false,
+  cardStackBar = false,
 }: ReactionBarProps) {
   const scaleVal = useRef(new Animated.Value(1)).current;
   const [animatingIndex, setAnimatingIndex] = useState<number | null>(null);
@@ -42,10 +49,16 @@ export function ReactionBar({
   }
 
   return (
-    <View style={styles.container}>
+    <View
+      style={[
+        styles.container,
+        cardStyle && styles.containerCard,
+        cardStackBar && styles.containerCardStackBar,
+      ]}
+    >
       {REACTION_EMOJIS.map((emoji, index) => {
         const count = counts[emoji] ?? 0;
-        const isSelected = userReactions.has(emoji);
+        const isSelected = userReaction === emoji;
         const isAnimating = animatingIndex === index;
         return (
           <TouchableOpacity
@@ -53,6 +66,8 @@ export function ReactionBar({
             style={[
               styles.reactionButton,
               compact && styles.reactionButtonCompact,
+              cardStyle && styles.reactionButtonCard,
+              cardStackBar && styles.reactionButtonCardStackBar,
               isSelected && styles.reactionButtonSelected,
             ]}
             onPress={() => handlePress(emoji, index)}
@@ -65,10 +80,25 @@ export function ReactionBar({
                 isAnimating && { transform: [{ scale: scaleVal }] },
               ]}
             >
-              <Text style={[styles.emoji, compact && styles.emojiCompact]}>{emoji}</Text>
-              {count > 0 && (
-                <Text style={styles.count}>{count}</Text>
-              )}
+              <Text
+                style={[
+                  styles.emoji,
+                  compact && styles.emojiCompact,
+                  cardStyle && styles.emojiCard,
+                  cardStackBar && styles.emojiCardStackBar,
+                ]}
+              >
+                {emoji}
+              </Text>
+              <Text
+                style={[
+                  styles.count,
+                  cardStyle && styles.countCard,
+                  cardStackBar && styles.countCardStackBar,
+                ]}
+              >
+                {count}
+              </Text>
             </Animated.View>
           </TouchableOpacity>
         );
@@ -85,6 +115,18 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing.sm,
     paddingHorizontal: theme.spacing.sm,
   },
+  containerCard: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    justifyContent: 'flex-start',
+    gap: 4,
+  },
+  containerCardStackBar: {
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    flex: 1,
+    justifyContent: 'space-between',
+  },
   reactionButton: {
     width: 40,
     height: 40,
@@ -97,10 +139,20 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
   },
+  reactionButtonCard: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  reactionButtonCardStackBar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
   reactionButtonSelected: {
     backgroundColor: theme.colors.surfaceLight,
     borderWidth: 1,
-    borderColor: theme.colors.text,
+    borderColor: theme.colors.light,
   },
   emojiWrap: {
     alignItems: 'center',
@@ -115,8 +167,24 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginBottom: 1,
   },
+  emojiCard: {
+    fontSize: 18,
+    marginBottom: 1,
+  },
+  emojiCardStackBar: {
+    fontSize: 16,
+    marginBottom: 1,
+  },
   count: {
     fontSize: theme.fontSize.xs,
+    color: theme.colors.textSecondary,
+  },
+  countCard: {
+    fontSize: 11,
+    color: theme.colors.textSecondary,
+  },
+  countCardStackBar: {
+    fontSize: 11,
     color: theme.colors.textSecondary,
   },
 });
