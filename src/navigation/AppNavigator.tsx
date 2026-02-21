@@ -1,11 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {
   createBottomTabNavigator,
   BottomTabBar,
   type BottomTabNavigationProp,
 } from '@react-navigation/bottom-tabs';
-import { View, TouchableOpacity, ActivityIndicator, StyleSheet, Animated } from 'react-native';
+import { View, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
@@ -24,19 +24,12 @@ function TabIcon({
   name: React.ComponentProps<typeof Feather>['name'];
   focused: boolean;
 }) {
-  const scale = useRef(new Animated.Value(focused ? 1.1 : 1)).current;
-  useEffect(() => {
-    Animated.timing(scale, {
-      toValue: focused ? 1.1 : 1,
-      duration: 150,
-      useNativeDriver: true,
-    }).start();
-  }, [focused, scale]);
-  const color = focused ? theme.colors.text : theme.colors.textTertiary;
+  const color = focused ? theme.colors.primary : theme.colors.textTertiary;
   return (
-    <Animated.View style={{ transform: [{ scale }] }}>
+    <View style={styles.tabIconWrap}>
       <Feather name={name} size={TAB_ICON_SIZE} color={color} />
-    </Animated.View>
+      {focused && <View style={styles.tabIndicator} />}
+    </View>
   );
 }
 
@@ -55,16 +48,40 @@ import { UploadScreen } from '../screens/UploadScreen';
 import { FriendsScreen } from '../screens/FriendsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { GalleryScreen } from '../screens/GalleryScreen';
+import { FriendProfileScreen } from '../screens/FriendProfileScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
 
+const headerScreenOptions = {
+  headerStyle: {
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderLight,
+  },
+  headerTintColor: theme.colors.text,
+  headerTitleStyle: { fontWeight: '600' as const },
+  headerShadowVisible: false,
+};
+
 function ProfileStackNavigator() {
   return (
-    <ProfileStack.Navigator screenOptions={{ headerShown: false }}>
+    <ProfileStack.Navigator
+      screenOptions={{
+        ...headerScreenOptions,
+        headerShown: false,
+      }}
+    >
       <ProfileStack.Screen name="Profile" component={ProfileScreen} />
-      <ProfileStack.Screen name="Gallery" component={GalleryScreen} />
+      <ProfileStack.Screen
+        name="Gallery"
+        component={GalleryScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'All Posts',
+        }}
+      />
     </ProfileStack.Navigator>
   );
 }
@@ -96,14 +113,14 @@ function MainTabs({ profile }: { profile: Profile }) {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: theme.colors.background,
-            borderTopColor: theme.colors.border,
+            backgroundColor: '#FFFFFF',
+            borderTopColor: theme.colors.borderLight,
             borderTopWidth: 1,
             height: 50 + insets.bottom,
             elevation: 0,
             shadowOpacity: 0,
           },
-          tabBarActiveTintColor: theme.colors.text,
+          tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: theme.colors.textTertiary,
           tabBarShowLabel: false,
           tabBarIconStyle: { marginBottom: 0 },
@@ -193,6 +210,11 @@ export function AppNavigator() {
       <Stack.Screen name="MainTabs">
         {() => <MainTabs profile={profile as Profile} />}
       </Stack.Screen>
+      <Stack.Screen
+        name="FriendProfile"
+        component={FriendProfileScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
     </Stack.Navigator>
   );
 }
@@ -201,7 +223,19 @@ const TAB_BAR_HEIGHT = 50;
 
 const styles = StyleSheet.create({
   tabBarContainer: {
-    backgroundColor: theme.colors.background,
+    backgroundColor: '#FFFFFF',
+  },
+  tabIconWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: -8,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.primary,
   },
   swipeOverlayContainer: {
     position: 'absolute',

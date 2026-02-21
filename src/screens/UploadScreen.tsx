@@ -31,6 +31,40 @@ const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
   quality: 0.7,
 };
 
+/** Parse EXIF GPS to decimal degrees. Handles both signed decimals and DMS format. */
+function parseExifGps(
+  exif: Record<string, unknown> | undefined
+): { latitude: number; longitude: number } | null {
+  if (!exif) return null;
+  const lat = exif.GPSLatitude;
+  const lng = exif.GPSLongitude;
+  if (lat == null || lng == null) return null;
+
+  const toDecimal = (
+    val: unknown,
+    ref: string | undefined
+  ): number | null => {
+    if (typeof val === 'number' && !Number.isNaN(val)) {
+      return ref === 'S' || ref === 'W' ? -Math.abs(val) : val;
+    }
+    if (Array.isArray(val) && val.length >= 3) {
+      const d = Number(val[0]) || 0;
+      const m = Number(val[1]) || 0;
+      const s = Number(val[2]) || 0;
+      let dec = d + m / 60 + s / 3600;
+      if (ref === 'S' || ref === 'W') dec = -dec;
+      return dec;
+    }
+    return null;
+  };
+
+  const latitude = toDecimal(lat, exif.GPSLatitudeRef as string | undefined);
+  const longitude = toDecimal(lng, exif.GPSLongitudeRef as string | undefined);
+  if (latitude == null || longitude == null) return null;
+  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
+  return { latitude, longitude };
+}
+
 export function UploadScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList, 'Upload'>>();
@@ -47,6 +81,7 @@ export function UploadScreen() {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [locationSource, setLocationSource] = useState<'exif' | 'current' | null>(null);
 
   async function requestCameraPermission(): Promise<boolean> {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -84,25 +119,12 @@ export function UploadScreen() {
     return true;
   }
 
-  async function detectVenue() {
-    const hasPermission = await requestLocationPermission();
-    if (!hasPermission) return;
-
-    setIsDetectingLocation(true);
+  async function reverseGeocodeAndSetVenue(latitude: number, longitude: number) {
     try {
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      setLocationCoords({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-
       const reverseGeocode = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude,
+        longitude,
       });
-
       if (reverseGeocode.length > 0) {
         const place = reverseGeocode[0];
         const name = place.name ?? '';
@@ -113,6 +135,27 @@ export function UploadScreen() {
       } else {
         setVenueName('Unknown location');
       }
+    } catch {
+      setVenueName('Unknown location');
+    }
+  }
+
+  async function detectVenue() {
+    const hasPermission = await requestLocationPermission();
+    if (!hasPermission) return;
+
+    setIsDetectingLocation(true);
+    try {
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      const coords = {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude,
+      };
+      setLocationCoords(coords);
+      setLocationSource('current');
+      await reverseGeocodeAndSetVenue(coords.latitude, coords.longitude);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get location.';
       Alert.alert('Location Error', message);
@@ -132,6 +175,7 @@ export function UploadScreen() {
       setVenueName('');
       setCaption('');
       setLocationCoords(null);
+      setLocationSource(null);
       previewOpacity.setValue(0);
       Animated.timing(previewOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
       detectVenue();
@@ -145,15 +189,32 @@ export function UploadScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({
       ...IMAGE_OPTIONS,
       mediaTypes: ['images'],
+      exif: true,
     });
     if (!result.canceled && result.assets[0]) {
       setSelectedImageUri(result.assets[0].uri);
       setVenueName('');
       setCaption('');
       setLocationCoords(null);
+      setLocationSource(null);
       previewOpacity.setValue(0);
       Animated.timing(previewOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
-      detectVenue();
+
+      const exif = result.assets[0].exif as Record<string, unknown> | undefined;
+      const exifCoords = parseExifGps(exif);
+
+      setIsDetectingLocation(true);
+      try {
+        if (exifCoords) {
+          setLocationCoords(exifCoords);
+          setLocationSource('exif');
+          await reverseGeocodeAndSetVenue(exifCoords.latitude, exifCoords.longitude);
+        } else {
+          await detectVenue();
+        }
+      } finally {
+        setIsDetectingLocation(false);
+      }
     }
   }
 
@@ -162,6 +223,7 @@ export function UploadScreen() {
     setVenueName('');
     setCaption('');
     setLocationCoords(null);
+    setLocationSource(null);
     setPostSuccess(false);
     navigation.navigate('Map');
   }
@@ -246,16 +308,16 @@ export function UploadScreen() {
             onPress={handleTakePhoto}
             activeOpacity={0.7}
           >
-            <Feather name="camera" size={48} color="#FFF" />
-            <Text style={styles.photoOptionLabel}>Take Photo</Text>
+            <Feather name="camera" size={48} color={theme.colors.primary} />
+            <Text style={[styles.photoOptionLabel, styles.photoOptionLabelDark]}>Take Photo</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.photoOptionBottom}
             onPress={handleChooseFromLibrary}
             activeOpacity={0.7}
           >
-            <Feather name="image" size={48} color="#FFF" />
-            <Text style={styles.photoOptionLabel}>Choose from Library</Text>
+            <Feather name="image" size={48} color={theme.colors.secondary} />
+            <Text style={[styles.photoOptionLabel, styles.photoOptionLabelDark]}>Choose from Library</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -278,14 +340,23 @@ export function UploadScreen() {
           </Animated.View>
 
           <StyledTextInput
+            auth
             style={styles.input}
             placeholder={isDetectingLocation ? 'Detecting location...' : 'Venue'}
             value={venueName}
             onChangeText={setVenueName}
             editable={!isDetectingLocation}
           />
+          {locationSource && (
+            <Text style={styles.locationSourceNote}>
+              {locationSource === 'exif'
+                ? "📍 Using photo's original location"
+                : '📍 Using current location'}
+            </Text>
+          )}
 
           <StyledTextInput
+            auth
             style={styles.input}
             placeholder="Add a caption..."
             value={caption}
@@ -299,9 +370,9 @@ export function UploadScreen() {
             activeOpacity={0.8}
           >
             {isPosting ? (
-              <ActivityIndicator color={theme.colors.textOnLight} />
+              <ActivityIndicator color={theme.colors.textOnPrimary} />
             ) : postSuccess ? (
-              <Feather name="check" size={24} color={theme.colors.textOnLight} />
+              <Feather name="check" size={24} color={theme.colors.textOnPrimary} />
             ) : (
               <Text style={styles.postButtonText}>Post</Text>
             )}
@@ -341,7 +412,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: theme.colors.borderLight,
   },
   photoOptionBottom: {
     flex: 1,
@@ -353,7 +424,9 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
     fontSize: 18,
     fontWeight: '600',
-    color: '#FFF',
+  },
+  photoOptionLabelDark: {
+    color: theme.colors.text,
   },
   previewWrap: {
     marginBottom: theme.spacing.lg,
@@ -367,34 +440,39 @@ const styles = StyleSheet.create({
   input: {
     marginBottom: theme.spacing.md,
   },
+  locationSourceNote: {
+    fontSize: 12,
+    color: theme.colors.textTertiary,
+    marginTop: -theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+  },
   primaryButton: {
-    backgroundColor: theme.colors.light,
-    height: theme.button.primaryHeight,
-    borderRadius: theme.button.borderRadius,
+    backgroundColor: theme.colors.primary,
+    height: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: theme.spacing.sm,
+    ...theme.shadows.button,
   },
   buttonDisabled: {
     opacity: 0.8,
   },
   postButtonText: {
-    color: theme.colors.textOnLight,
-    fontSize: theme.fontSize.button,
-    fontWeight: '600',
+    color: theme.colors.textOnPrimary,
+    fontSize: 16,
+    fontWeight: '700',
   },
   secondaryButton: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'transparent',
     height: theme.button.secondaryHeight,
-    borderRadius: theme.button.borderRadius,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   secondaryButtonText: {
-    color: theme.colors.text,
-    fontSize: theme.fontSize.button,
+    color: theme.colors.textSecondary,
+    fontSize: 16,
     fontWeight: '600',
   },
 });

@@ -98,6 +98,8 @@ type CommentSheetProps = {
   cardHeight: number;
   cardWidth: number;
   cardBorderRadius?: number;
+  /** When true, card sizes to content instead of fixed height (for FeedCard) */
+  contentSized?: boolean;
   onFlippedChange?: (postId: string, flipped: boolean) => void;
   onCommentPosted?: () => void;
   children: (props: { onCommentPress: () => void; commentCount: number }) => React.ReactNode;
@@ -110,6 +112,7 @@ export function CommentSheet({
   cardHeight,
   cardWidth,
   cardBorderRadius = 20,
+  contentSized = false,
   onFlippedChange,
   onCommentPosted,
   children,
@@ -276,12 +279,25 @@ export function CommentSheet({
       </View>
     );
 
+  const flipWrapperStyle = contentSized
+    ? { width: cardWidth }
+    : { width: cardWidth, height: cardHeight };
+  const flipFaceStyle = contentSized
+    ? { width: cardWidth, borderRadius: cardBorderRadius }
+    : { width: cardWidth, height: cardHeight, borderRadius: cardBorderRadius };
+
   return (
-    <View style={[styles.flipWrapper, { width: cardWidth, height: cardHeight }]}>
+    <View style={[styles.flipWrapper, contentSized && styles.flipWrapperContentSized, flipWrapperStyle]}>
+      {contentSized && (
+        <View style={styles.flipSizer} pointerEvents="none">
+          {children({ onCommentPress: () => {}, commentCount })}
+        </View>
+      )}
       <Animated.View
         style={[
           styles.flipFace,
-          { width: cardWidth, height: cardHeight, borderRadius: cardBorderRadius },
+          flipFaceStyle,
+          contentSized && styles.flipFaceContentSized,
           frontAnimatedStyle,
         ]}
         pointerEvents={flipped ? 'none' : 'auto'}
@@ -292,7 +308,8 @@ export function CommentSheet({
         style={[
           styles.flipFace,
           styles.flipBack,
-          { width: cardWidth, height: cardHeight, borderRadius: cardBorderRadius },
+          flipFaceStyle,
+          contentSized && { minHeight: cardHeight },
           backAnimatedStyle,
         ]}
         pointerEvents={flipped ? 'auto' : 'none'}
@@ -318,7 +335,7 @@ export function CommentSheet({
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 activeOpacity={0.7}
               >
-                <Feather name="image" size={20} color="#FFF" />
+                <Feather name="image" size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -383,9 +400,9 @@ export function CommentSheet({
                   activeOpacity={0.8}
                 >
                   {posting ? (
-                    <ActivityIndicator size="small" color="#FFF" />
+                    <ActivityIndicator size="small" color={theme.colors.primary} />
                   ) : (
-                    <Feather name="send" size={16} color="#FFF" />
+                    <Feather name="send" size={16} color={theme.colors.primary} />
                   )}
                 </TouchableOpacity>
               </View>
@@ -401,13 +418,27 @@ const styles = StyleSheet.create({
   flipWrapper: {
     position: 'relative',
   },
+  flipWrapperContentSized: {
+    minHeight: 0,
+  },
+  flipSizer: {
+    opacity: 0,
+    width: '100%',
+    pointerEvents: 'none',
+  },
   flipFace: {
     position: 'absolute',
     top: 0,
     left: 0,
+    right: 0,
+    bottom: 0,
     backfaceVisibility: 'hidden' as const,
     overflow: 'hidden',
     backgroundColor: theme.colors.cardBackground,
+  },
+  flipFaceContentSized: {
+    height: undefined,
+    bottom: 0,
   },
   flipBack: {
     backgroundColor: theme.colors.surface,
@@ -425,8 +456,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    backgroundColor: theme.colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    borderBottomColor: theme.colors.borderLight,
   },
   cardBackHeaderLeft: {
     flexDirection: 'row',
@@ -484,7 +516,7 @@ const styles = StyleSheet.create({
   },
   cardBackCommenterName: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: theme.colors.text,
   },
   cardBackCommentTime: {
@@ -498,7 +530,7 @@ const styles = StyleSheet.create({
   },
   cardBackReplyButton: {
     fontSize: 12,
-    color: theme.colors.textTertiary,
+    color: theme.colors.primary,
   },
   cardBackReplyingTo: {
     fontSize: 12,
@@ -509,7 +541,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    borderTopColor: theme.colors.borderLight,
+    backgroundColor: theme.colors.surface,
   },
   cardBackInputRow: {
     flexDirection: 'row',
@@ -519,14 +552,16 @@ const styles = StyleSheet.create({
   cardBackInput: {
     flex: 1,
     height: 40,
-    backgroundColor: theme.colors.surfaceLight,
-    borderRadius: 20,
+    backgroundColor: theme.colors.background,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: theme.borderRadius.full,
   },
   cardBackSendButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: theme.colors.surfaceLight,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -601,14 +636,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: theme.colors.surfaceLight,
+    backgroundColor: 'rgba(255, 122, 143, 0.15)',
     borderRadius: theme.borderRadius.sm,
     padding: 8,
     marginBottom: theme.spacing.sm,
   },
   replyBannerText: {
     fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
+    color: theme.colors.text,
     flex: 1,
   },
   inputRow: {

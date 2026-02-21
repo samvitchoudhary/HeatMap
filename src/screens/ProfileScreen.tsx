@@ -329,7 +329,7 @@ export function ProfileScreen() {
                 <Skeleton width={80} height={80} borderRadius={40} />
               ) : (
                 <>
-                  <Avatar uri={avatarUrl ?? null} size={80} />
+                  <Avatar uri={avatarUrl ?? null} size={80} profilePlaceholder />
                   {uploadingAvatar && (
                     <View style={styles.avatarLoadingOverlay}>
                       <ActivityIndicator size="small" color={theme.colors.text} />
@@ -340,7 +340,7 @@ export function ProfileScreen() {
             </View>
             {!showProfileSkeletons && (
               <View style={styles.avatarBadge}>
-                <Feather name="camera" size={12} color={theme.colors.text} />
+                <Feather name="edit-2" size={12} color={theme.colors.textOnPrimary} />
               </View>
             )}
           </TouchableOpacity>
@@ -368,8 +368,8 @@ export function ProfileScreen() {
                 <Text style={styles.statsLabel}> posts  </Text>
                 <Text style={styles.statsDivider}> |  </Text>
                 <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress} activeOpacity={0.7}>
-                  <Text style={styles.statsNumber}>{friendsCount}</Text>
-                  <Text style={styles.statsLabel}> friends</Text>
+                  <Text style={[styles.statsNumber, styles.statsNumberTappable]}>{friendsCount}</Text>
+                  <Text style={[styles.statsLabel, styles.statsLabelTappable]}> friends</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -428,7 +428,7 @@ export function ProfileScreen() {
               onPress={handleViewAllPosts}
               activeOpacity={0.6}
             >
-              <Feather name="grid" size={16} color={theme.colors.textSecondary} />
+              <Feather name="grid" size={16} color={theme.colors.primary} />
               <Text style={styles.viewAllText}>View All Posts</Text>
             </TouchableOpacity>
           )}
@@ -439,7 +439,7 @@ export function ProfileScreen() {
           onPress={handleLogOut}
           activeOpacity={0.6}
         >
-          <Feather name="log-out" size={16} color={theme.colors.textTertiary} />
+          <Feather name="log-out" size={16} color={theme.colors.red} />
           <Text style={styles.destructiveButtonText}>Log Out</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -486,6 +486,7 @@ export function ProfileScreen() {
 
               <Text style={styles.inputLabel}>Display Name</Text>
               <StyledTextInput
+                auth
                 style={styles.input}
                 value={editDisplayName}
                 onChangeText={setEditDisplayName}
@@ -495,6 +496,7 @@ export function ProfileScreen() {
 
               <Text style={styles.inputLabel}>Username</Text>
               <StyledTextInput
+                auth
                 style={[styles.input, usernameError && styles.inputError]}
                 value={editUsername}
                 onChangeText={(t) => {
@@ -511,13 +513,17 @@ export function ProfileScreen() {
 
               <Text style={styles.avatarNote}>Profile photo: tap your avatar to change it</Text>
 
-              <TouchableOpacity
-                style={[styles.primaryButton, saving && styles.buttonDisabled]}
+            <TouchableOpacity
+              style={[styles.primaryButtonModal, saving && styles.buttonDisabled]}
                 onPress={handleSaveProfile}
                 disabled={saving}
                 activeOpacity={0.8}
               >
-                <Text style={styles.saveButtonText}>{saving ? 'Saving…' : 'Save'}</Text>
+                {saving ? (
+                  <ActivityIndicator size="small" color={theme.colors.textOnPrimary} />
+                ) : (
+                  <Text style={styles.saveButtonText}>Save</Text>
+                )}
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -525,7 +531,7 @@ export function ProfileScreen() {
                 onPress={() => setEditModalVisible(false)}
                 activeOpacity={0.8}
               >
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+                <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
@@ -561,15 +567,15 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: theme.colors.surfaceLight,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   displayName: {
-    fontSize: theme.fontSize.title,
+    fontSize: 22,
     fontWeight: '700',
     color: theme.colors.text,
     marginBottom: 4,
@@ -586,8 +592,10 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
   },
   statTouchable: { flexDirection: 'row', alignItems: 'baseline' },
-  statsNumber: { fontSize: theme.fontSize.md, fontWeight: '600', color: theme.colors.text },
+  statsNumber: { fontSize: theme.fontSize.md, fontWeight: '700', color: theme.colors.text },
+  statsNumberTappable: { color: theme.colors.primary },
   statsLabel: { fontSize: theme.fontSize.xs, fontWeight: '400', color: theme.colors.textSecondary },
+  statsLabelTappable: { color: theme.colors.primary },
   statsDivider: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, marginHorizontal: 4 },
   secondaryButton: {
     flexDirection: 'row',
@@ -596,14 +604,14 @@ const styles = StyleSheet.create({
     gap: 6,
     height: theme.button.secondaryHeight,
     paddingHorizontal: theme.spacing.md,
-    borderRadius: theme.button.borderRadius,
-    backgroundColor: theme.colors.surface,
+    borderRadius: 14,
+    backgroundColor: theme.colors.background,
     borderWidth: 1,
     borderColor: theme.colors.border,
     marginBottom: theme.spacing.lg,
   },
   secondaryButtonText: {
-    fontSize: theme.fontSize.button,
+    fontSize: 16,
     fontWeight: '600',
     color: theme.colors.text,
   },
@@ -612,7 +620,7 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.lg,
   },
   galleryHeader: {
-    fontSize: theme.fontSize.title,
+    fontSize: 18,
     fontWeight: '700',
     color: theme.colors.text,
     marginBottom: theme.spacing.lg,
@@ -622,23 +630,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: GRID_GAP,
+    backgroundColor: theme.colors.background,
   },
   gridCell: {
     width: GRID_CELL_SIZE,
     height: GRID_CELL_SIZE,
     overflow: 'hidden',
+    borderRadius: 4,
   },
   gridCellEmpty: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.surfaceLight,
   },
   gridImagePlaceholder: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
+    borderRadius: 4,
   },
   gridImage: {
     width: '100%',
     height: '100%',
+    borderRadius: 4,
   },
   emptyGallery: {
     alignItems: 'center',
@@ -661,7 +674,7 @@ const styles = StyleSheet.create({
   viewAllText: {
     fontSize: theme.fontSize.sm,
     fontWeight: '400',
-    color: theme.colors.textSecondary,
+    color: theme.colors.primary,
   },
   modalOverlay: {
     flex: 1,
@@ -672,7 +685,7 @@ const styles = StyleSheet.create({
   },
   modalCenter: { width: '100%', maxWidth: 340, alignItems: 'stretch' },
   modalContent: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.background,
     borderRadius: theme.borderRadius.lg,
     padding: theme.spacing.lg,
   },
@@ -682,7 +695,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: theme.spacing.lg,
   },
-  modalTitle: { fontSize: theme.fontSize.title, fontWeight: '700', color: theme.colors.text },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: theme.colors.text },
   inputLabel: {
     fontSize: theme.fontSize.sm,
     fontWeight: '400',
@@ -704,28 +717,32 @@ const styles = StyleSheet.create({
     color: theme.colors.textTertiary,
     marginBottom: theme.spacing.lg,
   },
-  primaryButton: {
-    backgroundColor: theme.colors.light,
-    height: theme.button.primaryHeight,
-    borderRadius: theme.button.borderRadius,
+  primaryButtonModal: {
+    backgroundColor: theme.colors.primary,
+    height: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: theme.spacing.sm,
+    ...theme.shadows.button,
   },
   buttonDisabled: { opacity: 0.8 },
   saveButtonText: {
-    fontSize: theme.fontSize.button,
-    fontWeight: '600',
-    color: theme.colors.textOnLight,
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.textOnPrimary,
   },
   secondaryButtonModal: {
     alignItems: 'center',
     justifyContent: 'center',
     height: theme.button.secondaryHeight,
-    borderRadius: theme.button.borderRadius,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderRadius: 14,
+    backgroundColor: 'transparent',
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
   },
   destructiveButton: {
     flexDirection: 'row',

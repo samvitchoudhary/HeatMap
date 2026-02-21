@@ -6,9 +6,11 @@ import { theme } from '../lib/theme';
 type AvatarProps = {
   uri: string | null;
   size: number;
+  /** Profile placeholder: primaryLight 15% bg, primary user icon */
+  profilePlaceholder?: boolean;
 };
 
-export function Avatar({ uri, size }: AvatarProps) {
+export function Avatar({ uri, size, profilePlaceholder }: AvatarProps) {
   const radius = size / 2;
   const imageOpacity = useRef(new Animated.Value(0)).current;
   const [loadError, setLoadError] = useState(false);
@@ -32,13 +34,14 @@ export function Avatar({ uri, size }: AvatarProps) {
       <View
         style={[
           styles.placeholder,
+          profilePlaceholder && styles.placeholderProfile,
           { width: size, height: size, borderRadius: radius },
         ]}
       >
         <Feather
           name={loadError ? 'image' : 'user'}
           size={loadError ? 24 : size * 0.45}
-          color={theme.colors.textTertiary}
+          color={profilePlaceholder && !loadError ? theme.colors.primary : theme.colors.textTertiary}
         />
       </View>
     );
@@ -72,5 +75,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+  },
+  placeholderProfile: {
+    backgroundColor: 'rgba(255, 122, 143, 0.15)',
   },
 });

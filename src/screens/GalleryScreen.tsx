@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Image,
@@ -14,7 +13,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { ProfileStackParamList } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
 import { supabase } from '../lib/supabase';
@@ -31,7 +29,6 @@ const GRID_CELL_SIZE = (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * 2) / 3;
 type Props = NativeStackScreenProps<ProfileStackParamList, 'Gallery'>;
 
 export function GalleryScreen({ navigation }: Props) {
-  const insets = useSafeAreaInsets();
   const { profile, session } = useAuth();
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const { setCardStackOpen } = useCardStack();
@@ -98,19 +95,6 @@ export function GalleryScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.header, { paddingTop: insets.top + theme.spacing.md }]}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          activeOpacity={0.7}
-        >
-          <Feather name="arrow-left" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>All Posts</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.gridContainer}
@@ -160,22 +144,6 @@ export function GalleryScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.screenPadding,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  backButton: {},
-  title: {
-    fontSize: theme.fontSize.title,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  headerSpacer: { width: 24 },
   scroll: { flex: 1 },
   gridContainer: { padding: theme.screenPadding, paddingBottom: theme.spacing.xl },
   grid: {

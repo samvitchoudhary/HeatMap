@@ -4,6 +4,7 @@ import {
   Text,
   Image,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Dimensions,
   Animated,
@@ -20,14 +21,12 @@ import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 
 const CARD_MARGIN_H = 20;
+const CARD_MARGIN_V = 10;
 const PHOTO_ASPECT_RATIO = 4 / 5;
-const INFO_SECTION_HEIGHT = 60;
 const BOTTOM_BAR_HEIGHT = 50;
 const CARD_BORDER_RADIUS = 16;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_WIDTH = SCREEN_WIDTH - CARD_MARGIN_H * 2;
-const IMAGE_HEIGHT = CARD_WIDTH / PHOTO_ASPECT_RATIO;
-const CARD_HEIGHT = IMAGE_HEIGHT + INFO_SECTION_HEIGHT + BOTTOM_BAR_HEIGHT;
 
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -59,6 +58,7 @@ type FeedCardProps = {
   onReactionChange?: (counts: Record<string, number>, userReaction: string | null) => void;
   onCommentPosted?: (count: number, latestComment: FeedLatestComment | null) => void;
   onVenuePress?: (latitude: number, longitude: number) => void;
+  onProfilePress?: (userId: string) => void;
   onDeletePost?: (post: PostWithProfile) => void;
   isFadingOut?: boolean;
   onFadeComplete?: (postId: string) => void;
@@ -73,6 +73,7 @@ export function FeedCard({
   onReactionChange,
   onCommentPosted,
   onVenuePress,
+  onProfilePress,
   onDeletePost,
   isFadingOut,
   onFadeComplete,
@@ -187,9 +188,10 @@ export function FeedCard({
         postId={post.id}
         post={{ image_url: post.image_url, venue_name: post.venue_name }}
         userId={userId}
-        cardHeight={CARD_HEIGHT}
+        cardHeight={CARD_WIDTH / PHOTO_ASPECT_RATIO + 150}
         cardWidth={CARD_WIDTH}
         cardBorderRadius={CARD_BORDER_RADIUS}
+        contentSized
         onCommentPosted={handleCommentPosted}
       >
         {({ onCommentPress, commentCount: sheetCommentCount }) => (
@@ -206,10 +208,10 @@ export function FeedCard({
                 </View>
               ) : (
                 <Animated.View style={[styles.photo, { opacity: imageOpacity }]}>
-                  <Image
-                    source={{ uri: post.image_url }}
-                    style={StyleSheet.absoluteFill}
-                    resizeMode="contain"
+                <Image
+                  source={{ uri: post.image_url }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
                     onLoad={() => setImageLoaded(true)}
                     onError={() => setImageError(true)}
                   />
@@ -221,14 +223,26 @@ export function FeedCard({
                   onPress={handleDeletePress}
                   activeOpacity={0.7}
                 >
-                  <Feather name="trash-2" size={16} color={theme.colors.text} />
+                  <Feather name="trash-2" size={16} color={theme.colors.red} />
                 </TouchableOpacity>
               )}
             </View>
             <View style={styles.infoSection}>
-              <Text style={styles.infoDisplayName} numberOfLines={1}>
-                {displayName}
-              </Text>
+              {onProfilePress ? (
+                <TouchableOpacity
+                  onPress={() => onProfilePress(post.user_id)}
+                  activeOpacity={0.7}
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                >
+                  <Text style={styles.infoDisplayName} numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.infoDisplayName} numberOfLines={1}>
+                  {displayName}
+                </Text>
+              )}
               <TouchableOpacity
                 style={styles.infoVenueRow}
                 onPress={() => {
@@ -245,7 +259,7 @@ export function FeedCard({
                   typeof post.longitude !== 'number'
                 }
               >
-                <Feather name="map-pin" size={12} color={theme.colors.textSecondary} />
+                <Feather name="map-pin" size={12} color={theme.colors.primary} />
                 <Text style={styles.infoVenueText} numberOfLines={1}>
                   {venueName}
                 </Text>
@@ -263,17 +277,21 @@ export function FeedCard({
                   counts={initialReactionCounts}
                   userReaction={initialUserReaction}
                   onEmojiPress={handleReactionToggle}
-                  cardStyle
+                  cardStackBar
                 />
               </View>
-              <TouchableOpacity
-                style={styles.commentButton}
-                onPress={onCommentPress}
-                activeOpacity={0.7}
-              >
-                <Feather name="message-circle" size={20} color={theme.colors.textSecondary} />
-                <Text style={styles.commentCountText}>{sheetCommentCount}</Text>
-              </TouchableOpacity>
+              <Pressable style={styles.commentButton} onPress={onCommentPress}>
+                {({ pressed }) => (
+                  <>
+                    <Feather
+                      name="message-circle"
+                      size={20}
+                      color={pressed ? theme.colors.primary : theme.colors.textSecondary}
+                    />
+                    <Text style={styles.commentCountText}>{sheetCommentCount}</Text>
+                  </>
+                )}
+              </Pressable>
             </View>
           </>
         )}
@@ -287,14 +305,17 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBackground,
     borderRadius: CARD_BORDER_RADIUS,
     marginHorizontal: CARD_MARGIN_H,
-    marginVertical: 8,
-    overflow: 'hidden',
+    marginVertical: CARD_MARGIN_V,
+    borderWidth: 0,
+    ...theme.shadows.card,
   },
   photoSection: {
     position: 'relative',
     width: '100%',
     aspectRatio: 4 / 5,
-    backgroundColor: theme.colors.cardBackground,
+    overflow: 'hidden',
+    borderTopLeftRadius: CARD_BORDER_RADIUS,
+    borderTopRightRadius: CARD_BORDER_RADIUS,
   },
   skeletonWrap: {
     ...StyleSheet.absoluteFillObject,
@@ -309,14 +330,10 @@ const styles = StyleSheet.create({
   },
   photo: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.colors.cardBackground,
-    borderTopLeftRadius: CARD_BORDER_RADIUS,
-    borderTopRightRadius: CARD_BORDER_RADIUS,
     overflow: 'hidden',
   },
   infoSection: {
     padding: 12,
-    minHeight: INFO_SECTION_HEIGHT,
     backgroundColor: theme.colors.cardBackground,
   },
   infoDisplayName: {
@@ -349,32 +366,46 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     right: 12,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   bottomBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: BOTTOM_BAR_HEIGHT,
-    paddingHorizontal: 16,
+    minHeight: BOTTOM_BAR_HEIGHT,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+    marginBottom: 0,
+    flexShrink: 0,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderLight,
     backgroundColor: theme.colors.cardBackground,
+    borderBottomLeftRadius: CARD_BORDER_RADIUS,
+    borderBottomRightRadius: CARD_BORDER_RADIUS,
   },
   reactionsSection: {
     flex: 1,
+    minWidth: 0,
   },
   commentButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   commentCountText: {
-    fontSize: 14,
+    fontSize: 13,
     color: theme.colors.textSecondary,
   },
 });

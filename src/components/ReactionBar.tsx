@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { theme } from '../lib/theme';
 
@@ -16,6 +16,88 @@ type ReactionBarProps = {
   /** Card stack reaction bar: 36x36 touch targets, 16px emoji, 11px count, evenly spaced */
   cardStackBar?: boolean;
 };
+
+function ReactionButton({
+  emoji,
+  count,
+  isSelected,
+  onPress,
+  compact,
+  cardStyle,
+  cardStackBar,
+  scaleVal,
+  isAnimating,
+}: {
+  emoji: string;
+  count: number;
+  isSelected: boolean;
+  onPress: () => void;
+  compact: boolean;
+  cardStyle: boolean;
+  cardStackBar: boolean;
+  scaleVal: Animated.Value;
+  isAnimating: boolean;
+}) {
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.spring(translateY, {
+      toValue: isSelected ? -4 : 0,
+      useNativeDriver: true,
+      speed: 50,
+      bounciness: 6,
+    }).start();
+  }, [isSelected, translateY]);
+
+  return (
+    <TouchableOpacity
+      style={[
+        styles.reactionButton,
+        compact && styles.reactionButtonCompact,
+        cardStyle && styles.reactionButtonCard,
+        cardStackBar && styles.reactionButtonCardStackBar,
+      ]}
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Animated.View
+        style={[
+          styles.emojiWrap,
+          compact && styles.emojiWrapCompact,
+          {
+            transform: isAnimating
+              ? [{ translateY }, { scale: scaleVal }]
+              : [{ translateY }],
+          },
+        ]}
+      >
+        <Text
+          style={[
+            styles.emoji,
+            compact && styles.emojiCompact,
+            cardStyle && styles.emojiCard,
+            cardStackBar && styles.emojiCardStackBar,
+            isSelected && styles.emojiSelectedShadow,
+          ]}
+        >
+          {emoji}
+        </Text>
+        {isSelected && <View style={styles.selectedDot} />}
+        {count >= 1 && (
+          <Text
+            style={[
+              styles.count,
+              cardStyle && styles.countCard,
+              cardStackBar && styles.countCardStackBar,
+            ]}
+          >
+            {count}
+          </Text>
+        )}
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
 
 export function ReactionBar({
   counts,
@@ -56,53 +138,20 @@ export function ReactionBar({
         cardStackBar && styles.containerCardStackBar,
       ]}
     >
-      {REACTION_EMOJIS.map((emoji, index) => {
-        const count = counts[emoji] ?? 0;
-        const isSelected = userReaction === emoji;
-        const isAnimating = animatingIndex === index;
-        return (
-          <TouchableOpacity
-            key={emoji}
-            style={[
-              styles.reactionButton,
-              compact && styles.reactionButtonCompact,
-              cardStyle && styles.reactionButtonCard,
-              cardStackBar && styles.reactionButtonCardStackBar,
-              isSelected && styles.reactionButtonSelected,
-            ]}
-            onPress={() => handlePress(emoji, index)}
-            activeOpacity={0.8}
-          >
-            <Animated.View
-              style={[
-                styles.emojiWrap,
-                compact && styles.emojiWrapCompact,
-                isAnimating && { transform: [{ scale: scaleVal }] },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.emoji,
-                  compact && styles.emojiCompact,
-                  cardStyle && styles.emojiCard,
-                  cardStackBar && styles.emojiCardStackBar,
-                ]}
-              >
-                {emoji}
-              </Text>
-              <Text
-                style={[
-                  styles.count,
-                  cardStyle && styles.countCard,
-                  cardStackBar && styles.countCardStackBar,
-                ]}
-              >
-                {count}
-              </Text>
-            </Animated.View>
-          </TouchableOpacity>
-        );
-      })}
+      {REACTION_EMOJIS.map((emoji, index) => (
+        <ReactionButton
+          key={emoji}
+          emoji={emoji}
+          count={counts[emoji] ?? 0}
+          isSelected={userReaction === emoji}
+          onPress={() => handlePress(emoji, index)}
+          compact={compact}
+          cardStyle={cardStyle}
+          cardStackBar={cardStackBar}
+          scaleVal={scaleVal}
+          isAnimating={animatingIndex === index}
+        />
+      ))}
     </View>
   );
 }
@@ -149,11 +198,6 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
   },
-  reactionButtonSelected: {
-    backgroundColor: theme.colors.surfaceLight,
-    borderWidth: 1,
-    borderColor: theme.colors.light,
-  },
   emojiWrap: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -174,6 +218,21 @@ const styles = StyleSheet.create({
   emojiCardStackBar: {
     fontSize: 16,
     marginBottom: 1,
+  },
+  emojiSelectedShadow: {
+    shadowColor: theme.colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  selectedDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.primary,
+    marginTop: 4,
+    marginBottom: 2,
   },
   count: {
     fontSize: theme.fontSize.xs,

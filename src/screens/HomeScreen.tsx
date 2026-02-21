@@ -19,7 +19,7 @@ import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCardStack } from '../lib/CardStackContext';
-import { DARK_MAP_STYLE, HEATMAP_GRADIENT } from '../lib/mapConfig';
+import { LIGHT_MAP_STYLE, HEATMAP_GRADIENT } from '../lib/mapConfig';
 import MapView, { Heatmap, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
@@ -72,6 +72,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
+  const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [currentRegion, setCurrentRegion] = useState<{
     latitude: number;
     longitude: number;
@@ -283,6 +284,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       const sorted = [...nearby].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
+      setSelectedInitialIndex(0);
       setSelectedPosts(sorted);
     }
   }
@@ -379,7 +381,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         ref={mapRef}
         provider={PROVIDER_GOOGLE}
         style={styles.map}
-        customMapStyle={DARK_MAP_STYLE}
+        customMapStyle={LIGHT_MAP_STYLE}
         showsUserLocation={true}
         onPress={handleMapPress}
         onRegionChangeComplete={(region) =>
@@ -410,12 +412,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       {showSearchBar && (
         <>
           <View style={[styles.searchBarContainer, { top: insets.top + 12 }]} pointerEvents="box-none">
-            <View
-              style={[
-                styles.searchBar,
-                { borderColor: searchFocused ? theme.colors.textSecondary : theme.colors.border },
-              ]}
-            >
+            <View style={styles.searchBar}>
               <Feather name="search" size={18} color={theme.colors.textTertiary} style={styles.searchIcon} />
               <StyledTextInput
                 embedded
@@ -510,7 +507,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           onPress={handleRecenter}
           activeOpacity={0.8}
         >
-          <Feather name="navigation" size={20} color={theme.colors.text} />
+          <Feather name="navigation" size={20} color={theme.colors.primary} />
         </TouchableOpacity>
       )}
 
@@ -522,7 +519,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
       {showEmptyState && (
         <View style={styles.emptyOverlay} pointerEvents="none">
-          <Feather name="map-pin" size={40} color={theme.colors.textTertiary} />
+          <Feather name="map-pin" size={40} color={theme.colors.primary} />
           <Text style={styles.emptyTitle}>No posts yet</Text>
           <Text style={styles.emptySubtitle}>
             Upload your first photo or add friends to see their activity
@@ -534,9 +531,13 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         <CardStack
           posts={selectedPosts}
           onClose={() => setSelectedPosts(null)}
+          initialIndex={selectedInitialIndex}
           onPostDeleted={(postId) => {
             setPosts((prev) => prev.filter((p) => p.id !== postId));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
+          }}
+          onProfilePress={(userId) => {
+            (navigation.getParent() as any)?.navigate('FriendProfile', { userId });
           }}
         />
       )}
@@ -562,13 +563,17 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.background,
+    borderWidth: 0,
     borderRadius: theme.borderRadius.full,
     height: theme.inputHeight,
     paddingHorizontal: theme.screenPadding,
     gap: theme.spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 4,
   },
   searchIcon: {
     marginRight: theme.spacing.xs,
@@ -652,15 +657,15 @@ const styles = StyleSheet.create({
   },
   emptyOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10, 10, 10, 0.75)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: theme.spacing.xl,
   },
   emptyTitle: {
-    fontSize: theme.fontSize.title,
+    fontSize: theme.fontSize.lg,
     fontWeight: '700',
-    color: theme.colors.textSecondary,
+    color: theme.colors.text,
     marginTop: theme.spacing.md,
   },
   emptySubtitle: {
@@ -674,11 +679,15 @@ const styles = StyleSheet.create({
     left: theme.screenPadding,
     width: theme.inputHeight,
     height: theme.inputHeight,
-    borderRadius: 22,
-    backgroundColor: theme.colors.surface,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    borderRadius: theme.inputHeight / 2,
+    backgroundColor: theme.colors.background,
+    borderWidth: 0,
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
   },
 });

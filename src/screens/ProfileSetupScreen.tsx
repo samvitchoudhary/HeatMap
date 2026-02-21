@@ -98,6 +98,7 @@ export function ProfileSetupScreen() {
         <Text style={styles.subtitle}>Profile Setup</Text>
 
         <StyledTextInput
+          auth
           style={styles.input}
           placeholder="Username (lowercase, no spaces)"
           value={username}
@@ -107,6 +108,7 @@ export function ProfileSetupScreen() {
         />
 
         <StyledTextInput
+          auth
           style={styles.input}
           placeholder="Display Name"
           value={displayName}
@@ -117,10 +119,10 @@ export function ProfileSetupScreen() {
           style={[styles.primaryButton, loading && styles.buttonDisabled]}
           onPress={handleCompleteSetup}
           disabled={loading}
-          activeOpacity={0.8}
+          activeOpacity={0.9}
         >
           {loading ? (
-            <ActivityIndicator color={theme.colors.textOnLight} />
+            <ActivityIndicator color={theme.colors.primary} />
           ) : (
             <Text style={styles.buttonText}>Complete Setup</Text>
           )}
@@ -141,16 +143,15 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   title: {
-    fontSize: theme.fontSize.xxl,
+    fontSize: 32,
     fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: 1,
     color: theme.colors.text,
     textAlign: 'center',
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
+    fontSize: 14,
     color: theme.colors.textSecondary,
     textAlign: 'center',
     marginBottom: theme.spacing.lg,
@@ -159,20 +160,21 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   primaryButton: {
-    backgroundColor: theme.colors.light,
-    height: theme.button.primaryHeight,
-    borderRadius: theme.button.borderRadius,
+    backgroundColor: theme.colors.primary,
+    height: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
     marginTop: theme.spacing.sm,
+    ...theme.shadows.button,
   },
   buttonDisabled: {
     opacity: 0.8,
   },
   buttonText: {
-    color: theme.colors.textOnLight,
-    fontSize: theme.fontSize.button,
-    fontWeight: '600',
+    color: theme.colors.textOnPrimary,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

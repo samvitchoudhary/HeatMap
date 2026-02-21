@@ -9,6 +9,8 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
@@ -21,9 +23,11 @@ export type FeedReactionCounts = Record<string, Record<string, number>>;
 export type FeedUserReactions = Record<string, string | null>;
 export type FeedCommentCounts = Record<string, number>;
 
+type FeedScreenNav = NativeStackNavigationProp<RootStackParamList>;
+
 export function FeedScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<FeedScreenNav>();
   const { profile } = useAuth();
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [reactionsByPostId, setReactionsByPostId] = useState<FeedReactionCounts>({});
@@ -218,7 +222,7 @@ export function FeedScreen() {
   if (!profile?.id) return null;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <Text style={styles.headerTitle}>Activity</Text>
       </View>
@@ -253,6 +257,9 @@ export function FeedScreen() {
               }}
               onVenuePress={(latitude, longitude) => {
                 navigation.navigate('Map', { latitude, longitude });
+              }}
+              onProfilePress={(userId) => {
+                (navigation.getParent() as any)?.navigate('FriendProfile', { userId });
               }}
               onDeletePost={handleDeletePost}
               isFadingOut={fadingOutId === item.id}

@@ -71,9 +71,10 @@ export function LoginScreen() {
     >
       <View style={styles.form}>
         <Text style={styles.title}>HeatMap</Text>
-        <Text style={styles.subtitle}>Log In</Text>
+        <Text style={styles.tagline}>See where your friends are</Text>
 
         <StyledTextInput
+          auth
           style={styles.input}
           placeholder="Email"
           value={email}
@@ -84,6 +85,7 @@ export function LoginScreen() {
         />
 
         <StyledTextInput
+          auth
           style={styles.input}
           placeholder="Password"
           value={password}
@@ -95,10 +97,10 @@ export function LoginScreen() {
           style={[styles.primaryButton, loading && styles.buttonDisabled]}
           onPress={handleLogin}
           disabled={loading}
-          activeOpacity={0.8}
+          activeOpacity={0.9}
         >
           {loading ? (
-            <ActivityIndicator color={theme.colors.textOnLight} />
+            <ActivityIndicator color={theme.colors.primary} />
           ) : (
             <Text style={styles.buttonText}>Log In</Text>
           )}
@@ -127,16 +129,15 @@ const styles = StyleSheet.create({
     maxWidth: 320,
   },
   title: {
-    fontSize: theme.fontSize.xxl,
+    fontSize: 32,
     fontWeight: '700',
-    letterSpacing: 0.5,
-    color: theme.colors.text,
+    letterSpacing: 1,
+    color: theme.colors.primary,
     textAlign: 'center',
     marginBottom: 8,
   },
-  subtitle: {
-    fontSize: theme.fontSize.title,
-    fontWeight: '600',
+  tagline: {
+    fontSize: 14,
     color: theme.colors.textSecondary,
     textAlign: 'center',
     marginBottom: theme.spacing.lg,
@@ -145,28 +146,29 @@ const styles = StyleSheet.create({
     marginBottom: theme.spacing.md,
   },
   primaryButton: {
-    backgroundColor: theme.colors.light,
-    height: theme.button.primaryHeight,
-    borderRadius: theme.button.borderRadius,
+    backgroundColor: theme.colors.primary,
+    height: 52,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
     marginTop: theme.spacing.sm,
+    ...theme.shadows.button,
   },
   buttonDisabled: {
     opacity: 0.8,
   },
   buttonText: {
-    color: theme.colors.textOnLight,
-    fontSize: theme.fontSize.button,
-    fontWeight: '600',
+    color: theme.colors.textOnPrimary,
+    fontSize: 16,
+    fontWeight: '700',
   },
   link: {
     marginTop: theme.spacing.lg,
     alignItems: 'center',
   },
   linkText: {
-    color: theme.colors.textSecondary,
+    color: theme.colors.primary,
     fontSize: theme.fontSize.sm,
   },
 });

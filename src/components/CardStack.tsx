@@ -4,6 +4,7 @@ import {
   Text,
   Image,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   Dimensions,
   Animated,
@@ -27,6 +28,7 @@ type CardStackProps = {
   onClose: () => void;
   initialIndex?: number;
   onPostDeleted?: (postId: string) => void;
+  onProfilePress?: (userId: string) => void;
 };
 
 function timeAgo(dateString: string): string {
@@ -101,7 +103,7 @@ function CardImage({
         <Image
           source={{ uri: post.image_url }}
           style={StyleSheet.absoluteFill}
-          resizeMode="contain"
+          resizeMode="cover"
           onLoad={() => setImageLoaded((prev) => ({ ...prev, [post.id]: true }))}
           onError={() => setImageError((prev) => ({ ...prev, [post.id]: true }))}
         />
@@ -110,7 +112,7 @@ function CardImage({
   );
 }
 
-export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardStackProps) {
+export function CardStack({ posts, onClose, initialIndex, onPostDeleted, onProfilePress }: CardStackProps) {
   const { session } = useAuth();
   const safeInitial = Math.min(
     Math.max(0, initialIndex ?? 0),
@@ -422,16 +424,28 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
                 onPress={() => handleDeletePost(post)}
                 activeOpacity={0.7}
               >
-                <Feather name="trash-2" size={16} color={theme.colors.text} />
+                <Feather name="trash-2" size={16} color={theme.colors.red} />
               </TouchableOpacity>
             )}
           </View>
           <View style={styles.infoSection}>
-            <Text style={styles.infoDisplayName} numberOfLines={1}>
-              {post.profiles?.display_name ?? 'Unknown'}
-            </Text>
+            {onProfilePress && post.user_id !== currentUserId ? (
+              <TouchableOpacity
+                onPress={() => onProfilePress(post.user_id)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+              >
+                <Text style={styles.infoDisplayName} numberOfLines={1}>
+                  {post.profiles?.display_name ?? 'Unknown'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.infoDisplayName} numberOfLines={1}>
+                {post.profiles?.display_name ?? 'Unknown'}
+              </Text>
+            )}
             <View style={styles.infoVenueRow}>
-              <Feather name="map-pin" size={12} color={theme.colors.textSecondary} />
+              <Feather name="map-pin" size={12} color={theme.colors.primary} />
               <Text style={styles.infoVenueText} numberOfLines={1}>
                 {post.venue_name ?? 'Unknown location'}
               </Text>
@@ -452,14 +466,18 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
                 cardStackBar
               />
             </View>
-            <TouchableOpacity
-              style={styles.commentButton}
-              onPress={onCommentPress}
-              activeOpacity={0.7}
-            >
-              <Feather name="message-circle" size={20} color={theme.colors.textSecondary} />
-              <Text style={styles.commentCountText}>{commentCount}</Text>
-            </TouchableOpacity>
+            <Pressable style={styles.commentButton} onPress={onCommentPress}>
+              {({ pressed }) => (
+                <>
+                  <Feather
+                    name="message-circle"
+                    size={20}
+                    color={pressed ? theme.colors.primary : theme.colors.textSecondary}
+                  />
+                  <Text style={styles.commentCountText}>{commentCount}</Text>
+                </>
+              )}
+            </Pressable>
           </View>
         </View>
       )}
@@ -481,7 +499,7 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted }: CardS
         hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
         activeOpacity={0.7}
       >
-        <Feather name="x" size={24} color={theme.colors.text} />
+        <Feather name="x" size={22} color={theme.colors.text} />
       </TouchableOpacity>
 
       <Animated.View
@@ -552,7 +570,6 @@ const styles = StyleSheet.create({
     minHeight: 0,
     position: 'relative',
     width: '100%',
-    backgroundColor: theme.colors.cardBackground,
   },
   infoSection: {
     padding: 12,
@@ -561,7 +578,7 @@ const styles = StyleSheet.create({
   },
   infoDisplayName: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     color: theme.colors.text,
     marginBottom: 2,
   },
@@ -589,12 +606,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     right: 12,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
   },
   bottomBar: {
     flexDirection: 'row',
@@ -604,7 +626,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     flexShrink: 0,
     borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
+    borderTopColor: theme.colors.borderLight,
     backgroundColor: theme.colors.cardBackground,
   },
   reactionsSection: {
@@ -628,6 +650,7 @@ const styles = StyleSheet.create({
   cardImagePlaceholder: {
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: theme.colors.surface,
   },
   cardImageErrorText: {
     marginTop: theme.spacing.sm,
@@ -639,6 +662,17 @@ const styles = StyleSheet.create({
     top: 56,
     right: 20,
     zIndex: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
   },
   stackContainer: {
     position: 'relative',
@@ -655,6 +689,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.cardBackground,
     borderRadius: CARD_BORDER_RADIUS,
     overflow: 'hidden',
+    borderWidth: 0,
+    ...theme.shadows.card,
   },
   stackCardThird: {
     zIndex: 1,
@@ -670,9 +706,6 @@ const styles = StyleSheet.create({
   },
   cardImage: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.colors.cardBackground,
-    borderTopLeftRadius: CARD_BORDER_RADIUS,
-    borderTopRightRadius: CARD_BORDER_RADIUS,
     overflow: 'hidden',
   },
   indicator: {

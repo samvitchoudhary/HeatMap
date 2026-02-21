@@ -8,6 +8,7 @@ export type RootStackParamList = {
   SignUp: undefined;
   ProfileSetup: undefined;
   MainTabs: undefined;
+  FriendProfile: { userId: string };
 };
 
 export type MainTabParamList = {
