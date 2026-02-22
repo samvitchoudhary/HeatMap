@@ -188,6 +188,14 @@ export function FriendProfileScreen() {
       showToast(error.message ?? 'Could not send request');
       return;
     }
+    supabase
+      .from('notifications')
+      .insert({
+        user_id: targetUserId,
+        type: 'friend_request',
+        from_user_id: myUserId,
+      })
+      .catch(() => {});
     setFriendshipStatus('pending_sent');
   }
 
@@ -350,8 +358,7 @@ export function FriendProfileScreen() {
 
               {friendshipStatus === 'friends' && (
                 <View style={[styles.friendshipBtn, styles.friendshipBtnFriends]}>
-                  <Feather name="check" size={16} color={theme.colors.green} />
-                  <Text style={[styles.friendshipBtnText, styles.friendshipBtnTextGreen]}>Friends ✓</Text>
+                  <Text style={[styles.friendshipBtnText, styles.friendshipBtnTextPrimary]}>Friends ✓</Text>
                 </View>
               )}
               {friendshipStatus === 'pending_sent' && (
@@ -518,7 +525,9 @@ const styles = StyleSheet.create({
     borderRadius: theme.button.borderRadius,
   },
   friendshipBtnFriends: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: 'rgba(255, 77, 106, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 77, 106, 0.3)',
   },
   friendshipBtnPending: {
     backgroundColor: theme.colors.surface,
@@ -528,7 +537,7 @@ const styles = StyleSheet.create({
     ...theme.shadows.button,
   },
   friendshipBtnText: { fontSize: 16, fontWeight: '600' },
-  friendshipBtnTextGreen: { color: theme.colors.green },
+  friendshipBtnTextPrimary: { color: theme.colors.primary },
   friendshipBtnTextTertiary: { color: theme.colors.textTertiary },
   friendshipBtnTextWhite: { color: theme.colors.textOnPrimary },
   gallerySection: {

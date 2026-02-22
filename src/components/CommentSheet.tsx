@@ -94,6 +94,7 @@ type PostInfo = {
 type CommentSheetProps = {
   postId: string;
   post: PostInfo;
+  postUserId?: string;
   userId: string | undefined;
   cardHeight: number;
   cardWidth: number;
@@ -102,12 +103,15 @@ type CommentSheetProps = {
   contentSized?: boolean;
   onFlippedChange?: (postId: string, flipped: boolean) => void;
   onCommentPosted?: () => void;
+  /** When true, start with the card flipped to comments side */
+  initialFlipped?: boolean;
   children: (props: { onCommentPress: () => void; commentCount: number }) => React.ReactNode;
 };
 
 export function CommentSheet({
   postId,
   post,
+  postUserId,
   userId,
   cardHeight,
   cardWidth,
@@ -115,10 +119,11 @@ export function CommentSheet({
   contentSized = false,
   onFlippedChange,
   onCommentPosted,
+  initialFlipped = false,
   children,
 }: CommentSheetProps) {
-  const [flipped, setFlipped] = useState(false);
-  const flipAnimation = useRef(new Animated.Value(0)).current;
+  const [flipped, setFlipped] = useState(initialFlipped);
+  const flipAnimation = useRef(new Animated.Value(initialFlipped ? 180 : 0)).current;
 
   const frontInterpolate = flipAnimation.interpolate({
     inputRange: [0, 180],
@@ -134,6 +139,15 @@ export function CommentSheet({
   const backAnimatedStyle = {
     transform: [{ perspective: 1000 }, { rotateY: backInterpolate }],
   };
+
+  React.useEffect(() => {
+    if (initialFlipped) {
+      flipAnimation.setValue(180);
+      setFlipped(true);
+      onFlippedChange?.(postId, true);
+      fetchComments(postId);
+    }
+  }, []);
 
   const flipToBack = useCallback(() => {
     Animated.spring(flipAnimation, {
@@ -207,23 +221,48 @@ export function CommentSheet({
     if (!content || !userId || posting) return;
 
     setPosting(true);
-    const { error } = await supabase.from('comments').insert({
-      post_id: postId,
-      user_id: userId,
-      content,
-      parent_id: replyTarget?.id ?? null,
-    });
+    const { data: newComment, error } = await supabase
+      .from('comments')
+      .insert({
+        post_id: postId,
+        user_id: userId,
+        content,
+        parent_id: replyTarget?.id ?? null,
+      })
+      .select('id')
+      .single();
     if (error) {
       console.error('Error posting comment:', error);
       setPosting(false);
       return;
+    }
+    const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
+    console.log('[CommentSheet] Comment notification check:', {
+      postUserId,
+      currentUserId: userId,
+      newCommentId: newComment?.id,
+      shouldNotify,
+    });
+    if (shouldNotify) {
+      console.log('About to create notification for comment');
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: postUserId,
+          type: 'comment',
+          from_user_id: userId,
+          post_id: postId,
+          comment_id: newComment!.id,
+        })
+        .select();
+      console.log('Notification result:', { data, error });
     }
     setInputText('');
     setReplyTarget(null);
     await fetchComments(postId);
     onCommentPosted?.();
     setPosting(false);
-  }, [inputText, userId, postId, posting, replyTarget, fetchComments, onCommentPosted]);
+  }, [inputText, userId, postId, postUserId, posting, replyTarget, fetchComments, onCommentPosted]);
 
   useEffect(() => {
     if (replyTarget && flipped) {

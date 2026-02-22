@@ -27,6 +27,9 @@ type CardStackProps = {
   posts: PostWithProfile[];
   onClose: () => void;
   initialIndex?: number;
+  /** When set, the card for this post starts flipped to comments */
+  initialFlippedPostId?: string;
+  onInitialFlippedConsumed?: () => void;
   onPostDeleted?: (postId: string) => void;
   onProfilePress?: (userId: string) => void;
 };
@@ -112,7 +115,15 @@ function CardImage({
   );
 }
 
-export function CardStack({ posts, onClose, initialIndex, onPostDeleted, onProfilePress }: CardStackProps) {
+export function CardStack({
+  posts,
+  onClose,
+  initialIndex,
+  initialFlippedPostId,
+  onInitialFlippedConsumed,
+  onPostDeleted,
+  onProfilePress,
+}: CardStackProps) {
   const { session } = useAuth();
   const safeInitial = Math.min(
     Math.max(0, initialIndex ?? 0),
@@ -229,6 +240,12 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted, onProfi
     setCurrentIndex((prev) => Math.min(prev, posts.length - 1));
   }, [posts.length, onClose]);
 
+  useEffect(() => {
+    if (initialFlippedPostId) {
+      onInitialFlippedConsumed?.();
+    }
+  }, [initialFlippedPostId, onInitialFlippedConsumed]);
+
   const handleReactionToggle = useCallback(
     async (emoji: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -283,6 +300,23 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted, onProfi
           setReactionCounts(prevCounts);
           console.error('Error inserting reaction:', error);
           return;
+        }
+        const shouldNotify = post.user_id !== userId;
+        console.log('[CardStack] Reaction notification check:', {
+          postUserId: post.user_id,
+          currentUserId: userId,
+          shouldNotify,
+        });
+        if (shouldNotify) {
+          console.log('About to create notification for reaction');
+          const { data, error } = await supabase.from('notifications').insert({
+            user_id: post.user_id,
+            type: 'reaction',
+            from_user_id: userId,
+            post_id: post.id,
+            emoji,
+          }).select();
+          console.log('Notification result:', { data, error });
         }
       }
     },
@@ -396,11 +430,13 @@ export function CardStack({ posts, onClose, initialIndex, onPostDeleted, onProfi
       key={post.id}
       postId={post.id}
       post={{ image_url: post.image_url, venue_name: post.venue_name }}
+      postUserId={post.user_id}
       userId={session?.user?.id}
       cardHeight={CARD_HEIGHT}
       cardWidth={CARD_WIDTH}
       cardBorderRadius={CARD_BORDER_RADIUS}
       onFlippedChange={handleFlippedChange}
+      initialFlipped={post.id === initialFlippedPostId}
     >
       {({ onCommentPress, commentCount }) => (
         <View style={styles.cardFront}>

@@ -141,10 +141,31 @@ export function FeedCard({
         supabase
           .from('reactions')
           .insert({ post_id: post.id, user_id: userId, emoji })
-          .then(() => {});
+          .then(async () => {
+            const shouldNotify = post.user_id !== userId;
+            console.log('[FeedCard] Reaction notification check:', {
+              postUserId: post.user_id,
+              currentUserId: userId,
+              shouldNotify,
+            });
+            if (shouldNotify) {
+              console.log('About to create notification for reaction');
+              const { data, error } = await supabase
+                .from('notifications')
+                .insert({
+                  user_id: post.user_id,
+                  type: 'reaction',
+                  from_user_id: userId,
+                  post_id: post.id,
+                  emoji,
+                })
+                .select();
+              console.log('Notification result:', { data, error });
+            }
+          });
       }
     },
-    [post.id, userId, initialUserReaction, initialReactionCounts, onReactionChange]
+    [post.id, post.user_id, userId, initialUserReaction, initialReactionCounts, onReactionChange]
   );
 
   const handleCommentPosted = useCallback(async () => {
@@ -187,6 +208,7 @@ export function FeedCard({
       <CommentSheet
         postId={post.id}
         post={{ image_url: post.image_url, venue_name: post.venue_name }}
+        postUserId={post.user_id}
         userId={userId}
         cardHeight={CARD_WIDTH / PHOTO_ASPECT_RATIO + 150}
         cardWidth={CARD_WIDTH}

@@ -88,6 +88,7 @@ function buildThreadedComments(comments: CommentWithProfile[]): Array<
 type FeedCommentModalProps = {
   visible: boolean;
   postId: string;
+  postUserId?: string;
   userId: string | undefined;
   onClose: () => void;
   onCommentPosted?: () => void;
@@ -96,6 +97,7 @@ type FeedCommentModalProps = {
 export function FeedCommentModal({
   visible,
   postId,
+  postUserId,
   userId,
   onClose,
   onCommentPosted,
@@ -136,23 +138,48 @@ export function FeedCommentModal({
     if (!content || !userId || posting) return;
 
     setPosting(true);
-    const { error } = await supabase.from('comments').insert({
-      post_id: postId,
-      user_id: userId,
-      content,
-      parent_id: replyTarget?.id ?? null,
-    });
+    const { data: newComment, error } = await supabase
+      .from('comments')
+      .insert({
+        post_id: postId,
+        user_id: userId,
+        content,
+        parent_id: replyTarget?.id ?? null,
+      })
+      .select('id')
+      .single();
     if (error) {
       console.error('Error posting comment:', error);
       setPosting(false);
       return;
+    }
+    const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
+    console.log('[FeedCommentModal] Comment notification check:', {
+      postUserId,
+      currentUserId: userId,
+      newCommentId: newComment?.id,
+      shouldNotify,
+    });
+    if (shouldNotify) {
+      console.log('About to create notification for comment');
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert({
+          user_id: postUserId!,
+          type: 'comment',
+          from_user_id: userId,
+          post_id: postId,
+          comment_id: newComment!.id,
+        })
+        .select();
+      console.log('Notification result:', { data, error });
     }
     setInputText('');
     setReplyTarget(null);
     await fetchComments(postId);
     onCommentPosted?.();
     setPosting(false);
-  }, [inputText, userId, postId, posting, replyTarget, fetchComments, onCommentPosted]);
+  }, [inputText, userId, postId, postUserId, posting, replyTarget, fetchComments, onCommentPosted]);
 
   useEffect(() => {
     if (replyTarget && visible) {

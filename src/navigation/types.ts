@@ -12,14 +12,38 @@ export type RootStackParamList = {
 };
 
 export type MainTabParamList = {
-  Map: { latitude?: number; longitude?: number } | undefined;
+  Map:
+    | {
+        latitude?: number;
+        longitude?: number;
+        postId?: string;
+        showComments?: boolean;
+      }
+    | undefined;
   Feed: undefined;
-  Upload: undefined;
-  Friends: undefined;
+  Notifications: undefined;
   Profile: undefined;
+};
+
+export type MapStackParamList = {
+  Map:
+    | {
+        latitude?: number;
+        longitude?: number;
+        postId?: string;
+        showComments?: boolean;
+      }
+    | undefined;
+  Upload:
+    | {
+        imageUri?: string;
+        exifLocation?: { latitude: number; longitude: number } | null;
+      }
+    | undefined;
 };
 
 export type ProfileStackParamList = {
   Profile: undefined;
+  Friends: undefined;
   Gallery: undefined;
 };

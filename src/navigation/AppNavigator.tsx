@@ -1,5 +1,6 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { NotificationProvider, useNotifications } from '../lib/NotificationContext';
 import {
   createBottomTabNavigator,
   BottomTabBar,
@@ -10,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
 import { CardStackProvider } from '../lib/CardStackContext';
-import type { RootStackParamList, MainTabParamList, ProfileStackParamList } from './types';
+import type { RootStackParamList, MainTabParamList, MapStackParamList, ProfileStackParamList } from './types';
 import type { Profile } from '../types';
 import { theme } from '../lib/theme';
 import { TabSwipeOverlay } from '../components/TabSwipeOverlay';
@@ -43,8 +44,9 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
 import { ProfileSetupScreen } from '../screens/ProfileSetupScreen';
 import { HomeScreen } from '../screens/HomeScreen';
-import { FeedScreen } from '../screens/FeedScreen';
 import { UploadScreen } from '../screens/UploadScreen';
+import { FeedScreen } from '../screens/FeedScreen';
+import { NotificationsScreen } from '../screens/NotificationsScreen';
 import { FriendsScreen } from '../screens/FriendsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { GalleryScreen } from '../screens/GalleryScreen';
@@ -52,11 +54,12 @@ import { FriendProfileScreen } from '../screens/FriendProfileScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+const MapStack = createNativeStackNavigator<MapStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
 
 const headerScreenOptions = {
   headerStyle: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.borderLight,
   },
@@ -64,6 +67,38 @@ const headerScreenOptions = {
   headerTitleStyle: { fontWeight: '600' as const },
   headerShadowVisible: false,
 };
+
+function MapStackNavigator({
+  profile,
+  initialMapParams,
+}: {
+  profile: Profile;
+  initialMapParams?: {
+    latitude?: number;
+    longitude?: number;
+    postId?: string;
+    showComments?: boolean;
+  };
+}) {
+  return (
+    <MapStack.Navigator
+      screenOptions={{ headerShown: false, animation: 'none' }}
+      initialRouteName="Map"
+    >
+      <MapStack.Screen
+        name="Map"
+        options={{ animation: 'none' }}
+      >
+        {() => <HomeScreen profile={profile} route={{ params: initialMapParams } as any} />}
+      </MapStack.Screen>
+      <MapStack.Screen
+        name="Upload"
+        component={UploadScreen}
+        options={{ animation: 'slide_from_bottom' }}
+      />
+    </MapStack.Navigator>
+  );
+}
 
 function ProfileStackNavigator() {
   return (
@@ -74,6 +109,14 @@ function ProfileStackNavigator() {
       }}
     >
       <ProfileStack.Screen name="Profile" component={ProfileScreen} />
+      <ProfileStack.Screen
+        name="Friends"
+        component={FriendsScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'Friends',
+        }}
+      />
       <ProfileStack.Screen
         name="Gallery"
         component={GalleryScreen}
@@ -102,6 +145,7 @@ function CustomTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
 
 function MainTabs({ profile }: { profile: Profile }) {
   const insets = useSafeAreaInsets();
+  const { unreadCount } = useNotifications();
   return (
     <CardStackProvider>
       <Tab.Navigator
@@ -113,7 +157,7 @@ function MainTabs({ profile }: { profile: Profile }) {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: '#FFFFFF',
+            backgroundColor: theme.colors.background,
             borderTopColor: theme.colors.borderLight,
             borderTopWidth: 1,
             height: 50 + insets.bottom,
@@ -133,7 +177,9 @@ function MainTabs({ profile }: { profile: Profile }) {
             tabBarIcon: ({ focused }) => <TabIcon name="map" focused={focused} />,
           }}
         >
-          {({ route }) => <HomeScreen profile={profile} route={route} />}
+          {({ route }) => (
+            <MapStackNavigator profile={profile} initialMapParams={route.params} />
+          )}
         </Tab.Screen>
         <Tab.Screen
           name="Feed"
@@ -143,17 +189,18 @@ function MainTabs({ profile }: { profile: Profile }) {
           }}
         />
         <Tab.Screen
-          name="Upload"
-          component={UploadScreen}
+          name="Notifications"
+          component={NotificationsScreen}
           options={{
-            tabBarIcon: ({ focused }) => <TabIcon name="plus-circle" focused={focused} />,
-          }}
-        />
-        <Tab.Screen
-          name="Friends"
-          component={FriendsScreen}
-          options={{
-            tabBarIcon: ({ focused }) => <TabIcon name="users" focused={focused} />,
+            tabBarIcon: ({ focused }) => <TabIcon name="bell" focused={focused} />,
+            tabBarBadge: unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : undefined,
+            tabBarBadgeStyle: {
+              backgroundColor: theme.colors.primary,
+              color: '#FFF',
+              fontSize: 11,
+              minWidth: 18,
+              height: 18,
+            },
           }}
         />
         <Tab.Screen
@@ -208,7 +255,11 @@ export function AppNavigator() {
       initialRouteName="MainTabs"
     >
       <Stack.Screen name="MainTabs">
-        {() => <MainTabs profile={profile as Profile} />}
+        {() => (
+          <NotificationProvider>
+            <MainTabs profile={profile as Profile} />
+          </NotificationProvider>
+        )}
       </Stack.Screen>
       <Stack.Screen
         name="FriendProfile"
@@ -223,7 +274,7 @@ const TAB_BAR_HEIGHT = 50;
 
 const styles = StyleSheet.create({
   tabBarContainer: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: theme.colors.background,
   },
   tabIconWrap: {
     alignItems: 'center',

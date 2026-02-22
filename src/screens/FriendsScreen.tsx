@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../navigation/types';
+import type { ProfileStackParamList } from '../navigation/types';
 import {
   View,
   Text,
@@ -9,12 +9,10 @@ import {
   Pressable,
   StyleSheet,
   FlatList,
-  Modal,
   Platform,
   Alert,
   ScrollView,
   RefreshControl,
-  Animated,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -40,7 +38,7 @@ type SearchResultWithStatus = Profile & {
 
 const DEBOUNCE_MS = 500;
 
-type FriendsScreenNav = NativeStackNavigationProp<RootStackParamList>;
+type FriendsScreenNav = NativeStackNavigationProp<ProfileStackParamList, 'Friends'>;
 
 export function FriendsScreen() {
   const insets = useSafeAreaInsets();
@@ -52,12 +50,6 @@ export function FriendsScreen() {
   const [friends, setFriends] = useState<FriendshipWithProfile[]>([]);
   const [friendsLoading, setFriendsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [requests, setRequests] = useState<FriendshipWithProfile[]>([]);
-  const [requestsModalVisible, setRequestsModalVisible] = useState(false);
-  const [animatingRequestId, setAnimatingRequestId] = useState<string | null>(null);
-  const requestSlideX = useRef(new Animated.Value(0)).current;
-  const requestOpacity = useRef(new Animated.Value(1)).current;
 
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -135,38 +127,6 @@ export function FriendsScreen() {
     setFriendsLoading(false);
   }, [userId]);
 
-  const fetchRequests = useCallback(async () => {
-    if (!userId) return;
-    const { data, error } = await supabase
-      .from('friendships')
-      .select('*')
-      .eq('addressee_id', userId)
-      .eq('status', 'pending');
-    if (error) {
-      console.error('Error fetching requests:', error);
-      return;
-    }
-    const rows = (data ?? []) as Friendship[];
-    const ids = rows.map((r) => r.requester_id);
-    if (ids.length === 0) {
-      setRequests([]);
-      return;
-    }
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('*')
-      .in('id', ids);
-    const profileMap = new Map(
-      ((profiles ?? []) as Profile[]).map((p) => [p.id, p])
-    );
-    setRequests(
-      rows.map((r) => ({
-        ...r,
-        other_user: profileMap.get(r.requester_id)!,
-      }))
-    );
-  }, [userId]);
-
   const hasInitiallyFetched = useRef(false);
 
   useFocusEffect(
@@ -174,13 +134,12 @@ export function FriendsScreen() {
       const isInitial = !hasInitiallyFetched.current;
       hasInitiallyFetched.current = true;
       fetchFriendships();
-      fetchRequests();
       if (isInitial) {
         fetchFriends();
       } else {
         fetchFriends(false);
       }
-    }, [fetchFriendships, fetchRequests, fetchFriends])
+    }, [fetchFriendships, fetchFriends])
   );
 
   useEffect(() => {
@@ -215,7 +174,7 @@ export function FriendsScreen() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([fetchFriends(), fetchRequests(), fetchFriendships()]);
+    await Promise.all([fetchFriends(), fetchFriendships()]);
     setRefreshing(false);
   }
 
@@ -231,6 +190,14 @@ export function FriendsScreen() {
       showToast(error.message);
       return;
     }
+    supabase
+      .from('notifications')
+      .insert({
+        user_id: addresseeId,
+        type: 'friend_request',
+        from_user_id: userId,
+      })
+      .catch(() => {});
     await fetchFriendships();
   }
 
@@ -244,36 +211,8 @@ export function FriendsScreen() {
       showToast(error.message);
       return;
     }
-    setAnimatingRequestId(friendshipId);
+    await Promise.all([fetchFriendships(), fetchFriends(false)]);
   }
-
-  async function handleDecline(friendshipId: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { error } = await supabase
-      .from('friendships')
-      .update({ status: 'declined' })
-      .eq('id', friendshipId);
-    if (error) {
-      showToast(error.message);
-      return;
-    }
-    setAnimatingRequestId(friendshipId);
-  }
-
-  useEffect(() => {
-    if (!animatingRequestId) return;
-    requestSlideX.setValue(0);
-    requestOpacity.setValue(1);
-    Animated.parallel([
-      Animated.timing(requestSlideX, { toValue: -400, duration: 250, useNativeDriver: true }),
-      Animated.timing(requestOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
-    ]).start(() => {
-      setRequests((prev) => prev.filter((r) => r.id !== animatingRequestId));
-      setAnimatingRequestId(null);
-      fetchFriendships();
-      fetchFriends();
-    });
-  }, [animatingRequestId, requestSlideX, requestOpacity]);
 
   function renderSearchResultButton(item: SearchResultWithStatus) {
     if (item.buttonState === 'accept') {
@@ -318,31 +257,10 @@ export function FriendsScreen() {
 
   if (!userId) return null;
 
-  const top = insets.top + 16;
   const bottom = insets.bottom;
 
   return (
-    <View style={[styles.container, { paddingTop: top, backgroundColor: theme.colors.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.bellButton}
-          onPress={() => setRequestsModalVisible(true)}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          activeOpacity={0.7}
-        >
-          <Feather name="bell" size={24} color={theme.colors.text} />
-          {requests.length > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>
-                {requests.length > 99 ? '99+' : requests.length}
-              </Text>
-            </View>
-          )}
-        </TouchableOpacity>
-        <Text style={styles.title}>Friends</Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
+    <View style={[styles.container, { paddingTop: theme.spacing.md, backgroundColor: theme.colors.background }]}>
       <View style={styles.content}>
         {friendsLoading ? (
           <View style={styles.listContent}>
@@ -388,7 +306,7 @@ export function FriendsScreen() {
                   pressed && { backgroundColor: theme.colors.surfaceLight },
                 ]}
                 onPress={() => {
-                  (navigation.getParent() as any)?.navigate('FriendProfile', {
+                  (navigation.getParent() as any)?.getParent()?.getParent()?.navigate('FriendProfile', {
                     userId: item.other_user?.id ?? '',
                   });
                 }}
@@ -437,7 +355,7 @@ export function FriendsScreen() {
                   <TouchableOpacity
                     style={styles.searchRowTouchable}
                     onPress={() => {
-                      (navigation.getParent() as any)?.navigate('FriendProfile', {
+                      (navigation.getParent() as any)?.getParent()?.getParent()?.navigate('FriendProfile', {
                         userId: item.id,
                       });
                     }}
@@ -475,79 +393,6 @@ export function FriendsScreen() {
           />
         </View>
       </View>
-
-      <Modal
-        visible={requestsModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setRequestsModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <TouchableOpacity
-            style={styles.modalBackdrop}
-            activeOpacity={1}
-            onPress={() => setRequestsModalVisible(false)}
-          />
-          <View style={styles.requestsSheet}>
-                <View style={styles.requestsHeader}>
-                  <Text style={styles.requestsTitle}>Friend Requests</Text>
-                  <TouchableOpacity
-                    onPress={() => setRequestsModalVisible(false)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="x" size={24} color={theme.colors.text} />
-                  </TouchableOpacity>
-                </View>
-                {requests.length === 0 ? (
-                  <Text style={styles.requestsEmpty}>No pending requests</Text>
-                ) : (
-                  requests.map((item) => {
-                    const isAnimating = animatingRequestId === item.id;
-                    const RowWrapper = isAnimating ? Animated.View : View;
-                    const rowStyle = isAnimating
-                      ? [styles.requestRow, { transform: [{ translateX: requestSlideX }], opacity: requestOpacity }]
-                      : styles.requestRow;
-                    return (
-                      <RowWrapper key={item.id} style={rowStyle}>
-                        <View style={styles.avatarWrap}>
-                          <Avatar uri={item.other_user?.avatar_url ?? null} size={40} />
-                        </View>
-                        <View style={styles.searchInfo}>
-                          <Text style={styles.displayName}>
-                            {item.other_user?.display_name || 'No name'}
-                          </Text>
-                          <Text style={styles.username}>
-                            @{item.other_user?.username ?? 'unknown'}
-                          </Text>
-                        </View>
-                        <View style={styles.requestActions}>
-                          <TouchableOpacity
-                            style={[styles.searchBtn, styles.modalAcceptBtn]}
-                            onPress={() => handleAccept(item.id)}
-                            activeOpacity={0.8}
-                            disabled={!!animatingRequestId}
-                          >
-                            <Feather name="check" size={16} color={theme.colors.textOnPrimary} />
-                            <Text style={[styles.searchBtnText, styles.searchBtnTextWhite, { marginLeft: 6 }]}>Accept</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.searchBtn, styles.modalDeclineBtn]}
-                            onPress={() => handleDecline(item.id)}
-                            activeOpacity={0.8}
-                            disabled={!!animatingRequestId}
-                          >
-                            <Feather name="x" size={16} color={theme.colors.textTertiary} />
-                            <Text style={[styles.searchBtnText, { color: theme.colors.textTertiary, marginLeft: 6 }]}>Decline</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </RowWrapper>
-                    );
-                  })
-                )}
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -555,43 +400,6 @@ export function FriendsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: theme.screenPadding,
-    paddingVertical: theme.spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderLight,
-  },
-  bellButton: {
-    position: 'relative',
-  },
-  badge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: theme.colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-  },
-  badgeText: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: '700',
-    color: theme.colors.textOnPrimary,
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  headerSpacer: {
-    width: 40,
   },
   content: {
     flex: 1,
@@ -732,62 +540,11 @@ const styles = StyleSheet.create({
   friendsBtn: {
     backgroundColor: theme.colors.surface,
   },
-  modalAcceptBtn: {
-    backgroundColor: theme.colors.primary,
-  },
-  modalDeclineBtn: {
-    backgroundColor: 'transparent',
-  },
   searchBtnText: {
     fontSize: 16,
     fontWeight: '600',
   },
   searchBtnTextWhite: {
     color: theme.colors.textOnPrimary,
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: theme.colors.overlay,
-  },
-  requestsSheet: {
-    backgroundColor: theme.colors.background,
-    borderTopLeftRadius: theme.borderRadius.xl,
-    borderTopRightRadius: theme.borderRadius.xl,
-    padding: theme.spacing.lg,
-    paddingBottom: 48,
-    maxHeight: '70%',
-  },
-  requestsHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.lg,
-  },
-  requestsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  requestsEmpty: {
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-    paddingVertical: theme.spacing.xl,
-  },
-  requestRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: theme.listRowGap,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderLight,
-  },
-  requestActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
   },
 });

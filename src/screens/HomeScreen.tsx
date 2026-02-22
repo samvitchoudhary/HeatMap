@@ -14,24 +14,32 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCardStack } from '../lib/CardStackContext';
+import type { MapStackParamList } from '../navigation/types';
+import { parseExifGps } from '../lib/exif';
 import { LIGHT_MAP_STYLE, HEATMAP_GRADIENT } from '../lib/mapConfig';
 import MapView, { Heatmap, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { Profile, PostWithProfile } from '../types';
-import type { MainTabParamList } from '../navigation/types';
 import { CardStack } from '../components/CardStack';
 import { StyledTextInput } from '../components/StyledTextInput';
 
 type HomeScreenProps = {
   profile: Profile | null;
-  route?: RouteProp<MainTabParamList, 'Map'>;
+  route?: RouteProp<MapStackParamList, 'Map'>;
+};
+
+const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
+  allowsEditing: true,
+  quality: 0.7,
 };
 
 const NEARBY_RADIUS_METERS = 100;
@@ -67,12 +75,13 @@ function getDistanceMeters(
 
 export function HomeScreen({ profile, route }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
-  const { setCardStackOpen } = useCardStack();
+  const navigation = useNavigation<NativeStackNavigationProp<MapStackParamList, 'Map'>>();
+  const { cardStackOpen, setCardStackOpen } = useCardStack();
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [postsLoading, setPostsLoading] = useState(true);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
+  const [openWithCommentsPostId, setOpenWithCommentsPostId] = useState<string | null>(null);
   const [currentRegion, setCurrentRegion] = useState<{
     latitude: number;
     longitude: number;
@@ -95,6 +104,16 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasInitiallyFetched = useRef(false);
+
+  const [fabExpanded, setFabExpanded] = useState(false);
+  const fabIconRotate = useRef(new Animated.Value(0)).current;
+  const fabOverlayOpacity = useRef(new Animated.Value(0)).current;
+  const fabCameraTranslateY = useRef(new Animated.Value(0)).current;
+  const fabCameraOpacity = useRef(new Animated.Value(0)).current;
+  const fabCameraScale = useRef(new Animated.Value(0.5)).current;
+  const fabGalleryTranslateY = useRef(new Animated.Value(0)).current;
+  const fabGalleryOpacity = useRef(new Animated.Value(0)).current;
+  const fabGalleryScale = useRef(new Animated.Value(0.5)).current;
 
   const fetchPosts = useCallback(
     async (showLoading: boolean) => {
@@ -173,6 +192,128 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       ]).start();
     }
   }, [showDropdown, dropdownOpacity, dropdownTranslateY]);
+
+  const runOpenAnimation = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(fabIconRotate, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(fabOverlayOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.spring(fabCameraTranslateY, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      Animated.timing(fabCameraOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.spring(fabCameraScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      Animated.spring(fabGalleryTranslateY, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+      Animated.timing(fabGalleryOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.spring(fabGalleryScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
+    ]).start();
+  }, [
+    fabIconRotate,
+    fabOverlayOpacity,
+    fabCameraTranslateY,
+    fabCameraOpacity,
+    fabCameraScale,
+    fabGalleryTranslateY,
+    fabGalleryOpacity,
+    fabGalleryScale,
+  ]);
+
+  const runCloseAnimation = useCallback(
+    (onComplete?: () => void) => {
+      Animated.parallel([
+        Animated.timing(fabIconRotate, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(fabOverlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(fabCameraTranslateY, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(fabCameraOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(fabCameraScale, { toValue: 0.5, duration: 200, useNativeDriver: true }),
+        Animated.timing(fabGalleryTranslateY, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(fabGalleryOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+        Animated.timing(fabGalleryScale, { toValue: 0.5, duration: 200, useNativeDriver: true }),
+      ]).start(() => {
+        setFabExpanded(false);
+        onComplete?.();
+      });
+    },
+    [
+      fabIconRotate,
+      fabOverlayOpacity,
+      fabCameraTranslateY,
+      fabCameraOpacity,
+      fabCameraScale,
+      fabGalleryTranslateY,
+      fabGalleryOpacity,
+      fabGalleryScale,
+    ]
+  );
+
+  useEffect(() => {
+    if (fabExpanded) {
+      runOpenAnimation();
+    }
+  }, [fabExpanded, runOpenAnimation]);
+
+  async function requestCameraPermission(): Promise<boolean> {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Camera Permission Required',
+        'HeatMap needs camera access to take photos. Please enable it in your device settings.',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  async function requestMediaLibraryPermission(): Promise<boolean> {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Photo Library Permission Required',
+        'HeatMap needs access to your photo library to choose photos. Please enable it in your device settings.',
+      );
+      return false;
+    }
+    return true;
+  }
+
+  function handleFabCamera() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    runCloseAnimation(async () => {
+      const hasPermission = await requestCameraPermission();
+      if (!hasPermission) return;
+
+      const result = await ImagePicker.launchCameraAsync(IMAGE_OPTIONS);
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const exif = asset.exif as Record<string, unknown> | undefined;
+        const exifLocation = parseExifGps(exif) ?? null;
+        navigation.navigate('Upload', {
+          imageUri: asset.uri,
+          exifLocation,
+        });
+      }
+    });
+  }
+
+  function handleFabGallery() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    runCloseAnimation(async () => {
+      const hasPermission = await requestMediaLibraryPermission();
+      if (!hasPermission) return;
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        ...IMAGE_OPTIONS,
+        mediaTypes: ['images'],
+        exif: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const exif = asset.exif as Record<string, unknown> | undefined;
+        const exifLocation = parseExifGps(exif) ?? null;
+        navigation.navigate('Upload', {
+          imageUri: asset.uri,
+          exifLocation,
+        });
+      }
+    });
+  }
 
   const heatmapPoints = posts.map((post) => ({
     latitude: post.latitude,
@@ -323,21 +464,56 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
   useFocusEffect(
     useCallback(() => {
-      const lat = route?.params?.latitude;
-      const lng = route?.params?.longitude;
+      const params = route?.params;
+      const lat = params?.latitude;
+      const lng = params?.longitude;
+      const postId = params?.postId;
+      const showComments = params?.showComments;
+
+      if (postId && typeof lat === 'number' && typeof lng === 'number') {
+        (async () => {
+          const { data } = await supabase
+            .from('posts')
+            .select('*, profiles:user_id(username, display_name, avatar_url)')
+            .eq('id', postId)
+            .single();
+          if (data && mapRef.current) {
+            const post = data as PostWithProfile;
+            mapRef.current.animateToRegion(
+              { latitude: lat, longitude: lng, latitudeDelta: 0.005, longitudeDelta: 0.005 },
+              1000
+            );
+            setSelectedInitialIndex(0);
+            setSelectedPosts([post]);
+            setOpenWithCommentsPostId(showComments ? postId : null);
+          }
+          (navigation as { setParams: (p: object) => void }).setParams({
+            latitude: undefined,
+            longitude: undefined,
+            postId: undefined,
+            showComments: undefined,
+          });
+        })();
+        return;
+      }
+
       if (typeof lat === 'number' && typeof lng === 'number' && mapRef.current) {
         mapRef.current.animateToRegion(
-          {
-            latitude: lat,
-            longitude: lng,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
-          },
+          { latitude: lat, longitude: lng, latitudeDelta: 0.005, longitudeDelta: 0.005 },
           1000
         );
-        (navigation as { setParams: (p: object) => void }).setParams({ latitude: undefined, longitude: undefined });
+        (navigation as { setParams: (p: object) => void }).setParams({
+          latitude: undefined,
+          longitude: undefined,
+        });
       }
-    }, [route?.params?.latitude, route?.params?.longitude, navigation])
+    }, [
+      route?.params?.latitude,
+      route?.params?.longitude,
+      route?.params?.postId,
+      route?.params?.showComments,
+      navigation,
+    ])
   );
 
   React.useEffect(() => {
@@ -511,6 +687,116 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         </TouchableOpacity>
       )}
 
+      {!cardStackOpen && showSearchBar && (
+        <View style={[StyleSheet.absoluteFill, styles.fabRoot]} pointerEvents="box-none">
+          {fabExpanded && (
+            <Pressable
+              style={[StyleSheet.absoluteFill, styles.fabOverlayPressable]}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                runCloseAnimation();
+              }}
+            >
+              <Animated.View
+                style={[
+                  styles.fabOverlay,
+                  {
+                    opacity: fabOverlayOpacity.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 1],
+                    }),
+                  },
+                ]}
+              />
+            </Pressable>
+          )}
+
+          <View style={[styles.fabContainer, { bottom: insets.bottom + 90 }]}>
+          <Animated.View
+            style={[
+              styles.fabSubButtonWrap,
+              {
+                transform: [
+                  {
+                    translateY: fabCameraTranslateY.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -130],
+                    }),
+                  },
+                  { scale: fabCameraScale },
+                ],
+                opacity: fabCameraOpacity,
+              },
+            ]}
+            pointerEvents={fabExpanded ? 'auto' : 'none'}
+          >
+            <TouchableOpacity
+              style={styles.fabSubButton}
+              onPress={handleFabCamera}
+              activeOpacity={0.8}
+            >
+              <Feather name="camera" size={22} color={theme.colors.primary} />
+            </TouchableOpacity>
+          </Animated.View>
+
+          <Animated.View
+            style={[
+              styles.fabSubButtonWrap,
+              {
+                transform: [
+                  {
+                    translateY: fabGalleryTranslateY.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -65],
+                    }),
+                  },
+                  { scale: fabGalleryScale },
+                ],
+                opacity: fabGalleryOpacity,
+              },
+            ]}
+            pointerEvents={fabExpanded ? 'auto' : 'none'}
+          >
+            <TouchableOpacity
+              style={styles.fabSubButton}
+              onPress={handleFabGallery}
+              activeOpacity={0.8}
+            >
+              <Feather name="image" size={22} color={theme.colors.secondary} />
+            </TouchableOpacity>
+          </Animated.View>
+
+          <TouchableOpacity
+            style={[styles.fabButton, theme.shadows.button as object]}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              if (fabExpanded) {
+                runCloseAnimation();
+              } else {
+                setFabExpanded(true);
+              }
+            }}
+            activeOpacity={0.8}
+          >
+            <Animated.View
+              style={{
+                transform: [
+                  {
+                    rotate: fabIconRotate.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '45deg'],
+                    }),
+                  },
+                ],
+              }}
+            >
+              <Feather name="plus" size={24} color="#FFF" />
+            </Animated.View>
+          </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {postsLoading && (
         <Animated.View style={[styles.loadingBar, { opacity: loadingOpacity }]} pointerEvents="none">
           <View style={styles.loadingBarInner} />
@@ -530,14 +816,19 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       {selectedPosts !== null && selectedPosts.length > 0 && (
         <CardStack
           posts={selectedPosts}
-          onClose={() => setSelectedPosts(null)}
+          onClose={() => {
+            setSelectedPosts(null);
+            setOpenWithCommentsPostId(null);
+          }}
           initialIndex={selectedInitialIndex}
+          initialFlippedPostId={openWithCommentsPostId ?? undefined}
+          onInitialFlippedConsumed={() => setOpenWithCommentsPostId(null)}
           onPostDeleted={(postId) => {
             setPosts((prev) => prev.filter((p) => p.id !== postId));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
           }}
           onProfilePress={(userId) => {
-            (navigation.getParent() as any)?.navigate('FriendProfile', { userId });
+            (navigation.getParent() as any)?.getParent?.()?.navigate('FriendProfile', { userId });
           }}
         />
       )}
@@ -689,5 +980,50 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 4,
+  },
+  fabRoot: {
+    zIndex: 100,
+  },
+  fabOverlayPressable: {
+    zIndex: 101,
+  },
+  fabContainer: {
+    position: 'absolute',
+    right: 20,
+    width: 56,
+    alignItems: 'flex-end',
+    zIndex: 102,
+  },
+  fabOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  fabSubButtonWrap: {
+    position: 'absolute',
+    right: 0,
+    bottom: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabSubButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: theme.colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  fabButton: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

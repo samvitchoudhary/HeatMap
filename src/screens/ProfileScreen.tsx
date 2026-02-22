@@ -251,7 +251,7 @@ export function ProfileScreen() {
   }
 
   function handleFriendsPress() {
-    navigation.getParent()?.navigate('Friends' as never);
+    navigation.navigate('Friends');
   }
 
   function handleViewAllPosts() {

@@ -12,8 +12,9 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { RouteProp } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -24,50 +25,30 @@ import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { StyledTextInput } from '../components/StyledTextInput';
-import type { MainTabParamList } from '../navigation/types';
+import type { MapStackParamList } from '../navigation/types';
+import { parseExifGps } from '../lib/exif';
 
 const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
   allowsEditing: true,
   quality: 0.7,
 };
 
-/** Parse EXIF GPS to decimal degrees. Handles both signed decimals and DMS format. */
-function parseExifGps(
-  exif: Record<string, unknown> | undefined
-): { latitude: number; longitude: number } | null {
-  if (!exif) return null;
-  const lat = exif.GPSLatitude;
-  const lng = exif.GPSLongitude;
-  if (lat == null || lng == null) return null;
-
-  const toDecimal = (
-    val: unknown,
-    ref: string | undefined
-  ): number | null => {
-    if (typeof val === 'number' && !Number.isNaN(val)) {
-      return ref === 'S' || ref === 'W' ? -Math.abs(val) : val;
-    }
-    if (Array.isArray(val) && val.length >= 3) {
-      const d = Number(val[0]) || 0;
-      const m = Number(val[1]) || 0;
-      const s = Number(val[2]) || 0;
-      let dec = d + m / 60 + s / 3600;
-      if (ref === 'S' || ref === 'W') dec = -dec;
-      return dec;
-    }
+/** Parse EXIF date (YYYY:MM:DD HH:MM:SS) to ISO string. */
+function parseExifDate(exifDate: unknown): string | null {
+  if (typeof exifDate !== 'string') return null;
+  try {
+    const cleaned = exifDate.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+    const date = new Date(cleaned);
+    return isNaN(date.getTime()) ? null : date.toISOString();
+  } catch {
     return null;
-  };
-
-  const latitude = toDecimal(lat, exif.GPSLatitudeRef as string | undefined);
-  const longitude = toDecimal(lng, exif.GPSLongitudeRef as string | undefined);
-  if (latitude == null || longitude == null) return null;
-  if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
-  return { latitude, longitude };
+  }
 }
 
 export function UploadScreen() {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation<BottomTabNavigationProp<MainTabParamList, 'Upload'>>();
+  const navigation = useNavigation<NativeStackNavigationProp<MapStackParamList, 'Upload'>>();
+  const route = useRoute<RouteProp<MapStackParamList, 'Upload'>>();
   const { session } = useAuth();
   const { showToast } = useToast();
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
@@ -82,6 +63,35 @@ export function UploadScreen() {
     longitude: number;
   } | null>(null);
   const [locationSource, setLocationSource] = useState<'exif' | 'current' | null>(null);
+  const [originalPhotoDate, setOriginalPhotoDate] = useState<string | null>(null);
+
+  const appliedParamsRef = React.useRef<string | null>(null);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      const imageUri = route.params?.imageUri;
+      const exifLocation = route.params?.exifLocation ?? null;
+      if (!imageUri) return;
+      if (appliedParamsRef.current === imageUri) return;
+      appliedParamsRef.current = imageUri;
+      setSelectedImageUri(imageUri);
+      setVenueName('');
+      setCaption('');
+      setLocationCoords(exifLocation);
+      setLocationSource(exifLocation ? 'exif' : null);
+      setOriginalPhotoDate(null);
+      previewOpacity.setValue(0);
+      Animated.timing(previewOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+      if (exifLocation) {
+        reverseGeocodeAndSetVenue(exifLocation.latitude, exifLocation.longitude);
+      } else {
+        detectVenue();
+      }
+      return () => {
+        appliedParamsRef.current = null;
+      };
+    }, [route.params?.imageUri, route.params?.exifLocation])
+  );
 
   async function requestCameraPermission(): Promise<boolean> {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -176,6 +186,7 @@ export function UploadScreen() {
       setCaption('');
       setLocationCoords(null);
       setLocationSource(null);
+      setOriginalPhotoDate(null);
       previewOpacity.setValue(0);
       Animated.timing(previewOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
       detectVenue();
@@ -202,6 +213,8 @@ export function UploadScreen() {
 
       const exif = result.assets[0].exif as Record<string, unknown> | undefined;
       const exifCoords = parseExifGps(exif);
+      const exifDate = (exif?.DateTimeOriginal || exif?.DateTime) as string | undefined;
+      setOriginalPhotoDate(exifDate ? parseExifDate(exifDate) : null);
 
       setIsDetectingLocation(true);
       try {
@@ -224,8 +237,9 @@ export function UploadScreen() {
     setCaption('');
     setLocationCoords(null);
     setLocationSource(null);
+    setOriginalPhotoDate(null);
     setPostSuccess(false);
-    navigation.navigate('Map');
+    navigation.goBack();
   }
 
   async function handlePost() {
@@ -263,14 +277,16 @@ export function UploadScreen() {
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(filePath);
       const imageUrl = urlData.publicUrl;
 
-      const { error: insertError } = await supabase.from('posts').insert({
+      const postData = {
         user_id: userId,
         image_url: imageUrl,
         caption: caption.trim() || null,
         venue_name: venueName.trim() || null,
         latitude: locationCoords.latitude,
         longitude: locationCoords.longitude,
-      });
+        ...(originalPhotoDate ? { created_at: originalPhotoDate } : {}),
+      };
+      const { error: insertError } = await supabase.from('posts').insert(postData);
 
       if (insertError) throw insertError;
 
