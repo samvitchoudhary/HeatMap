@@ -296,6 +296,30 @@ export function ProfileScreen() {
   const bottomPadding = insets.bottom + 100;
   const showProfileSkeletons = !profileDataReady && !!userId;
   const gridPosts = posts.slice(0, 9);
+
+  const ProfileSkeleton = () => (
+    <View style={styles.profileSkeleton}>
+      <Skeleton width={80} height={80} borderRadius={40} />
+      <Skeleton width={140} height={18} borderRadius={4} style={{ marginTop: 14 }} />
+      <Skeleton width={100} height={14} borderRadius={4} style={{ marginTop: 8 }} />
+      <View style={styles.profileSkeletonStats}>
+        <View style={styles.profileSkeletonStat}>
+          <Skeleton width={30} height={18} borderRadius={4} />
+          <Skeleton width={40} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+        </View>
+        <View style={styles.profileSkeletonStat}>
+          <Skeleton width={30} height={18} borderRadius={4} />
+          <Skeleton width={50} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+        </View>
+      </View>
+      <Skeleton width="90%" height={40} borderRadius={12} style={{ marginTop: 20 }} />
+      <View style={styles.profileSkeletonGrid}>
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <Skeleton key={i} width="32.5%" height={120} borderRadius={4} />
+        ))}
+      </View>
+    </View>
+  );
   const hasMorePosts = posts.length > 9;
   const GRID_SLOTS = 9;
   const gridSlots = Array.from({ length: GRID_SLOTS }, (_, i) => gridPosts[i] ?? null);
@@ -318,63 +342,41 @@ export function ProfileScreen() {
           />
         }
       >
+        {showProfileSkeletons ? (
+          <ProfileSkeleton />
+        ) : (
+          <>
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.avatarWrapper}
             onPress={handleChangeAvatar}
-            disabled={showProfileSkeletons || uploadingAvatar}
+            disabled={uploadingAvatar}
             activeOpacity={0.8}
           >
             <View style={styles.avatarContainer}>
-              {showProfileSkeletons ? (
-                <Skeleton width={80} height={80} borderRadius={40} />
-              ) : (
-                <>
-                  <Avatar uri={avatarUrl ?? null} size={80} profilePlaceholder />
-                  {uploadingAvatar && (
-                    <View style={styles.avatarLoadingOverlay}>
-                      <ActivityIndicator size="small" color={theme.colors.text} />
-                    </View>
-                  )}
-                </>
+              <Avatar uri={avatarUrl ?? null} size={80} profilePlaceholder />
+              {uploadingAvatar && (
+                <View style={styles.avatarLoadingOverlay}>
+                  <ActivityIndicator size="small" color={theme.colors.text} />
+                </View>
               )}
             </View>
-            {!showProfileSkeletons && (
-              <View style={styles.avatarBadge}>
-                <Feather name="edit-2" size={12} color={theme.colors.textOnPrimary} />
-              </View>
-            )}
+            <View style={styles.avatarBadge}>
+              <Feather name="edit-2" size={12} color={theme.colors.textOnPrimary} />
+            </View>
           </TouchableOpacity>
 
-          {showProfileSkeletons ? (
-            <>
-              <Skeleton width={160} height={22} borderRadius={8} style={{ marginBottom: 4 }} />
-              <Skeleton width={100} height={15} borderRadius={6} style={{ marginBottom: theme.spacing.md }} />
-              <View style={styles.statsRow}>
-                <Skeleton width={24} height={16} borderRadius={4} />
-                <Text style={styles.statsLabel}> posts  </Text>
-                <Text style={styles.statsDivider}> |  </Text>
-                <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress} activeOpacity={0.7}>
-                  <Skeleton width={24} height={16} borderRadius={4} />
-                  <Text style={styles.statsLabel}> friends</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.displayName}>{displayName}</Text>
-              <Text style={styles.username}>@{username}</Text>
-              <View style={styles.statsRow}>
-                <Text style={styles.statsNumber}>{postsCount}</Text>
-                <Text style={styles.statsLabel}> posts  </Text>
-                <Text style={styles.statsDivider}> |  </Text>
-                <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress} activeOpacity={0.7}>
-                  <Text style={[styles.statsNumber, styles.statsNumberTappable]}>{friendsCount}</Text>
-                  <Text style={[styles.statsLabel, styles.statsLabelTappable]}> friends</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
+          <Text style={styles.displayName}>{displayName}</Text>
+          <Text style={styles.username}>@{username}</Text>
+          <View style={styles.statsRow}>
+            <Text style={styles.statsNumber}>{postsCount}</Text>
+            <Text style={styles.statsLabel}> posts  </Text>
+            <Text style={styles.statsDivider}> |  </Text>
+            <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress} activeOpacity={0.7}>
+              <Text style={[styles.statsNumber, styles.statsNumberTappable]}>{friendsCount}</Text>
+              <Text style={[styles.statsLabel, styles.statsLabelTappable]}> friends</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={styles.secondaryButton}
@@ -388,7 +390,7 @@ export function ProfileScreen() {
 
         <View style={styles.gallerySection}>
           <Text style={styles.galleryHeader}>Recent Posts</Text>
-          {profileDataReady && posts.length === 0 ? (
+          {posts.length === 0 ? (
             <View style={styles.emptyGallery}>
               <Feather name="camera" size={40} color={theme.colors.textTertiary} />
               <Text style={styles.emptyGalleryText}>No posts yet</Text>
@@ -443,6 +445,8 @@ export function ProfileScreen() {
           <Feather name="log-out" size={16} color={theme.colors.red} />
           <Text style={styles.destructiveButtonText}>Log Out</Text>
         </TouchableOpacity>
+          </>
+        )}
       </ScrollView>
 
       {selectedPosts !== null && selectedPosts.length > 0 && (
@@ -613,6 +617,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     marginBottom: theme.spacing.lg,
+  },
+  profileSkeleton: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  profileSkeletonStats: {
+    flexDirection: 'row',
+    marginTop: 20,
+    gap: 40,
+  },
+  profileSkeletonStat: {
+    alignItems: 'center',
+  },
+  profileSkeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 20,
+    gap: 2,
+    width: '100%',
   },
   secondaryButtonText: {
     fontSize: 16,

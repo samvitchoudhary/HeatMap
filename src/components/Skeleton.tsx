@@ -22,12 +22,12 @@ export function Skeleton({
       Animated.sequence([
         Animated.timing(opacity, {
           toValue: 0.7,
-          duration: 600,
+          duration: 1000,
           useNativeDriver: true,
         }),
         Animated.timing(opacity, {
           toValue: 0.3,
-          duration: 600,
+          duration: 1000,
           useNativeDriver: true,
         }),
       ])
@@ -54,6 +54,6 @@ export function Skeleton({
 
 const styles = StyleSheet.create({
   skeleton: {
-    backgroundColor: theme.colors.surfaceLight,
+    backgroundColor: theme.colors.borderLight,
   },
 });

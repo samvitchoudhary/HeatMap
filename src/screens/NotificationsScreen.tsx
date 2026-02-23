@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { Avatar } from '../components/Avatar';
 import { SmoothImage } from '../components/SmoothImage';
+import { Skeleton } from '../components/Skeleton';
 
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -300,8 +301,17 @@ export function NotificationsScreen() {
       <Text style={styles.title}>Notifications</Text>
 
       {loading && notifications === null ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="large" color={theme.colors.text} />
+        <View style={styles.skeletonWrap}>
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <View key={i} style={styles.skeletonRow}>
+              <Skeleton width={36} height={36} borderRadius={18} />
+              <View style={styles.skeletonRowContent}>
+                <Skeleton width="80%" height={14} borderRadius={4} />
+                <Skeleton width="50%" height={12} borderRadius={4} style={{ marginTop: 6 }} />
+              </View>
+              <Skeleton width={40} height={40} borderRadius={6} style={{ marginLeft: 8 }} />
+            </View>
+          ))}
         </View>
       ) : !notifications || notifications.length === 0 ? (
         <View style={styles.empty}>
@@ -349,6 +359,18 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  skeletonWrap: {
+    padding: 16,
+  },
+  skeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  skeletonRowContent: {
+    flex: 1,
+    marginLeft: 12,
   },
   empty: {
     flex: 1,

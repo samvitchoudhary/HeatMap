@@ -268,6 +268,31 @@ export function FriendProfileScreen() {
   const gridPosts = posts.slice(0, 9);
   const GRID_SLOTS = 9;
   const gridSlots = Array.from({ length: GRID_SLOTS }, (_, i) => gridPosts[i] ?? null);
+  const showFriendProfileSkeleton = loading && profile === null;
+
+  const FriendProfileSkeleton = () => (
+    <View style={styles.friendProfileSkeleton}>
+      <Skeleton width={80} height={80} borderRadius={40} />
+      <Skeleton width={140} height={18} borderRadius={4} style={{ marginTop: 14 }} />
+      <Skeleton width={100} height={14} borderRadius={4} style={{ marginTop: 8 }} />
+      <View style={styles.friendProfileSkeletonStats}>
+        <View style={styles.friendProfileSkeletonStat}>
+          <Skeleton width={30} height={18} borderRadius={4} />
+          <Skeleton width={40} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+        </View>
+        <View style={styles.friendProfileSkeletonStat}>
+          <Skeleton width={30} height={18} borderRadius={4} />
+          <Skeleton width={50} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+        </View>
+      </View>
+      <Skeleton width="90%" height={40} borderRadius={12} style={{ marginTop: 20 }} />
+      <View style={styles.friendProfileSkeletonGrid}>
+        {[1, 2, 3, 4, 5, 6].map((i) => (
+          <Skeleton key={i} width="32.5%" height={120} borderRadius={4} />
+        ))}
+      </View>
+    </View>
+  );
 
   useEffect(() => {
     if (targetUserId && myUserId && targetUserId === myUserId) {
@@ -327,22 +352,11 @@ export function FriendProfileScreen() {
           />
         }
       >
+        {showFriendProfileSkeleton ? (
+          <FriendProfileSkeleton />
+        ) : (
+        <>
         <View style={styles.profileHeader}>
-          {loading ? (
-            <>
-              <Skeleton width={80} height={80} borderRadius={40} style={{ marginBottom: theme.spacing.sm }} />
-              <Skeleton width={160} height={22} borderRadius={8} style={{ marginBottom: 4 }} />
-              <Skeleton width={100} height={15} borderRadius={6} style={{ marginBottom: theme.spacing.md }} />
-              <View style={styles.statsRow}>
-                <Skeleton width={24} height={16} borderRadius={4} />
-                <Text style={styles.statsLabel}> posts  </Text>
-                <Text style={styles.statsDivider}> |  </Text>
-                <Skeleton width={24} height={16} borderRadius={4} />
-                <Text style={styles.statsLabel}> friends</Text>
-              </View>
-            </>
-          ) : (
-            <>
               <View style={styles.avatarContainer}>
                 <Avatar uri={avatarUrl ?? null} size={80} profilePlaceholder />
               </View>
@@ -389,8 +403,6 @@ export function FriendProfileScreen() {
                   <Text style={[styles.friendshipBtnText, styles.friendshipBtnTextWhite]}>Add Friend</Text>
                 </TouchableOpacity>
               )}
-            </>
-          )}
         </View>
 
         <View style={styles.gallerySection}>
@@ -437,6 +449,8 @@ export function FriendProfileScreen() {
             </View>
           )}
         </View>
+        </>
+        )}
       </ScrollView>
 
       {selectedPosts !== null && selectedPosts.length > 0 && (
@@ -452,6 +466,25 @@ export function FriendProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  friendProfileSkeleton: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  friendProfileSkeletonStats: {
+    flexDirection: 'row',
+    marginTop: 20,
+    gap: 40,
+  },
+  friendProfileSkeletonStat: {
+    alignItems: 'center',
+  },
+  friendProfileSkeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 20,
+    gap: 2,
+    width: '100%',
+  },
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',

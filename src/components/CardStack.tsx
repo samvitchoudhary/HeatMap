@@ -184,7 +184,8 @@ export function CardStack({
   const secondScale = useRef(new Animated.Value(0.97)).current;
   const secondOpacity = useRef(new Animated.Value(0.9)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
-  const cardScale = useRef(new Animated.Value(0.95)).current;
+  const cardTranslateY = useRef(new Animated.Value(80)).current;
+  const cardScale = useRef(new Animated.Value(0.9)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const panY = useRef(new Animated.Value(0)).current;
   const gestureModeRef = useRef<'horizontal' | 'dismiss' | null>(null);
@@ -198,12 +199,45 @@ export function CardStack({
   postsRef.current = posts;
 
   useEffect(() => {
+    // Reset all values when card stack opens (in case it was previously closed)
+    overlayOpacity.setValue(0);
+    cardTranslateY.setValue(80);
+    cardScale.setValue(0.9);
+    cardOpacity.setValue(0);
+    panY.setValue(0);
+
     Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.timing(cardScale, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.timing(cardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      // Overlay fade in
+      Animated.timing(overlayOpacity, {
+        toValue: 1,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      // Card slide up + scale + fade — with 50ms delay
+      Animated.sequence([
+        Animated.delay(50),
+        Animated.parallel([
+          Animated.spring(cardTranslateY, {
+            toValue: 0,
+            friction: 7,
+            tension: 60,
+            useNativeDriver: true,
+          }),
+          Animated.spring(cardScale, {
+            toValue: 1,
+            friction: 7,
+            tension: 60,
+            useNativeDriver: true,
+          }),
+          Animated.timing(cardOpacity, {
+            toValue: 1,
+            duration: 200,
+            useNativeDriver: true,
+          }),
+        ]),
+      ]),
     ]).start();
-  }, [overlayOpacity, cardScale, cardOpacity]);
+  }, [overlayOpacity, cardTranslateY, cardScale, cardOpacity]);
 
   const handleDeletePost = useCallback(
     async (post: PostWithProfile) => {
@@ -236,11 +270,12 @@ export function CardStack({
 
   const handleClose = useCallback(() => {
     Animated.parallel([
-      Animated.timing(overlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.timing(cardScale, { toValue: 0.95, duration: 200, useNativeDriver: true }),
+      Animated.timing(cardTranslateY, { toValue: 80, duration: 200, useNativeDriver: true }),
+      Animated.timing(cardScale, { toValue: 0.9, duration: 200, useNativeDriver: true }),
       Animated.timing(cardOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(overlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => onClose());
-  }, [onClose, overlayOpacity, cardScale, cardOpacity]);
+  }, [onClose, overlayOpacity, cardTranslateY, cardScale, cardOpacity]);
 
   const fetchReactions = useCallback(
     async (postId: string) => {
@@ -687,7 +722,7 @@ export function CardStack({
           styles.stackContainer,
           {
             transform: [
-              { translateY: panY },
+              { translateY: Animated.add(cardTranslateY, panY) },
               {
                 scale: Animated.multiply(
                   cardScale,

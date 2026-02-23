@@ -176,7 +176,7 @@ export function FriendsScreen() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([fetchFriends(), fetchFriendships()]);
+    await Promise.all([fetchFriends(false), fetchFriendships()]);
     setRefreshing(false);
   }
 
@@ -267,16 +267,12 @@ export function FriendsScreen() {
       <View style={styles.content}>
         {friendsLoading ? (
           <View style={styles.listContent}>
-            {[1, 2, 3, 4, 5].map((i) => (
-              <View key={i} style={styles.friendRow}>
-                <View style={styles.avatarWrap}>
-                  <Skeleton width={40} height={40} borderRadius={20} />
-                </View>
+            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+              <View key={i} style={styles.friendSkeletonRow}>
+                <Skeleton width={44} height={44} borderRadius={22} />
                 <View style={styles.skeletonTextBlock}>
-                  <Skeleton width={160} height={16} borderRadius={8} />
-                  <View style={{ marginTop: 8 }}>
-                    <Skeleton width={100} height={12} borderRadius={6} />
-                  </View>
+                  <Skeleton width={130} height={14} borderRadius={4} />
+                  <Skeleton width={90} height={12} borderRadius={4} style={{ marginTop: 6 }} />
                 </View>
               </View>
             ))}
@@ -433,8 +429,13 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.xs,
     textAlign: 'center',
   },
+  friendSkeletonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
   skeletonTextBlock: {
-    marginLeft: theme.spacing.md,
+    marginLeft: 12,
     flex: 1,
   },
   searchSkeletonList: {
