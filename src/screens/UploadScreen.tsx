@@ -27,6 +27,7 @@ import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { StyledTextInput } from '../components/StyledTextInput';
+import { SuccessToast } from '../components/SuccessToast';
 import type { MapStackParamList } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
 
@@ -59,6 +60,7 @@ export function UploadScreen() {
   const [isDetectingLocation, setIsDetectingLocation] = useState(false);
   const [isPosting, setIsPosting] = useState(false);
   const [postSuccess, setPostSuccess] = useState(false);
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
   const previewOpacity = useRef(new Animated.Value(0)).current;
   const [locationCoords, setLocationCoords] = useState<{
     latitude: number;
@@ -292,11 +294,9 @@ export function UploadScreen() {
 
       if (insertError) throw insertError;
 
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPostSuccess(true);
-      setTimeout(() => {
-        handleCancel();
-      }, 1200);
+      setShowSuccessToast(true);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to post. Please try again.';
       showToast(message);
@@ -412,6 +412,15 @@ export function UploadScreen() {
       )}
       </View>
       </TouchableWithoutFeedback>
+
+      <SuccessToast
+        message="Posted!"
+        visible={showSuccessToast}
+        onHide={() => {
+          setShowSuccessToast(false);
+          handleCancel();
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
