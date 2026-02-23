@@ -3,7 +3,6 @@ import {
   View,
   StyleSheet,
   TouchableOpacity,
-  Image,
   ScrollView,
   Dimensions,
   Alert,
@@ -19,6 +18,7 @@ import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
+import { SmoothImage } from '../components/SmoothImage';
 
 const GRID_GAP = 4;
 const GRID_PADDING = 24;
@@ -115,7 +115,7 @@ export function GalleryScreen({ navigation }: Props) {
                   <Feather name="image" size={24} color={theme.colors.textTertiary} />
                 </View>
               ) : (
-                <Image
+                <SmoothImage
                   source={{ uri: post.image_url }}
                   style={styles.gridImage}
                   resizeMode="cover"

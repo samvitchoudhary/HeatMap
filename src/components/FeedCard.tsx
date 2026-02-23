@@ -2,8 +2,8 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Pressable,
   StyleSheet,
   Dimensions,
@@ -16,7 +16,7 @@ import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
-import { Skeleton } from './Skeleton';
+import { SmoothImage } from './SmoothImage';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 
@@ -83,10 +83,12 @@ export function FeedCard({
   const { session } = useAuth();
   const userId = session?.user?.id;
 
-  const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const imageOpacity = useRef(new Animated.Value(0)).current;
+  const [heartVisible, setHeartVisible] = useState(false);
   const cardOpacity = useRef(new Animated.Value(1)).current;
+  const heartScale = useRef(new Animated.Value(0)).current;
+  const heartOpacity = useRef(new Animated.Value(1)).current;
+  const lastTap = useRef(0);
 
   useEffect(() => {
     if (isFadingOut) {
@@ -98,15 +100,82 @@ export function FeedCard({
     }
   }, [isFadingOut, cardOpacity, onFadeComplete, post.id]);
 
-  useEffect(() => {
-    if (imageLoaded) {
-      Animated.timing(imageOpacity, {
+  const triggerHeartReaction = useCallback(() => {
+    if (!userId) return;
+    if (initialUserReaction === '❤️') return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const prevCounts = { ...initialReactionCounts };
+    if (initialUserReaction) {
+      prevCounts[initialUserReaction] = Math.max(0, (prevCounts[initialUserReaction] ?? 1) - 1);
+    }
+    prevCounts['❤️'] = (prevCounts['❤️'] ?? 0) + 1;
+    onReactionChange?.(prevCounts, '❤️');
+
+    if (initialUserReaction) {
+      supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId).then(() => {});
+    }
+    supabase
+      .from('reactions')
+      .insert({ post_id: post.id, user_id: userId, emoji: '❤️' })
+      .then(async () => {
+        if (post.user_id !== userId) {
+          await supabase.from('notifications').insert({
+            user_id: post.user_id,
+            type: 'reaction',
+            from_user_id: userId,
+            post_id: post.id,
+            emoji: '❤️',
+          });
+        }
+      });
+
+    setHeartVisible(true);
+    heartScale.setValue(0);
+    heartOpacity.setValue(1);
+    Animated.sequence([
+      Animated.spring(heartScale, {
+        toValue: 1.2,
+        useNativeDriver: true,
+        speed: 50,
+        bounciness: 8,
+      }),
+      Animated.spring(heartScale, {
         toValue: 1,
+        useNativeDriver: true,
+        speed: 50,
+        bounciness: 6,
+      }),
+      Animated.delay(400),
+      Animated.timing(heartOpacity, {
+        toValue: 0,
         duration: 200,
         useNativeDriver: true,
-      }).start();
+      }),
+    ]).start(() => {
+      setHeartVisible(false);
+      heartScale.setValue(0);
+      heartOpacity.setValue(1);
+    });
+  }, [
+    userId,
+    post.id,
+    post.user_id,
+    initialUserReaction,
+    initialReactionCounts,
+    onReactionChange,
+    heartScale,
+    heartOpacity,
+  ]);
+
+  const handleDoubleTap = useCallback(() => {
+    const now = Date.now();
+    if (now - lastTap.current < 300) {
+      triggerHeartReaction();
     }
-  }, [imageLoaded, imageOpacity]);
+    lastTap.current = now;
+  }, [triggerHeartReaction]);
 
   const handleReactionToggle = useCallback(
     (emoji: string) => {
@@ -224,25 +293,35 @@ export function FeedCard({
               {isNew && (
                 <View style={styles.newPostDot} />
               )}
-              {!imageLoaded && !imageError && (
-                <View style={styles.skeletonWrap}>
-                  <Skeleton width="100%" height="100%" borderRadius={0} />
-                </View>
-              )}
               {imageError ? (
                 <View style={[styles.photoPlaceholder, styles.photoError]}>
                   <Feather name="image" size={24} color={theme.colors.textTertiary} />
                 </View>
               ) : (
-                <Animated.View style={[styles.photo, { opacity: imageOpacity }]}>
-                <Image
-                  source={{ uri: post.image_url }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                    onLoad={() => setImageLoaded(true)}
-                    onError={() => setImageError(true)}
-                  />
-                </Animated.View>
+                <TouchableWithoutFeedback onPress={handleDoubleTap}>
+                  <View style={styles.photo}>
+                    <SmoothImage
+                      source={{ uri: post.image_url }}
+                      style={StyleSheet.absoluteFill}
+                      resizeMode="cover"
+                      onError={() => setImageError(true)}
+                    />
+                    {heartVisible && (
+                      <Animated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.heartOverlay,
+                          {
+                            opacity: heartOpacity,
+                            transform: [{ scale: heartScale }],
+                          },
+                        ]}
+                      >
+                        <Text style={styles.heartEmoji}>❤️</Text>
+                      </Animated.View>
+                    )}
+                  </View>
+                </TouchableWithoutFeedback>
               )}
               {onDeletePost && post.user_id === userId && (
                 <TouchableOpacity
@@ -356,9 +435,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: CARD_BORDER_RADIUS,
     borderTopRightRadius: CARD_BORDER_RADIUS,
   },
-  skeletonWrap: {
-    ...StyleSheet.absoluteFillObject,
-  },
   photoPlaceholder: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -370,6 +446,17 @@ const styles = StyleSheet.create({
   photo: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+  },
+  heartOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  heartEmoji: {
+    fontSize: 80,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   infoSection: {
     padding: 12,

@@ -4,7 +4,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   ScrollView,
   Alert,
   RefreshControl,
@@ -23,6 +22,7 @@ import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
+import { SmoothImage } from '../components/SmoothImage';
 
 const GRID_GAP = 2;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -422,7 +422,7 @@ export function FriendProfileScreen() {
                         <Feather name="image" size={24} color={theme.colors.textTertiary} />
                       </View>
                     ) : (
-                      <Image
+                      <SmoothImage
                         source={{ uri: post.image_url }}
                         style={styles.gridImage}
                         resizeMode="cover"

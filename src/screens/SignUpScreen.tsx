@@ -3,9 +3,11 @@ import {
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -72,7 +74,9 @@ export function SignUpScreen() {
         },
       ]}
     >
-      <View style={styles.form}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={styles.dismissArea}>
+          <View style={styles.form}>
         <Text style={styles.title}>HeatMap</Text>
         <Text style={styles.tagline}>See where your friends are</Text>
 
@@ -125,7 +129,9 @@ export function SignUpScreen() {
         >
           <Text style={styles.linkText}>Already have an account? Log in</Text>
         </TouchableOpacity>
-      </View>
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -133,6 +139,12 @@ export function SignUpScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dismissArea: {
+    flex: 1,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -4,11 +4,11 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Image,
   Modal,
   Pressable,
   ScrollView,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -32,6 +32,7 @@ import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
+import { SmoothImage } from '../components/SmoothImage';
 import { StyledTextInput } from '../components/StyledTextInput';
 
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
@@ -408,7 +409,7 @@ export function ProfileScreen() {
                         <Feather name="image" size={24} color={theme.colors.textTertiary} />
                       </View>
                     ) : (
-                      <Image
+                      <SmoothImage
                         source={{ uri: post.image_url }}
                         style={styles.gridImage}
                         resizeMode="cover"
@@ -466,7 +467,10 @@ export function ProfileScreen() {
         <View style={styles.modalOverlay}>
           <Pressable
             style={StyleSheet.absoluteFill}
-            onPress={() => setEditModalVisible(false)}
+            onPress={() => {
+              Keyboard.dismiss();
+              setEditModalVisible(false);
+            }}
           />
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}

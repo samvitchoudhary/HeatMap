@@ -3,9 +3,11 @@ import {
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -94,7 +96,9 @@ export function ProfileSetupScreen() {
         },
       ]}
     >
-      <View style={styles.form}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        <View style={styles.dismissArea}>
+          <View style={styles.form}>
         <Text style={styles.title}>HeatMap</Text>
         <Text style={styles.subtitle}>Profile Setup</Text>
 
@@ -128,7 +132,9 @@ export function ProfileSetupScreen() {
             <Text style={styles.buttonText}>Complete Setup</Text>
           )}
         </TouchableOpacity>
-      </View>
+          </View>
+        </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
@@ -136,6 +142,12 @@ export function ProfileSetupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dismissArea: {
+    flex: 1,
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },

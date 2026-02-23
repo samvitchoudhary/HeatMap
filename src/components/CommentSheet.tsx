@@ -5,18 +5,19 @@ import {
   TouchableOpacity,
   FlatList,
   StyleSheet,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Animated,
   Pressable,
-  Image,
 } from 'react-native';
 import type { TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { Avatar } from './Avatar';
+import { SmoothImage } from './SmoothImage';
 import { StyledTextInput } from './StyledTextInput';
 
 function timeAgo(dateString: string): string {
@@ -357,7 +358,13 @@ export function CommentSheet({
         ]}
         pointerEvents={flipped ? 'auto' : 'none'}
       >
-        <Pressable style={styles.cardBack} onPress={flipToFront}>
+        <Pressable
+          style={styles.cardBack}
+          onPress={() => {
+            Keyboard.dismiss();
+            flipToFront();
+          }}
+        >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={styles.cardBackKav}
@@ -365,7 +372,7 @@ export function CommentSheet({
           >
             <View style={styles.cardBackHeader}>
               <View style={styles.cardBackHeaderLeft}>
-                <Image
+                <SmoothImage
                   source={{ uri: post.image_url }}
                   style={styles.cardBackThumbnail}
                 />
@@ -398,7 +405,7 @@ export function CommentSheet({
                 style={styles.cardBackFlatList}
                 contentContainerStyle={styles.cardBackListContent}
                 keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="interactive"
+                keyboardDismissMode="on-drag"
                 showsVerticalScrollIndicator={false}
                 onStartShouldSetResponder={() => true}
               />

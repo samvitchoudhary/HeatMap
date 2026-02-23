@@ -405,8 +405,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   }
 
   function handleMapPress(event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) {
+    Keyboard.dismiss();
     if (showDropdown) {
-      Keyboard.dismiss();
       setShowDropdown(false);
       return;
     }

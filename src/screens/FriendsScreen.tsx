@@ -6,6 +6,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Pressable,
   StyleSheet,
   FlatList,
@@ -13,6 +14,7 @@ import {
   Alert,
   ScrollView,
   RefreshControl,
+  Keyboard,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -260,6 +262,7 @@ export function FriendsScreen() {
   const bottom = insets.bottom;
 
   return (
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <View style={[styles.container, { paddingTop: theme.spacing.md, backgroundColor: theme.colors.background }]}>
       <View style={styles.content}>
         {friendsLoading ? (
@@ -292,6 +295,8 @@ export function FriendsScreen() {
             showsVerticalScrollIndicator={false}
             overScrollMode="never"
             bounces={true}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -394,6 +399,7 @@ export function FriendsScreen() {
         </View>
       </View>
     </View>
+    </TouchableWithoutFeedback>
   );
 }
 

@@ -7,7 +7,6 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +18,7 @@ import { useNotifications } from '../lib/NotificationContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { Avatar } from '../components/Avatar';
+import { SmoothImage } from '../components/SmoothImage';
 
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -283,7 +283,7 @@ export function NotificationsScreen() {
         </View>
         <Text style={styles.timestamp}>{timeAgo(item.created_at)}</Text>
         {!isFriendRequest && normPost(item)?.image_url && (
-          <Image
+          <SmoothImage
             source={{ uri: normPost(item)!.image_url }}
             style={styles.thumbnail}
             resizeMode="cover"
@@ -318,6 +318,8 @@ export function NotificationsScreen() {
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

@@ -260,6 +260,8 @@ export function FeedScreen() {
           keyExtractor={(item) => item.id}
           removeClippedSubviews={true}
           maxToRenderPerBatch={10}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           renderItem={({ item }) => (
             <FeedCard
               post={item}

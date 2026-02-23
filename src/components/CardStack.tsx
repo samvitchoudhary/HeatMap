@@ -2,8 +2,8 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   Pressable,
   StyleSheet,
   Dimensions,
@@ -20,7 +20,7 @@ import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
-import { Skeleton } from './Skeleton';
+import { SmoothImage } from './SmoothImage';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 type CardStackProps = {
@@ -66,27 +66,59 @@ type CardImageStyles = {
 
 function CardImage({
   post,
-  imageLoaded,
-  setImageLoaded,
   imageError,
   setImageError,
   s,
+  onDoubleTap,
 }: {
   post: PostWithProfile;
-  imageLoaded: Record<string, boolean>;
-  setImageLoaded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   imageError: Record<string, boolean>;
   setImageError: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   s: CardImageStyles;
+  onDoubleTap?: () => void;
 }) {
-  const loaded = imageLoaded[post.id];
   const failed = imageError[post.id];
-  const imageOpacity = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (loaded) {
-      Animated.timing(imageOpacity, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+  const heartScale = useRef(new Animated.Value(0)).current;
+  const heartOpacity = useRef(new Animated.Value(1)).current;
+  const lastTap = useRef(0);
+  const [heartVisible, setHeartVisible] = useState(false);
+
+  const handleDoubleTap = useCallback(() => {
+    if (!onDoubleTap) return;
+    const now = Date.now();
+    if (now - lastTap.current < 300) {
+      onDoubleTap();
+      setHeartVisible(true);
+      heartScale.setValue(0);
+      heartOpacity.setValue(1);
+      Animated.sequence([
+        Animated.spring(heartScale, {
+          toValue: 1.2,
+          useNativeDriver: true,
+          speed: 50,
+          bounciness: 8,
+        }),
+        Animated.spring(heartScale, {
+          toValue: 1,
+          useNativeDriver: true,
+          speed: 50,
+          bounciness: 6,
+        }),
+        Animated.delay(400),
+        Animated.timing(heartOpacity, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setHeartVisible(false);
+        heartScale.setValue(0);
+        heartOpacity.setValue(1);
+      });
     }
-  }, [loaded, imageOpacity]);
+    lastTap.current = now;
+  }, [onDoubleTap, heartScale, heartOpacity]);
+
   if (failed) {
     return (
       <View style={[s.cardImage, s.cardImagePlaceholder]}>
@@ -95,22 +127,36 @@ function CardImage({
       </View>
     );
   }
+  const imageContent = (
+    <View style={s.cardImage}>
+      <SmoothImage
+        source={{ uri: post.image_url }}
+        style={StyleSheet.absoluteFill}
+        resizeMode="cover"
+        onError={() => setImageError((prev) => ({ ...prev, [post.id]: true }))}
+      />
+      {heartVisible && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            StyleSheet.absoluteFill,
+            { justifyContent: 'center', alignItems: 'center' },
+            { opacity: heartOpacity, transform: [{ scale: heartScale }] },
+          ]}
+        >
+          <Text style={styles.cardHeartEmoji}>❤️</Text>
+        </Animated.View>
+      )}
+    </View>
+  );
+
   return (
     <View style={s.cardImageWrap}>
-      {!loaded && (
-          <View style={StyleSheet.absoluteFill}>
-          <Skeleton width="100%" height="100%" borderRadius={CARD_BORDER_RADIUS} />
-        </View>
+      {onDoubleTap ? (
+        <TouchableWithoutFeedback onPress={handleDoubleTap}>{imageContent}</TouchableWithoutFeedback>
+      ) : (
+        imageContent
       )}
-      <Animated.View style={[s.cardImage, { opacity: imageOpacity }]}>
-        <Image
-          source={{ uri: post.image_url }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          onLoad={() => setImageLoaded((prev) => ({ ...prev, [post.id]: true }))}
-          onError={() => setImageError((prev) => ({ ...prev, [post.id]: true }))}
-        />
-      </Animated.View>
     </View>
   );
 }
@@ -132,7 +178,6 @@ export function CardStack({
   const [currentIndex, setCurrentIndex] = useState(safeInitial);
   const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
   const [userReaction, setUserReaction] = useState<string | null>(null);
-  const [imageLoaded, setImageLoaded] = useState<Record<string, boolean>>({});
   const [imageError, setImageError] = useState<Record<string, boolean>>({});
   const translateX = useRef(new Animated.Value(0)).current;
   const secondTranslateY = useRef(new Animated.Value(8)).current;
@@ -245,6 +290,53 @@ export function CardStack({
       onInitialFlippedConsumed?.();
     }
   }, [initialFlippedPostId, onInitialFlippedConsumed]);
+
+  const handleDoubleTapHeart = useCallback(
+    async () => {
+      const post = posts[currentIndex];
+      const userId = session?.user?.id;
+      if (!post?.id || !userId || userReaction === '❤️') return;
+
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const prevReaction = userReaction;
+      const prevCounts = { ...reactionCounts };
+
+      setUserReaction('❤️');
+      setReactionCounts((c) => {
+        const next = { ...c };
+        if (prevReaction) {
+          next[prevReaction] = Math.max(0, (next[prevReaction] ?? 1) - 1);
+        }
+        next['❤️'] = (next['❤️'] ?? 0) + 1;
+        return next;
+      });
+
+      if (prevReaction) {
+        await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+      }
+      const { error } = await supabase.from('reactions').insert({
+        post_id: post.id,
+        user_id: userId,
+        emoji: '❤️',
+      });
+      if (error) {
+        setUserReaction(prevReaction);
+        setReactionCounts(prevCounts);
+        return;
+      }
+      if (post.user_id !== userId) {
+        await supabase.from('notifications').insert({
+          user_id: post.user_id,
+          type: 'reaction',
+          from_user_id: userId,
+          post_id: post.id,
+          emoji: '❤️',
+        });
+      }
+    },
+    [currentIndex, posts, session?.user?.id, userReaction, reactionCounts]
+  );
 
   const handleReactionToggle = useCallback(
     async (emoji: string) => {
@@ -443,8 +535,6 @@ export function CardStack({
           <View style={styles.photoSection}>
             <CardImage
               post={post}
-              imageLoaded={imageLoaded}
-              setImageLoaded={setImageLoaded}
               imageError={imageError}
               setImageError={setImageError}
               s={{
@@ -453,6 +543,7 @@ export function CardStack({
                 cardImagePlaceholder: styles.cardImagePlaceholder,
                 cardImageErrorText: styles.cardImageErrorText,
               }}
+              onDoubleTap={isCurrent ? handleDoubleTapHeart : undefined}
             />
             {post.user_id === currentUserId && (
               <TouchableOpacity
@@ -692,6 +783,12 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
     fontSize: theme.fontSize.sm,
     color: theme.colors.textTertiary,
+  },
+  cardHeartEmoji: {
+    fontSize: 80,
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
   },
   closeButton: {
     position: 'absolute',

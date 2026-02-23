@@ -3,12 +3,14 @@ import {
   View,
   Text,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   StyleSheet,
   Alert,
   ActivityIndicator,
   ScrollView,
   Image,
   Animated,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -309,6 +311,8 @@ export function UploadScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={0}
     >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View style={styles.dismissWrap}>
       {!selectedImageUri ? (
         <View
           style={[
@@ -349,6 +353,7 @@ export function UploadScreen() {
           showsVerticalScrollIndicator={false}
           overScrollMode="never"
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <>
           <Animated.View style={[styles.previewWrap, { opacity: previewOpacity }]}>
@@ -405,12 +410,17 @@ export function UploadScreen() {
         </>
         </ScrollView>
       )}
+      </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  dismissWrap: {
     flex: 1,
   },
   scroll: {

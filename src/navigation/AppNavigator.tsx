@@ -3,7 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NotificationProvider, useNotifications } from '../lib/NotificationContext';
 import { FeedBadgeProvider, useFeedBadge } from '../lib/FeedBadgeContext';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
-import { View, TouchableOpacity, ActivityIndicator, StyleSheet, useWindowDimensions, Text, Animated } from 'react-native';
+import { View, TouchableOpacity, ActivityIndicator, StyleSheet, useWindowDimensions, Text, Animated, Keyboard } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
@@ -150,6 +150,7 @@ function CustomTabBar(props: {
           const config = tabConfig[index];
           const isFocused = state.index === index;
           const onPress = () => {
+            Keyboard.dismiss();
             const event = navigation.emit({
               type: 'tabPress',
               target: route.key,
