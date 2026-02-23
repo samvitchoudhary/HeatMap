@@ -75,15 +75,15 @@ export function NotificationsScreen() {
   const { refreshUnreadCount } = useNotifications();
   const userId = session?.user?.id;
 
-  const [notifications, setNotifications] = useState<NotificationWithRelations[]>([]);
+  const [notifications, setNotifications] = useState<NotificationWithRelations[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const fetchNotifications = useCallback(
-    async (silent = false) => {
+    async (showLoading = false) => {
       if (!userId) return;
-      if (!silent) setLoading(true);
+      if (showLoading) setLoading(true);
       const { data, error } = await supabase
         .from('notifications')
         .select(
@@ -111,8 +111,9 @@ export function NotificationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchNotifications();
-    }, [fetchNotifications])
+      const isFirstLoad = notifications === null;
+      fetchNotifications(isFirstLoad);
+    }, [fetchNotifications, notifications])
   );
 
   useFocusEffect(
@@ -124,7 +125,7 @@ export function NotificationsScreen() {
           .update({ read: true })
           .eq('user_id', userId)
           .eq('read', false);
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+        setNotifications((prev) => (prev ? prev.map((n) => ({ ...n, read: true })) : []));
         await refreshUnreadCount();
       }, 2000);
       return () => clearTimeout(timer);
@@ -133,14 +134,14 @@ export function NotificationsScreen() {
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchNotifications(true);
+    fetchNotifications(false);
   }, [fetchNotifications]);
 
   const markAsRead = useCallback(
     async (notificationId: string) => {
       await supabase.from('notifications').update({ read: true }).eq('id', notificationId);
       setNotifications((prev) =>
-        prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
+        prev ? prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)) : []
       );
       await refreshUnreadCount();
     },
@@ -193,7 +194,7 @@ export function NotificationsScreen() {
         await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendship.id);
       }
       await markAsRead(n.id);
-      setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+      setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
       setActionLoadingId(null);
     },
     [userId, markAsRead]
@@ -217,7 +218,7 @@ export function NotificationsScreen() {
         await supabase.from('friendships').update({ status: 'declined' }).eq('id', friendship.id);
       }
       await markAsRead(n.id);
-      setNotifications((prev) => prev.filter((x) => x.id !== n.id));
+      setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
       setActionLoadingId(null);
     },
     [userId, markAsRead]
@@ -298,11 +299,11 @@ export function NotificationsScreen() {
     <View style={[styles.container, { paddingTop: insets.top + 20 }]}>
       <Text style={styles.title}>Notifications</Text>
 
-      {loading ? (
+      {loading && notifications === null ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={theme.colors.text} />
         </View>
-      ) : notifications.length === 0 ? (
+      ) : !notifications || notifications.length === 0 ? (
         <View style={styles.empty}>
           <Feather name="bell" size={48} color={theme.colors.textTertiary} />
           <Text style={styles.emptyTitle}>No notifications yet</Text>
@@ -312,7 +313,7 @@ export function NotificationsScreen() {
         </View>
       ) : (
         <FlatList
-          data={notifications}
+          data={notifications ?? []}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}

@@ -52,10 +52,11 @@ export function FeedScreen() {
         setLoading(false);
         return;
       }
+      const hasData = posts.length > 0 || append;
       if (!silent) {
-        if (offset === 0) {
+        if (offset === 0 && !hasData) {
           setLoading(true);
-        } else {
+        } else if (offset > 0) {
           setLoadingMore(true);
         }
       }
@@ -199,7 +200,7 @@ export function FeedScreen() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await fetchPage(0, false);
+    await fetchPage(0, false, true);
     setRefreshing(false);
   }
 
