@@ -186,6 +186,8 @@ export function CardStack({
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.95)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
+  const panY = useRef(new Animated.Value(0)).current;
+  const gestureModeRef = useRef<'horizontal' | 'dismiss' | null>(null);
   const currentIndexRef = useRef(0);
   const postsLengthRef = useRef(0);
   const postsRef = useRef<PostWithProfile[]>([]);
@@ -425,18 +427,56 @@ export function CardStack({
       onMoveShouldSetPanResponder: (_, gestureState) => {
         const currentPost = postsRef.current[currentIndexRef.current];
         if (currentPost && flippedByPostIdRef.current[currentPost.id]) return false;
-        const { dx } = gestureState;
-        return Math.abs(dx) > 5;
+        const { dx, dy } = gestureState;
+        if (dy > 10 && Math.abs(dy) > Math.abs(dx)) {
+          gestureModeRef.current = 'dismiss';
+          return true;
+        }
+        if (Math.abs(dx) > 5 && Math.abs(dx) > Math.abs(dy)) {
+          gestureModeRef.current = 'horizontal';
+          return true;
+        }
+        return false;
       },
       onPanResponderMove: (_evt, gestureState) => {
-        const dx = gestureState.dx;
-        translateX.setValue(dx);
-        if (Math.abs(dx) > SWIPE_THRESHOLD && !swipeHapticFired.current) {
-          swipeHapticFired.current = true;
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        const mode = gestureModeRef.current;
+        if (mode === 'dismiss') {
+          const { dy } = gestureState;
+          if (dy > 0) panY.setValue(dy);
+        } else if (mode === 'horizontal') {
+          const { dx } = gestureState;
+          translateX.setValue(dx);
+          if (Math.abs(dx) > SWIPE_THRESHOLD && !swipeHapticFired.current) {
+            swipeHapticFired.current = true;
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          }
         }
       },
       onPanResponderRelease: (_, gestureState) => {
+        const mode = gestureModeRef.current;
+        gestureModeRef.current = null;
+        if (mode === 'dismiss') {
+          const { dy, vy } = gestureState;
+          if (dy > 150 || vy > 0.5) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            Animated.timing(panY, {
+              toValue: SCREEN_HEIGHT,
+              duration: 250,
+              useNativeDriver: true,
+            }).start(() => {
+              panY.setValue(0);
+              onClose();
+            });
+          } else {
+            Animated.spring(panY, {
+              toValue: 0,
+              friction: 8,
+              tension: 80,
+              useNativeDriver: true,
+            }).start();
+          }
+          return;
+        }
         swipeHapticFired.current = false;
         const dx = gestureState.dx;
         if (Math.abs(dx) > SWIPE_THRESHOLD) {
@@ -617,7 +657,20 @@ export function CardStack({
       behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
     >
       <Animated.View
-        style={[StyleSheet.absoluteFillObject, styles.overlayBg, { opacity: overlayOpacity }]}
+        style={[
+          StyleSheet.absoluteFillObject,
+          styles.overlayBg,
+          {
+            opacity: Animated.multiply(
+              overlayOpacity,
+              panY.interpolate({
+                inputRange: [0, 300],
+                outputRange: [1, 0.5],
+                extrapolate: 'clamp',
+              })
+            ),
+          },
+        ]}
         pointerEvents="none"
       />
       <TouchableOpacity
@@ -632,9 +685,28 @@ export function CardStack({
       <Animated.View
         style={[
           styles.stackContainer,
-          { transform: [{ scale: cardScale }], opacity: cardOpacity },
+          {
+            transform: [
+              { translateY: panY },
+              {
+                scale: Animated.multiply(
+                  cardScale,
+                  panY.interpolate({
+                    inputRange: [0, 300],
+                    outputRange: [1, 0.92],
+                    extrapolate: 'clamp',
+                  })
+                ),
+              },
+            ],
+            opacity: cardOpacity,
+          },
         ]}
+        {...panResponder.panHandlers}
       >
+        <View style={styles.dragHandle}>
+          <View style={styles.dragHandleBar} />
+        </View>
         <View style={[styles.stackCard, styles.stackCardThird]}>
           {renderCard(nextNextPost, false)}
         </View>
@@ -665,7 +737,6 @@ export function CardStack({
               opacity: swipeOpacity,
             },
           ]}
-          {...panResponder.panHandlers}
         >
           {renderCard(currentPost, true)}
         </Animated.View>
@@ -813,6 +884,20 @@ const styles = StyleSheet.create({
     height: CARD_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  dragHandle: {
+    position: 'absolute',
+    top: 8,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  dragHandleBar: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: theme.colors.textTertiary,
   },
   stackCard: {
     position: 'absolute',

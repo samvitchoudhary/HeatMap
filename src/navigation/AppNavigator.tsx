@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
   },
   indicatorContainer: {
     position: 'absolute',
-    bottom: 0,
+    top: 0,
     left: 0,
     right: 0,
     height: 3,
@@ -352,7 +352,7 @@ const styles = StyleSheet.create({
   indicator: {
     position: 'absolute',
     left: 0,
-    bottom: 0,
+    top: 0,
     height: 3,
     borderRadius: 1.5,
     backgroundColor: theme.colors.primary,
