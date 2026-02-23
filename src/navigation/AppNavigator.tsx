@@ -2,12 +2,8 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NotificationProvider, useNotifications } from '../lib/NotificationContext';
 import { FeedBadgeProvider, useFeedBadge } from '../lib/FeedBadgeContext';
-import {
-  createBottomTabNavigator,
-  BottomTabBar,
-  type BottomTabNavigationProp,
-} from '@react-navigation/bottom-tabs';
-import { View, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { View, TouchableOpacity, ActivityIndicator, StyleSheet, useWindowDimensions, Text, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
@@ -15,7 +11,6 @@ import { CardStackProvider } from '../lib/CardStackContext';
 import type { RootStackParamList, MainTabParamList, MapStackParamList, ProfileStackParamList } from './types';
 import type { Profile } from '../types';
 import { theme } from '../lib/theme';
-import { TabSwipeOverlay } from '../components/TabSwipeOverlay';
 
 const TAB_ICON_SIZE = 24;
 
@@ -30,17 +25,10 @@ function TabIcon({
   return (
     <View style={styles.tabIconWrap}>
       <Feather name={name} size={TAB_ICON_SIZE} color={color} />
-      {focused && <View style={styles.tabIndicator} />}
     </View>
   );
 }
 
-function AnimatedTabButton(
-  props: { children: React.ReactNode; onPress?: () => void; [key: string]: unknown }
-) {
-  const { children, onPress, ...rest } = props;
-  return <TouchableOpacity {...rest} onPress={onPress} activeOpacity={0.7}>{children}</TouchableOpacity>;
-}
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
 import { ProfileSetupScreen } from '../screens/ProfileSetupScreen';
@@ -54,7 +42,7 @@ import { GalleryScreen } from '../screens/GalleryScreen';
 import { FriendProfileScreen } from '../screens/FriendProfileScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<MainTabParamList>();
+const Tab = createMaterialTopTabNavigator<MainTabParamList>();
 const MapStack = createNativeStackNavigator<MapStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
 
@@ -130,53 +118,113 @@ function ProfileStackNavigator() {
   );
 }
 
-function CustomTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
+function CustomTabBar(props: {
+  state: { index: number; routes: { key: string; name: string }[] };
+  navigation: any;
+  descriptors: any;
+  position?: Animated.AnimatedNode;
+}) {
+  const { state, navigation, position } = props;
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const tabWidth = width / 4;
+  const { unreadCount } = useNotifications();
+  const { hasNewPosts } = useFeedBadge();
+
+  const tabConfig: { name: keyof MainTabParamList; icon: React.ComponentProps<typeof Feather>['name']; badge?: string | number }[] = [
+    { name: 'Map', icon: 'map' },
+    { name: 'Feed', icon: 'activity', badge: hasNewPosts ? '' : undefined },
+    { name: 'Notifications', icon: 'bell', badge: unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : undefined },
+    { name: 'Profile', icon: 'user' },
+  ];
+
+  const indicatorTranslateX =
+    position != null
+      ? Animated.multiply(position as Animated.Animated, tabWidth)
+      : state.index * tabWidth;
+
   return (
-    <View style={styles.tabBarContainer}>
-      <View style={styles.swipeOverlayContainer} pointerEvents="box-none">
-        <TabSwipeOverlay
-          navigation={props.navigation as unknown as BottomTabNavigationProp<MainTabParamList>}
-          state={props.state}
+    <View style={[styles.tabBarContainer, { paddingBottom: insets.bottom, height: 50 + insets.bottom }]}>
+      <View style={styles.tabBarRow}>
+        {state.routes.map((route, index) => {
+          const config = tabConfig[index];
+          const isFocused = state.index === index;
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name, (route as { params?: object }).params);
+            }
+          };
+          const badge = config?.name === 'Feed' && hasNewPosts
+            ? ''
+            : config?.name === 'Notifications' && unreadCount > 0
+            ? (unreadCount > 9 ? '9+' : unreadCount)
+            : undefined;
+          return (
+            <TouchableOpacity
+              key={route.key}
+              onPress={onPress}
+              activeOpacity={0.7}
+              style={styles.tabButton}
+            >
+              <TabIcon name={config?.icon ?? 'circle'} focused={isFocused} />
+              {badge !== undefined && (
+                <View
+                  style={[
+                    styles.badge,
+                    typeof badge === 'string' && badge === ''
+                      ? styles.badgeDot
+                      : undefined,
+                  ]}
+                >
+                  {badge !== '' && (
+                    <Text style={styles.badgeText}>{badge}</Text>
+                  )}
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <View style={styles.indicatorContainer}>
+        <Animated.View
+          style={[
+            styles.indicator,
+            {
+              width: tabWidth,
+              transform: [{ translateX: indicatorTranslateX }],
+            },
+          ]}
         />
       </View>
-      <BottomTabBar {...props} />
     </View>
   );
 }
 
 function MainTabs({ profile }: { profile: Profile }) {
   const insets = useSafeAreaInsets();
-  const { unreadCount } = useNotifications();
-  const { hasNewPosts } = useFeedBadge();
+
   return (
     <CardStackProvider>
       <Tab.Navigator
         tabBar={(props) => <CustomTabBar {...props} />}
+        tabBarPosition="bottom"
         screenOptions={{
-          headerShown: false,
-          tabBarStyle: {
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: theme.colors.background,
-            borderTopColor: theme.colors.borderLight,
-            borderTopWidth: 1,
-            height: 50 + insets.bottom,
-            elevation: 0,
-            shadowOpacity: 0,
-          },
+          tabBarShowLabel: false,
+          tabBarShowIcon: true,
           tabBarActiveTintColor: theme.colors.primary,
           tabBarInactiveTintColor: theme.colors.textTertiary,
-          tabBarShowLabel: false,
-          tabBarIconStyle: { marginBottom: 0 },
-          tabBarButton: (props) => <AnimatedTabButton {...props} />,
         }}
       >
         <Tab.Screen
           name="Map"
           options={{
             tabBarIcon: ({ focused }) => <TabIcon name="map" focused={focused} />,
+            swipeEnabled: false,
           }}
         >
           {({ route }) => (
@@ -188,20 +236,6 @@ function MainTabs({ profile }: { profile: Profile }) {
           component={FeedScreen}
           options={{
             tabBarIcon: ({ focused }) => <TabIcon name="activity" focused={focused} />,
-            tabBarBadge: hasNewPosts
-              ? ''
-              : undefined,
-            tabBarBadgeStyle: hasNewPosts
-              ? {
-                  backgroundColor: theme.colors.primary,
-                  minWidth: 8,
-                  maxWidth: 8,
-                  minHeight: 8,
-                  maxHeight: 8,
-                  borderRadius: 4,
-                  top: 2,
-                }
-              : undefined,
           }}
         />
         <Tab.Screen
@@ -209,14 +243,6 @@ function MainTabs({ profile }: { profile: Profile }) {
           component={NotificationsScreen}
           options={{
             tabBarIcon: ({ focused }) => <TabIcon name="bell" focused={focused} />,
-            tabBarBadge: unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : undefined,
-            tabBarBadgeStyle: {
-              backgroundColor: theme.colors.primary,
-              color: '#FFF',
-              fontSize: 11,
-              minWidth: 18,
-              height: 18,
-            },
           }}
         />
         <Tab.Screen
@@ -288,30 +314,71 @@ export function AppNavigator() {
   );
 }
 
-const TAB_BAR_HEIGHT = 50;
-
 const styles = StyleSheet.create({
   tabBarContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: theme.colors.background,
+    borderTopColor: theme.colors.borderLight,
+    borderTopWidth: 1,
+  },
+  tabBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    height: 50,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
   },
   tabIconWrap: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabIndicator: {
+  indicatorContainer: {
     position: 'absolute',
-    bottom: -8,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.primary,
-  },
-  swipeOverlayContainer: {
-    position: 'absolute',
-    top: -10000,
+    bottom: 0,
     left: 0,
     right: 0,
-    height: 10000 + TAB_BAR_HEIGHT,
+    height: 3,
+    overflow: 'hidden',
+  },
+  indicator: {
+    position: 'absolute',
+    left: 0,
+    bottom: 0,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: theme.colors.primary,
+  },
+  badge: {
+    position: 'absolute',
+    top: 4,
+    right: '50%',
+    marginRight: -20,
+    backgroundColor: theme.colors.primary,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeDot: {
+    minWidth: 8,
+    maxWidth: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: -16,
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 11,
+    fontWeight: '600',
   },
   loading: {
     flex: 1,
