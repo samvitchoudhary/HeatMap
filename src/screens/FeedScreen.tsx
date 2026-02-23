@@ -70,12 +70,24 @@ export function FeedScreen() {
         friendships?.map((f) =>
           f.requester_id === userId ? f.addressee_id : f.requester_id
         ) ?? [];
-      const allowedIds = [userId, ...friendIds];
+
+      if (friendIds.length === 0) {
+        setPosts([]);
+        setHasMore(false);
+        setReactionsByPostId({});
+        setUserReactionsByPostId({});
+        setCommentCountByPostId({});
+        setLatestCommentByPostId({});
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
 
       const { data: postsData, error } = await supabase
         .from('posts')
         .select('*, profiles:user_id(username, display_name, avatar_url)')
-        .in('user_id', allowedIds)
+        .neq('user_id', userId)
+        .in('user_id', friendIds)
         .order('created_at', { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
 

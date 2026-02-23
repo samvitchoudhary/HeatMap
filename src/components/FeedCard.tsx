@@ -195,7 +195,7 @@ export function FeedCard({
     onCommentPosted?.(newCount, newLatest);
   }, [post.id, commentCount, onCommentPosted]);
 
-  const displayName = post.profiles?.display_name ?? 'Unknown';
+  const displayName = post.user_id === userId ? 'You' : (post.profiles?.display_name ?? 'Unknown');
   const venueName = post.venue_name ?? 'Unknown location';
 
   const handleDeletePress = useCallback(() => {

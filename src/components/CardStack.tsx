@@ -477,7 +477,7 @@ export function CardStack({
               </TouchableOpacity>
             ) : (
               <Text style={styles.infoDisplayName} numberOfLines={1}>
-                {post.profiles?.display_name ?? 'Unknown'}
+                {post.user_id === currentUserId ? 'You' : (post.profiles?.display_name ?? 'Unknown')}
               </Text>
             )}
             <View style={styles.infoVenueRow}>

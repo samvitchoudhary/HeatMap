@@ -47,23 +47,24 @@ type CommentWithProfile = {
   } | null;
 };
 
-type ReplyTarget = { id: string; username: string };
+type ReplyTarget = { id: string; username: string; parentUserId: string };
 
 function buildThreadedComments(comments: CommentWithProfile[]): Array<
   | { type: 'top'; comment: CommentWithProfile }
-  | { type: 'reply'; comment: CommentWithProfile; parentUsername: string }
+  | { type: 'reply'; comment: CommentWithProfile; parentUsername: string; parentUserId: string }
 > {
   const topLevel = comments
     .filter((c) => !c.parent_id)
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  const repliesByParent: Record<string, Array<{ comment: CommentWithProfile; parentUsername: string }>> = {};
+  const repliesByParent: Record<string, Array<{ comment: CommentWithProfile; parentUsername: string; parentUserId: string }>> = {};
 
   for (const c of comments) {
     if (c.parent_id) {
       const parent = comments.find((p) => p.id === c.parent_id);
       const parentUsername = parent?.profiles?.username ?? 'unknown';
+      const parentUserId = parent?.user_id ?? '';
       if (!repliesByParent[c.parent_id]) repliesByParent[c.parent_id] = [];
-      repliesByParent[c.parent_id].push({ comment: c, parentUsername });
+      repliesByParent[c.parent_id].push({ comment: c, parentUsername, parentUserId });
     }
   }
   for (const pid of Object.keys(repliesByParent)) {
@@ -74,12 +75,12 @@ function buildThreadedComments(comments: CommentWithProfile[]): Array<
 
   const result: Array<
     | { type: 'top'; comment: CommentWithProfile }
-    | { type: 'reply'; comment: CommentWithProfile; parentUsername: string }
+    | { type: 'reply'; comment: CommentWithProfile; parentUsername: string; parentUserId: string }
   > = [];
   for (const comment of topLevel) {
     result.push({ type: 'top', comment });
-    for (const { comment: reply, parentUsername } of repliesByParent[comment.id] ?? []) {
-      result.push({ type: 'reply', comment: reply, parentUsername });
+    for (const { comment: reply, parentUsername, parentUserId } of repliesByParent[comment.id] ?? []) {
+      result.push({ type: 'reply', comment: reply, parentUsername, parentUserId });
     }
   }
   return result;
@@ -232,7 +233,7 @@ export function FeedCommentModal({
                       </View>
                       <View style={styles.commentContent}>
                         <Text style={styles.commenterName}>
-                          {item.comment.profiles?.display_name ?? 'Unknown'}
+                          {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Unknown')}
                         </Text>
                         <Text style={styles.commentText}>{item.comment.content}</Text>
                         <Text style={styles.commentTime}>{timeAgo(item.comment.created_at)}</Text>
@@ -241,6 +242,7 @@ export function FeedCommentModal({
                             setReplyTarget({
                               id: item.comment.id,
                               username: item.comment.profiles?.username ?? 'unknown',
+                              parentUserId: item.comment.user_id,
                             })
                           }
                           activeOpacity={0.7}
@@ -256,9 +258,11 @@ export function FeedCommentModal({
                         <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={24} />
                       </View>
                       <View style={styles.commentContent}>
-                        <Text style={styles.replyingTo}>replying to @{item.parentUsername}</Text>
+                        <Text style={styles.replyingTo}>
+                          replying to {item.parentUserId === userId ? 'You' : `@${item.parentUsername}`}
+                        </Text>
                         <Text style={styles.commenterNameReply}>
-                          {item.comment.profiles?.display_name ?? 'Unknown'}
+                          {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Unknown')}
                         </Text>
                         <Text style={styles.commentTextReply}>{item.comment.content}</Text>
                         <Text style={styles.commentTime}>{timeAgo(item.comment.created_at)}</Text>
@@ -272,7 +276,7 @@ export function FeedCommentModal({
             {replyTarget && (
               <View style={styles.replyBanner}>
                 <Text style={styles.replyBannerText} numberOfLines={1}>
-                  Replying to @{replyTarget.username}
+                  Replying to {replyTarget.parentUserId === userId ? 'You' : `@${replyTarget.username}`}
                 </Text>
                 <TouchableOpacity
                   onPress={() => setReplyTarget(null)}
