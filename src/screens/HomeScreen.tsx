@@ -720,7 +720,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
                   {
                     translateY: fabCameraTranslateY.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [0, -130],
+                      outputRange: [0, -128],
                     }),
                   },
                   { scale: fabCameraScale },
@@ -747,7 +747,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
                   {
                     translateY: fabGalleryTranslateY.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [0, -65],
+                      outputRange: [0, -68],
                     }),
                   },
                   { scale: fabGalleryScale },
@@ -762,7 +762,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
               onPress={handleFabGallery}
               activeOpacity={0.8}
             >
-              <Feather name="image" size={22} color={theme.colors.secondary} />
+              <Feather name="image" size={22} color={theme.colors.primary} />
             </TouchableOpacity>
           </Animated.View>
 
@@ -1001,7 +1001,9 @@ const styles = StyleSheet.create({
   fabSubButtonWrap: {
     position: 'absolute',
     right: 0,
-    bottom: 56,
+    bottom: 0,
+    margin: 0,
+    padding: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1009,6 +1011,8 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
+    margin: 0,
+    padding: 0,
     backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',

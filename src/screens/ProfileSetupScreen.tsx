@@ -63,6 +63,7 @@ export function ProfileSetupScreen() {
         id: user.id,
         username: trimmedUsername,
         display_name: trimmedDisplayName,
+        email: user.email?.toLowerCase().trim() ?? null,
       });
       if (error) throw error;
       await refreshProfile();

@@ -24,13 +24,14 @@ export function LoginScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<LoginNavigationProp>();
   const { showToast } = useToast();
-  const [email, setEmail] = useState('');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function handleLogin() {
-    if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email.');
+    const input = emailOrUsername.trim();
+    if (!input) {
+      Alert.alert('Error', 'Please enter your email or username.');
       return;
     }
 
@@ -41,15 +42,33 @@ export function LoginScreen() {
 
     setLoading(true);
     try {
+      let emailToUse = input;
+
+      if (!input.includes('@')) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('username', input.toLowerCase())
+          .single();
+
+        if (!profile?.email) {
+          showToast('Invalid username or password.');
+          setLoading(false);
+          return;
+        }
+        emailToUse = profile.email;
+      } else {
+        emailToUse = input.toLowerCase();
+      }
+
       const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: emailToUse,
         password,
       });
       if (error) throw error;
       // Auth state change will handle navigation
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'An error occurred during log in.';
-      showToast(message);
+      showToast('Invalid username or password.');
     } finally {
       setLoading(false);
     }
@@ -76,9 +95,9 @@ export function LoginScreen() {
         <StyledTextInput
           auth
           style={styles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
+          placeholder="Email or username"
+          value={emailOrUsername}
+          onChangeText={setEmailOrUsername}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"

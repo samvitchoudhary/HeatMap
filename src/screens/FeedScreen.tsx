@@ -14,6 +14,7 @@ import type { RootStackParamList } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
+import { useFeedBadge } from '../lib/FeedBadgeContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
@@ -29,6 +30,7 @@ export function FeedScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<FeedScreenNav>();
   const { profile } = useAuth();
+  const { markFeedSeen, lastSeenAt } = useFeedBadge();
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [reactionsByPostId, setReactionsByPostId] = useState<FeedReactionCounts>({});
   const [userReactionsByPostId, setUserReactionsByPostId] = useState<FeedUserReactions>({});
@@ -165,6 +167,14 @@ export function FeedScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      return () => {
+        markFeedSeen();
+      };
+    }, [markFeedSeen])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
       const isInitial = !hasInitiallyFetched.current;
       hasInitiallyFetched.current = true;
       if (isInitial) {
@@ -240,6 +250,11 @@ export function FeedScreen() {
           renderItem={({ item }) => (
             <FeedCard
               post={item}
+              isNew={
+                !!lastSeenAt &&
+                item.user_id !== profile?.id &&
+                new Date(item.created_at) > new Date(lastSeenAt)
+              }
               reactionCounts={reactionsByPostId[item.id] ?? {}}
               userReaction={userReactionsByPostId[item.id] ?? null}
               commentCount={commentCountByPostId[item.id] ?? 0}

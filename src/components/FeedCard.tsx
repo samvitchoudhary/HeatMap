@@ -51,6 +51,7 @@ export type FeedLatestComment = {
 
 type FeedCardProps = {
   post: PostWithProfile;
+  isNew?: boolean;
   reactionCounts: Record<string, number>;
   userReaction: string | null;
   commentCount: number;
@@ -66,6 +67,7 @@ type FeedCardProps = {
 
 export function FeedCard({
   post,
+  isNew,
   reactionCounts: initialReactionCounts,
   userReaction: initialUserReaction,
   commentCount,
@@ -219,6 +221,9 @@ export function FeedCard({
         {({ onCommentPress, commentCount: sheetCommentCount }) => (
           <>
             <View style={styles.photoSection}>
+              {isNew && (
+                <View style={styles.newPostDot} />
+              )}
               {!imageLoaded && !imageError && (
                 <View style={styles.skeletonWrap}>
                   <Skeleton width="100%" height="100%" borderRadius={0} />
@@ -330,6 +335,18 @@ const styles = StyleSheet.create({
     marginVertical: CARD_MARGIN_V,
     borderWidth: 0,
     ...theme.shadows.card,
+  },
+  newPostDot: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: theme.colors.primary,
+    borderWidth: 2,
+    borderColor: '#FFF',
+    zIndex: 1,
   },
   photoSection: {
     position: 'relative',

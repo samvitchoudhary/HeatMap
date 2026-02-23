@@ -1,6 +1,7 @@
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NotificationProvider, useNotifications } from '../lib/NotificationContext';
+import { FeedBadgeProvider, useFeedBadge } from '../lib/FeedBadgeContext';
 import {
   createBottomTabNavigator,
   BottomTabBar,
@@ -146,6 +147,7 @@ function CustomTabBar(props: React.ComponentProps<typeof BottomTabBar>) {
 function MainTabs({ profile }: { profile: Profile }) {
   const insets = useSafeAreaInsets();
   const { unreadCount } = useNotifications();
+  const { hasNewPosts } = useFeedBadge();
   return (
     <CardStackProvider>
       <Tab.Navigator
@@ -186,6 +188,20 @@ function MainTabs({ profile }: { profile: Profile }) {
           component={FeedScreen}
           options={{
             tabBarIcon: ({ focused }) => <TabIcon name="activity" focused={focused} />,
+            tabBarBadge: hasNewPosts
+              ? ''
+              : undefined,
+            tabBarBadgeStyle: hasNewPosts
+              ? {
+                  backgroundColor: theme.colors.primary,
+                  minWidth: 8,
+                  maxWidth: 8,
+                  minHeight: 8,
+                  maxHeight: 8,
+                  borderRadius: 4,
+                  top: 2,
+                }
+              : undefined,
           }}
         />
         <Tab.Screen
@@ -257,7 +273,9 @@ export function AppNavigator() {
       <Stack.Screen name="MainTabs">
         {() => (
           <NotificationProvider>
-            <MainTabs profile={profile as Profile} />
+            <FeedBadgeProvider>
+              <MainTabs profile={profile as Profile} />
+            </FeedBadgeProvider>
           </NotificationProvider>
         )}
       </Stack.Screen>
