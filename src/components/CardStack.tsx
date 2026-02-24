@@ -20,6 +20,7 @@ import * as Haptics from 'expo-haptics';
 import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../lib/theme';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
@@ -217,11 +218,13 @@ export function CardStack({
   onProfilePress,
 }: CardStackProps) {
   const { session } = useAuth();
+  const insets = useSafeAreaInsets();
   const safeInitial = Math.min(
     Math.max(0, initialIndex ?? 0),
     Math.max(0, posts.length - 1)
   );
   const [currentIndex, setCurrentIndex] = useState(safeInitial);
+  const [showEndMessage, setShowEndMessage] = useState(false);
   const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
   const [userReaction, setUserReaction] = useState<string | null>(null);
   const [imageError, setImageError] = useState<Record<string, boolean>>({});
@@ -232,6 +235,7 @@ export function CardStack({
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const panY = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
+  const endMessageOpacity = useRef(new Animated.Value(0)).current;
   const activeDotAnimated = useRef(new Animated.Value(safeInitial)).current;
   const gestureModeRef = useRef<'horizontal' | 'dismiss' | null>(null);
   const currentIndexRef = useRef(0);
@@ -611,6 +615,17 @@ export function CardStack({
           });
         } else if ((swipedLeft && isLast) || (swipedRight && isFirst)) {
           triggerShake();
+          if (swipedLeft && isLast) {
+            setShowEndMessage(true);
+            endMessageOpacity.setValue(1);
+            setTimeout(() => {
+              Animated.timing(endMessageOpacity, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true,
+              }).start(() => setShowEndMessage(false));
+            }, 1500);
+          }
           Animated.spring(pan, {
             toValue: 0,
             friction: 8,
@@ -815,6 +830,19 @@ export function CardStack({
         </View>
       </Animated.View>
 
+      {showEndMessage && (
+        <Animated.View
+          style={[
+            styles.endMessage,
+            {
+              bottom: 60 + (insets?.bottom ?? 0),
+              opacity: endMessageOpacity,
+            },
+          ]}
+        >
+          <Text style={styles.endMessageText}>You've seen all posts here</Text>
+        </Animated.View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -1021,5 +1049,18 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 3.5,
     marginHorizontal: 3,
+  },
+  endMessage: {
+    position: 'absolute',
+    alignSelf: 'center',
+    backgroundColor: theme.colors.text,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  endMessageText: {
+    color: theme.colors.background,
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

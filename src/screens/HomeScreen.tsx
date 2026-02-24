@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,7 @@ import { useCardStack } from '../lib/CardStackContext';
 import type { MapStackParamList } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
 import { LIGHT_MAP_STYLE, HEATMAP_GRADIENT } from '../lib/mapConfig';
-import MapView, { Heatmap, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Heatmap, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
@@ -71,6 +71,48 @@ function getDistanceMeters(
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+type Cluster = {
+  latitude: number;
+  longitude: number;
+  count: number;
+  posts: PostWithProfile[];
+};
+
+function clusterPosts(posts: PostWithProfile[], radiusMeters: number = 100): Cluster[] {
+  const clusters: Cluster[] = [];
+
+  for (const post of posts) {
+    let added = false;
+    for (const cluster of clusters) {
+      const dist = getDistanceMeters(
+        post.latitude,
+        post.longitude,
+        cluster.latitude,
+        cluster.longitude
+      );
+      if (dist < radiusMeters) {
+        cluster.posts.push(post);
+        cluster.count++;
+        cluster.latitude =
+          cluster.posts.reduce((sum, p) => sum + p.latitude, 0) / cluster.count;
+        cluster.longitude =
+          cluster.posts.reduce((sum, p) => sum + p.longitude, 0) / cluster.count;
+        added = true;
+        break;
+      }
+    }
+    if (!added) {
+      clusters.push({
+        latitude: post.latitude,
+        longitude: post.longitude,
+        count: 1,
+        posts: [post],
+      });
+    }
+  }
+  return clusters;
 }
 
 export function HomeScreen({ profile, route }: HomeScreenProps) {
@@ -320,6 +362,18 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     longitude: post.longitude,
     weight: 1,
   }));
+
+  const clusters = useMemo(() => clusterPosts(posts, 100), [posts]);
+  const showBadges = !currentRegion || (currentRegion.latitudeDelta ?? 1) <= 0.5;
+
+  function handleClusterPress(cluster: Cluster) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const sorted = [...cluster.posts].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    setSelectedInitialIndex(0);
+    setSelectedPosts(sorted);
+  }
 
   if (__DEV__) {
     console.log('Heatmap points:', heatmapPoints.length);
@@ -583,6 +637,24 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
             gradient={HEATMAP_GRADIENT}
           />
         )}
+        {showBadges &&
+          clusters.map((cluster, i) => (
+            <Marker
+              key={`cluster-${i}`}
+              coordinate={{ latitude: cluster.latitude, longitude: cluster.longitude }}
+              onPress={() => handleClusterPress(cluster)}
+              anchor={{ x: 0.5, y: 0.5 }}
+            >
+              <View
+                style={[
+                  styles.clusterBadge,
+                  cluster.count > 9 ? styles.clusterBadgeLarge : undefined,
+                ]}
+              >
+                <Text style={styles.clusterBadgeText}>{cluster.count}</Text>
+              </View>
+            </Marker>
+          ))}
       </MapView>
 
       {showSearchBar && (
@@ -843,6 +915,31 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
     width: '100%',
+  },
+  clusterBadge: {
+    backgroundColor: theme.colors.primary,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  clusterBadgeLarge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+  },
+  clusterBadgeText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   searchBarContainer: {
     position: 'absolute',
