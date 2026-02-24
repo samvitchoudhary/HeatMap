@@ -578,7 +578,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         {heatmapPoints.length > 0 && (
           <Heatmap
             points={heatmapPoints}
-            radius={80}
+            radius={40}
             opacity={0.8}
             gradient={HEATMAP_GRADIENT}
           />

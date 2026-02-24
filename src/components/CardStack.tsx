@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -20,7 +21,6 @@ import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
-import { SmoothImage } from './SmoothImage';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 type CardStackProps = {
@@ -33,6 +33,52 @@ type CardStackProps = {
   onPostDeleted?: (postId: string) => void;
   onProfilePress?: (userId: string) => void;
 };
+
+function DotIndicator({
+  total,
+  current,
+  activeDotAnimated,
+}: {
+  total: number;
+  current: number;
+  activeDotAnimated: Animated.Value;
+}) {
+  if (total <= 1) return null;
+
+  const dotCount = Math.min(total, 7);
+  const startIndex = total > 7 ? Math.max(0, Math.min(current - 3, total - 7)) : 0;
+  const activeDotIndex = total > 7 ? current - startIndex : current;
+
+  return (
+    <View style={styles.dotIndicatorRow}>
+      {Array.from({ length: dotCount }).map((_, i) => {
+        const dotScale = activeDotAnimated.interpolate({
+          inputRange: [i - 0.5, i, i + 0.5],
+          outputRange: [0.7, 1, 0.7],
+          extrapolate: 'clamp',
+        });
+        const dotOpacity = activeDotAnimated.interpolate({
+          inputRange: [i - 0.5, i, i + 0.5],
+          outputRange: [0.4, 1, 0.4],
+          extrapolate: 'clamp',
+        });
+        return (
+          <Animated.View
+            key={i}
+            style={[
+              styles.dotIndicatorDot,
+              {
+                transform: [{ scale: dotScale }],
+                opacity: dotOpacity,
+                backgroundColor: theme.colors.primary,
+              },
+            ]}
+          />
+        );
+      })}
+    </View>
+  );
+}
 
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -49,7 +95,7 @@ function timeAgo(dateString: string): string {
   return `${months}mo ago`;
 }
 
-const SWIPE_THRESHOLD = 120;
+const SWIPE_THRESHOLD = 80;
 const BOTTOM_BAR_HEIGHT = 50;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = SCREEN_WIDTH * 0.9;
@@ -64,7 +110,7 @@ type CardImageStyles = {
   cardImageErrorText: object;
 };
 
-function CardImage({
+const CardImage = React.memo(function CardImage({
   post,
   imageError,
   setImageError,
@@ -129,7 +175,7 @@ function CardImage({
   }
   const imageContent = (
     <View style={s.cardImage}>
-      <SmoothImage
+      <Image
         source={{ uri: post.image_url }}
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
@@ -159,7 +205,7 @@ function CardImage({
       )}
     </View>
   );
-}
+}, (prev, next) => prev.post.id === next.post.id && prev.imageError[prev.post.id] === next.imageError[next.post.id]);
 
 export function CardStack({
   posts,
@@ -179,21 +225,19 @@ export function CardStack({
   const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
   const [userReaction, setUserReaction] = useState<string | null>(null);
   const [imageError, setImageError] = useState<Record<string, boolean>>({});
-  const translateX = useRef(new Animated.Value(0)).current;
-  const secondTranslateY = useRef(new Animated.Value(8)).current;
-  const secondScale = useRef(new Animated.Value(0.97)).current;
-  const secondOpacity = useRef(new Animated.Value(0.9)).current;
+  const pan = useRef(new Animated.Value(0)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const cardTranslateY = useRef(new Animated.Value(80)).current;
   const cardScale = useRef(new Animated.Value(0.9)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const panY = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const activeDotAnimated = useRef(new Animated.Value(safeInitial)).current;
   const gestureModeRef = useRef<'horizontal' | 'dismiss' | null>(null);
   const currentIndexRef = useRef(0);
   const postsLengthRef = useRef(0);
   const postsRef = useRef<PostWithProfile[]>([]);
   const flippedByPostIdRef = useRef<Record<string, boolean>>({});
-  const swipeHapticFired = useRef(false);
   currentIndexRef.current = currentIndex;
   postsLengthRef.current = posts.length;
   postsRef.current = posts;
@@ -328,6 +372,31 @@ export function CardStack({
     }
   }, [initialFlippedPostId, onInitialFlippedConsumed]);
 
+  useEffect(() => {
+    if (posts?.length > 0) {
+      posts.forEach((post) => {
+        if (post?.image_url) {
+          Image.prefetch(post.image_url).catch(() => {});
+        }
+      });
+    }
+  }, [posts]);
+
+  useEffect(() => {
+    const len = posts.length;
+    if (len <= 1) return;
+    const dotCount = Math.min(7, len);
+    const startIndex = len > 7 ? Math.max(0, Math.min(currentIndex - 3, len - 7)) : 0;
+    const activePosition = len <= 7 ? currentIndex : currentIndex - startIndex;
+    const clampedActive = Math.max(0, Math.min(activePosition, dotCount - 1));
+    Animated.spring(activeDotAnimated, {
+      toValue: clampedActive,
+      friction: 8,
+      tension: 100,
+      useNativeDriver: true,
+    }).start();
+  }, [currentIndex, posts.length, activeDotAnimated]);
+
   const handleDoubleTapHeart = useCallback(
     async () => {
       const post = posts[currentIndex];
@@ -431,21 +500,14 @@ export function CardStack({
           return;
         }
         const shouldNotify = post.user_id !== userId;
-        console.log('[CardStack] Reaction notification check:', {
-          postUserId: post.user_id,
-          currentUserId: userId,
-          shouldNotify,
-        });
         if (shouldNotify) {
-          console.log('About to create notification for reaction');
-          const { data, error } = await supabase.from('notifications').insert({
+          await supabase.from('notifications').insert({
             user_id: post.user_id,
             type: 'reaction',
             from_user_id: userId,
             post_id: post.id,
             emoji,
-          }).select();
-          console.log('Notification result:', { data, error });
+          });
         }
       }
     },
@@ -456,42 +518,50 @@ export function CardStack({
     flippedByPostIdRef.current[postId] = flipped;
   }, []);
 
+  const triggerShake = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    shakeAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -10, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 6, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: -6, duration: 50, useNativeDriver: true }),
+      Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true }),
+    ]).start();
+  }, [shakeAnim]);
+
+  const VELOCITY_THRESHOLD = 0.3;
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
+      onMoveShouldSetPanResponder: (_, gesture) => {
         const currentPost = postsRef.current[currentIndexRef.current];
         if (currentPost && flippedByPostIdRef.current[currentPost.id]) return false;
-        const { dx, dy } = gestureState;
+        const { dx, dy } = gesture;
         if (dy > 10 && Math.abs(dy) > Math.abs(dx)) {
           gestureModeRef.current = 'dismiss';
           return true;
         }
-        if (Math.abs(dx) > 5 && Math.abs(dx) > Math.abs(dy)) {
+        if (postsLengthRef.current > 1 && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
           gestureModeRef.current = 'horizontal';
           return true;
         }
         return false;
       },
-      onPanResponderMove: (_evt, gestureState) => {
+      onPanResponderMove: (_, gesture) => {
         const mode = gestureModeRef.current;
         if (mode === 'dismiss') {
-          const { dy } = gestureState;
-          if (dy > 0) panY.setValue(dy);
+          if (gesture.dy > 0) panY.setValue(gesture.dy);
         } else if (mode === 'horizontal') {
-          const { dx } = gestureState;
-          translateX.setValue(dx);
-          if (Math.abs(dx) > SWIPE_THRESHOLD && !swipeHapticFired.current) {
-            swipeHapticFired.current = true;
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }
+          pan.setValue(gesture.dx);
         }
       },
-      onPanResponderRelease: (_, gestureState) => {
+      onPanResponderRelease: (_, gesture) => {
         const mode = gestureModeRef.current;
         gestureModeRef.current = null;
         if (mode === 'dismiss') {
-          const { dy, vy } = gestureState;
+          const { dy, vy } = gesture;
           if (dy > 150 || vy > 0.5) {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             Animated.timing(panY, {
@@ -512,55 +582,47 @@ export function CardStack({
           }
           return;
         }
-        swipeHapticFired.current = false;
-        const dx = gestureState.dx;
-        if (Math.abs(dx) > SWIPE_THRESHOLD) {
-          const toValue = dx > 0 ? SCREEN_WIDTH : -SCREEN_WIDTH;
-          const len = postsLengthRef.current;
-          if (len === 0) return;
-          let next: number;
-          if (dx > 0) {
-            next = currentIndexRef.current === 0 ? len - 1 : currentIndexRef.current - 1;
-          } else {
-            next = currentIndexRef.current === len - 1 ? 0 : currentIndexRef.current + 1;
-          }
-          Animated.parallel([
-            Animated.timing(translateX, {
-              toValue,
-              duration: 220,
-              useNativeDriver: true,
-            }),
-            Animated.spring(secondTranslateY, {
-              toValue: 0,
-              useNativeDriver: true,
-              tension: 80,
-              friction: 12,
-            }),
-            Animated.spring(secondScale, {
-              toValue: 1,
-              useNativeDriver: true,
-              tension: 80,
-              friction: 12,
-            }),
-            Animated.spring(secondOpacity, {
-              toValue: 1,
-              useNativeDriver: true,
-              tension: 80,
-              friction: 12,
-            }),
-          ]).start(() => {
-            secondTranslateY.setValue(8);
-            secondScale.setValue(0.97);
-            secondOpacity.setValue(0.9);
-            translateX.setValue(0); // Reset before setCurrentIndex to prevent flash
-            setCurrentIndex(next);
-          });
-        } else {
-          Animated.spring(translateX, {
-            toValue: 0,
+        const len = postsLengthRef.current;
+        if (len === 0) return;
+        const isFirst = currentIndexRef.current === 0;
+        const isLast = currentIndexRef.current === len - 1;
+        const swipedLeft = gesture.dx < -SWIPE_THRESHOLD || gesture.vx < -VELOCITY_THRESHOLD;
+        const swipedRight = gesture.dx > SWIPE_THRESHOLD || gesture.vx > VELOCITY_THRESHOLD;
+
+        if (swipedLeft && !isLast) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Animated.timing(pan, {
+            toValue: -400,
+            duration: 200,
             useNativeDriver: true,
-            tension: 65,
-            friction: 10,
+          }).start(() => {
+            setCurrentIndex((prev) => prev + 1);
+            pan.setValue(0);
+          });
+        } else if (swipedRight && !isFirst) {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          Animated.timing(pan, {
+            toValue: 400,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            setCurrentIndex((prev) => prev - 1);
+            pan.setValue(0);
+          });
+        } else if ((swipedLeft && isLast) || (swipedRight && isFirst)) {
+          triggerShake();
+          Animated.spring(pan, {
+            toValue: 0,
+            friction: 8,
+            tension: 100,
+            useNativeDriver: true,
+          }).start();
+        } else {
+          Animated.spring(pan, {
+            toValue: 0,
+            friction: 8,
+            tension: 80,
+            useNativeDriver: true,
           }).start();
         }
       },
@@ -570,26 +632,6 @@ export function CardStack({
   if (posts.length === 0) return null;
 
   const len = posts.length;
-  const getWrappedIndex = (offset: number) => ((currentIndex + offset) % len + len) % len;
-
-  const nextIndex = getWrappedIndex(1);
-  const nextNextIndex = getWrappedIndex(2);
-
-  const currentPost = posts[currentIndex];
-  const nextPost = posts[nextIndex];
-  const nextNextPost = posts[nextNextIndex];
-
-  const rotate = translateX.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: ['-10deg', '0deg', '10deg'],
-    extrapolate: 'clamp',
-  });
-  const swipeOpacity = translateX.interpolate({
-    inputRange: [-SWIPE_THRESHOLD, 0, SWIPE_THRESHOLD],
-    outputRange: [0.7, 1, 0.7],
-    extrapolate: 'clamp',
-  });
-
   const currentUserId = session?.user?.id;
 
   const renderCard = (post: PostWithProfile, isCurrent: boolean) => (
@@ -659,6 +701,7 @@ export function CardStack({
             ) : null}
             <Text style={styles.infoTimestamp}>{timeAgo(post.created_at)}</Text>
           </View>
+          {isCurrent && <DotIndicator total={len} current={currentIndex} activeDotAnimated={activeDotAnimated} />}
           <View style={styles.bottomBar}>
             <View style={styles.reactionsSection}>
               <ReactionBar
@@ -742,44 +785,36 @@ export function CardStack({
         <View style={styles.dragHandle}>
           <View style={styles.dragHandleBar} />
         </View>
-        <View style={[styles.stackCard, styles.stackCardThird]}>
-          {renderCard(nextNextPost, false)}
+        <View style={styles.cardsWrapper}>
+          {posts.map((post, index) => {
+            if (Math.abs(index - currentIndex) > 1) return null;
+            const isCurrent = index === currentIndex;
+            return (
+              <Animated.View
+                key={post.id}
+                style={[
+                  styles.stackCard,
+                  styles.stackCardTop,
+                  {
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: isCurrent ? 3 : 1,
+                    opacity: isCurrent ? 1 : 0,
+                    transform: isCurrent ? [{ translateX: Animated.add(pan, shakeAnim) }] : [],
+                  },
+                ]}
+                pointerEvents={isCurrent ? 'auto' : 'none'}
+              >
+                {renderCard(post, isCurrent)}
+              </Animated.View>
+            );
+          })}
         </View>
-        <Animated.View
-          style={[
-            styles.stackCard,
-            styles.stackCardSecond,
-            {
-              transform: [
-                { scale: secondScale },
-                { translateY: secondTranslateY },
-              ],
-              opacity: secondOpacity,
-            },
-          ]}
-        >
-          {renderCard(nextPost, false)}
-        </Animated.View>
-        <Animated.View
-          style={[
-            styles.stackCard,
-            styles.stackCardTop,
-            {
-              transform: [
-                { translateX },
-                { rotate },
-              ],
-              opacity: swipeOpacity,
-            },
-          ]}
-        >
-          {renderCard(currentPost, true)}
-        </Animated.View>
       </Animated.View>
 
-      <Text style={styles.indicator}>
-        {currentIndex + 1} of {posts.length}
-      </Text>
     </KeyboardAvoidingView>
   );
 }
@@ -913,6 +948,12 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
   },
+  cardsWrapper: {
+    position: 'relative',
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
+    overflow: 'hidden',
+  },
   stackContainer: {
     position: 'relative',
     width: CARD_WIDTH,
@@ -967,5 +1008,18 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.xs,
     fontWeight: '400',
     color: theme.colors.textTertiary,
+  },
+  dotIndicatorRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 6,
+    flexShrink: 0,
+  },
+  dotIndicatorDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    marginHorizontal: 3,
   },
 });

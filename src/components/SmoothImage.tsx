@@ -2,6 +2,8 @@ import React, { useRef } from 'react';
 import { Animated, View, StyleSheet, ImageProps } from 'react-native';
 import { theme } from '../lib/theme';
 
+const CACHED_LOAD_THRESHOLD_MS = 50;
+
 interface SmoothImageProps extends Omit<ImageProps, 'onLoad'> {
   style?: ImageProps['style'];
   placeholderColor?: string;
@@ -18,13 +20,20 @@ export const SmoothImage: React.FC<SmoothImageProps> = ({
   ...props
 }) => {
   const opacity = useRef(new Animated.Value(0)).current;
+  const mountTime = useRef(Date.now()).current;
 
   const handleLoad = (e: any) => {
-    Animated.timing(opacity, {
-      toValue: 1,
-      duration: fadeDuration,
-      useNativeDriver: true,
-    }).start();
+    const loadTime = Date.now() - mountTime;
+    const likelyCached = loadTime < CACHED_LOAD_THRESHOLD_MS;
+    if (likelyCached) {
+      opacity.setValue(1);
+    } else {
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: fadeDuration,
+        useNativeDriver: true,
+      }).start();
+    }
     onLoad?.(e);
   };
 

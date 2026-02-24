@@ -225,6 +225,7 @@ function MainTabs({ profile }: { profile: Profile }) {
           name="Map"
           options={{
             tabBarIcon: ({ focused }) => <TabIcon name="map" focused={focused} />,
+            // Disable swiping only when on Map tab (page 0); user must tap tab icons to navigate away
             swipeEnabled: false,
           }}
         >

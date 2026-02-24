@@ -12,7 +12,7 @@ export const LIGHT_MAP_STYLE = [
 ];
 
 export const HEATMAP_GRADIENT = {
-  colors: ['rgba(255, 77, 106, 0.15)', 'rgba(255, 77, 106, 0.4)', 'rgba(255, 77, 106, 0.7)', 'rgba(255, 59, 48, 1.0)'],
-  startPoints: [0.1, 0.3, 0.6, 1.0],
+  colors: ['rgba(255, 77, 106, 0.2)', 'rgba(255, 77, 106, 0.5)', 'rgba(255, 77, 106, 0.8)', 'rgba(255, 59, 48, 1.0)'],
+  startPoints: [0.01, 0.05, 0.1, 0.3],
   colorMapSize: 256,
 };
