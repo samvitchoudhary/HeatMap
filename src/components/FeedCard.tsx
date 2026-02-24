@@ -61,6 +61,7 @@ type FeedCardProps = {
   onVenuePress?: (latitude: number, longitude: number) => void;
   onProfilePress?: (userId: string) => void;
   onDeletePost?: (post: PostWithProfile) => void;
+  onExpandPhoto?: (imageUrl: string) => void;
   isFadingOut?: boolean;
   onFadeComplete?: (postId: string) => void;
 };
@@ -77,6 +78,7 @@ export function FeedCard({
   onVenuePress,
   onProfilePress,
   onDeletePost,
+  onExpandPhoto,
   isFadingOut,
   onFadeComplete,
 }: FeedCardProps) {
@@ -323,6 +325,15 @@ export function FeedCard({
                   </View>
                 </TouchableWithoutFeedback>
               )}
+              {!imageError && onExpandPhoto && (
+                <TouchableOpacity
+                  style={styles.expandButton}
+                  onPress={() => onExpandPhoto(post.image_url)}
+                  activeOpacity={0.7}
+                >
+                  <Feather name="maximize-2" size={16} color="#FFF" />
+                </TouchableOpacity>
+              )}
               {onDeletePost && post.user_id === userId && (
                 <TouchableOpacity
                   style={styles.deleteButton}
@@ -487,6 +498,17 @@ const styles = StyleSheet.create({
   infoTimestamp: {
     fontSize: 11,
     color: theme.colors.textTertiary,
+  },
+  expandButton: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   deleteButton: {
     position: 'absolute',

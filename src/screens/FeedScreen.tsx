@@ -19,6 +19,7 @@ import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
 import { FeedCard, type FeedLatestComment } from '../components/FeedCard';
+import { PhotoViewer } from '../components/PhotoViewer';
 import { Skeleton } from '../components/Skeleton';
 
 export type FeedReactionCounts = Record<string, Record<string, number>>;
@@ -42,6 +43,7 @@ export function FeedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [fadingOutId, setFadingOutId] = useState<string | null>(null);
+  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
   const hasInitiallyFetched = useRef(false);
 
   const PAGE_SIZE = 20;
@@ -272,6 +274,12 @@ export function FeedScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
+      {expandedPhoto && (
+        <PhotoViewer
+          imageUrl={expandedPhoto}
+          onClose={() => setExpandedPhoto(null)}
+        />
+      )}
       <View style={[styles.header, { paddingTop: insets.top + 20 }]}>
         <Text style={styles.headerTitle}>Activity</Text>
       </View>
@@ -318,6 +326,7 @@ export function FeedScreen() {
                 (navigation.getParent() as any)?.navigate('FriendProfile', { userId });
               }}
               onDeletePost={handleDeletePost}
+              onExpandPhoto={setExpandedPhoto}
               isFadingOut={fadingOutId === item.id}
               onFadeComplete={handleFadeComplete}
             />

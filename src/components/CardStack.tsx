@@ -24,6 +24,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../lib/theme';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
+import { PhotoViewer } from './PhotoViewer';
 type CardStackProps = {
   posts: PostWithProfile[];
   onClose: () => void;
@@ -225,6 +226,7 @@ export function CardStack({
   );
   const [currentIndex, setCurrentIndex] = useState(safeInitial);
   const [showEndMessage, setShowEndMessage] = useState(false);
+  const [viewerImage, setViewerImage] = useState<string | null>(null);
   const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
   const [userReaction, setUserReaction] = useState<string | null>(null);
   const [imageError, setImageError] = useState<Record<string, boolean>>({});
@@ -677,6 +679,15 @@ export function CardStack({
               }}
               onDoubleTap={isCurrent ? handleDoubleTapHeart : undefined}
             />
+            {!imageError[post.id] && (
+              <TouchableOpacity
+                style={styles.expandButton}
+                onPress={() => setViewerImage(post.image_url)}
+                activeOpacity={0.7}
+              >
+                <Feather name="maximize-2" size={18} color="#FFF" />
+              </TouchableOpacity>
+            )}
             {post.user_id === currentUserId && (
               <TouchableOpacity
                 style={styles.deleteButton}
@@ -843,6 +854,13 @@ export function CardStack({
           <Text style={styles.endMessageText}>You've seen all posts here</Text>
         </Animated.View>
       )}
+
+      {viewerImage && (
+        <PhotoViewer
+          imageUrl={viewerImage}
+          onClose={() => setViewerImage(null)}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -897,6 +915,17 @@ const styles = StyleSheet.create({
   infoTimestamp: {
     fontSize: 11,
     color: theme.colors.textTertiary,
+  },
+  expandButton: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   deleteButton: {
     position: 'absolute',
