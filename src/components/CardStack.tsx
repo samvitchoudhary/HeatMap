@@ -128,6 +128,9 @@ const CardImage = React.memo(function CardImage({
   const failed = imageError[post.id];
   const heartScale = useRef(new Animated.Value(0)).current;
   const heartOpacity = useRef(new Animated.Value(1)).current;
+  const heartTranslateY = useRef(new Animated.Value(0)).current;
+  const heartRotate = useRef(new Animated.Value(0)).current;
+  const flashOpacity = useRef(new Animated.Value(0)).current;
   const lastTap = useRef(0);
   const [heartVisible, setHeartVisible] = useState(false);
 
@@ -139,33 +142,80 @@ const CardImage = React.memo(function CardImage({
       setHeartVisible(true);
       heartScale.setValue(0);
       heartOpacity.setValue(1);
-      Animated.sequence([
-        Animated.spring(heartScale, {
-          toValue: 1.2,
-          useNativeDriver: true,
-          speed: 50,
-          bounciness: 8,
-        }),
-        Animated.spring(heartScale, {
-          toValue: 1,
-          useNativeDriver: true,
-          speed: 50,
-          bounciness: 6,
-        }),
-        Animated.delay(400),
-        Animated.timing(heartOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
+      heartTranslateY.setValue(0);
+      heartRotate.setValue(0);
+      flashOpacity.setValue(0.3);
+
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      Animated.parallel([
+        // Heart animation
+        Animated.sequence([
+          // Pop in big
+          Animated.spring(heartScale, {
+            toValue: 1.3,
+            speed: 80,
+            bounciness: 12,
+            useNativeDriver: true,
+          }),
+          // Settle to normal size
+          Animated.spring(heartScale, {
+            toValue: 1.0,
+            speed: 40,
+            bounciness: 8,
+            useNativeDriver: true,
+          }),
+          // Brief hold
+          Animated.delay(200),
+          // Fly up, shrink, and fade out simultaneously
+          Animated.parallel([
+            Animated.timing(heartTranslateY, {
+              toValue: -400,
+              duration: 500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(heartScale, {
+              toValue: 0.3,
+              duration: 500,
+              useNativeDriver: true,
+            }),
+            Animated.timing(heartOpacity, {
+              toValue: 0,
+              duration: 400,
+              delay: 100,
+              useNativeDriver: true,
+            }),
+            Animated.timing(heartRotate, {
+              toValue: 1,
+              duration: 500,
+              useNativeDriver: true,
+            }),
+          ]),
+        ]),
+        // Screen flash (keep same as before)
+        Animated.sequence([
+          Animated.timing(flashOpacity, {
+            toValue: 0.25,
+            duration: 50,
+            useNativeDriver: true,
+          }),
+          Animated.timing(flashOpacity, {
+            toValue: 0,
+            duration: 250,
+            useNativeDriver: true,
+          }),
+        ]),
       ]).start(() => {
         setHeartVisible(false);
         heartScale.setValue(0);
         heartOpacity.setValue(1);
+        heartTranslateY.setValue(0);
+        heartRotate.setValue(0);
+        flashOpacity.setValue(0);
       });
     }
     lastTap.current = now;
-  }, [onDoubleTap, heartScale, heartOpacity]);
+  }, [onDoubleTap, heartScale, heartOpacity, heartTranslateY, heartRotate, flashOpacity]);
 
   if (failed) {
     return (
@@ -183,13 +233,37 @@ const CardImage = React.memo(function CardImage({
         resizeMode="cover"
         onError={() => setImageError((prev) => ({ ...prev, [post.id]: true }))}
       />
+      {/* White screen flash */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          StyleSheet.absoluteFill,
+          {
+            backgroundColor: '#FFF',
+            opacity: flashOpacity,
+          },
+        ]}
+      />
+      {/* Heart emoji */}
       {heartVisible && (
         <Animated.View
           pointerEvents="none"
           style={[
             StyleSheet.absoluteFill,
             { justifyContent: 'center', alignItems: 'center' },
-            { opacity: heartOpacity, transform: [{ scale: heartScale }] },
+            {
+              opacity: heartOpacity,
+              transform: [
+                { scale: heartScale },
+                { translateY: heartTranslateY },
+                {
+                  rotate: heartRotate.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', '-15deg'],
+                  }),
+                },
+              ],
+            },
           ]}
         >
           <Text style={styles.cardHeartEmoji}>❤️</Text>
@@ -403,17 +477,27 @@ export function CardStack({
     }).start();
   }, [currentIndex, posts.length, activeDotAnimated]);
 
-  const handleDoubleTapHeart = useCallback(
-    async () => {
-      const post = posts[currentIndex];
+  const handleDoubleTapHeartForPost = useCallback(
+    async (post: PostWithProfile) => {
       const userId = session?.user?.id;
-      if (!post?.id || !userId || userReaction === '❤️') return;
+      if (!post?.id || !userId) return;
+
+      // Always fetch fresh reaction state for this post
+      const { data: existingReactions } = await supabase
+        .from('reactions')
+        .select('emoji')
+        .eq('post_id', post.id)
+        .eq('user_id', userId)
+        .single();
+
+      // If already hearted, skip
+      if (existingReactions?.emoji === '❤️') return;
 
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
+      // Optimistic update
       const prevReaction = userReaction;
       const prevCounts = { ...reactionCounts };
-
       setUserReaction('❤️');
       setReactionCounts((c) => {
         const next = { ...c };
@@ -424,30 +508,40 @@ export function CardStack({
         return next;
       });
 
-      if (prevReaction) {
+      // Delete old reaction if exists
+      if (existingReactions) {
         await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
       }
+
+      // Insert heart reaction
       const { error } = await supabase.from('reactions').insert({
         post_id: post.id,
         user_id: userId,
         emoji: '❤️',
       });
+
       if (error) {
+        console.error('Double tap heart error:', error);
         setUserReaction(prevReaction);
         setReactionCounts(prevCounts);
         return;
       }
+
+      // Send notification
       if (post.user_id !== userId) {
-        await supabase.from('notifications').insert({
-          user_id: post.user_id,
-          type: 'reaction',
-          from_user_id: userId,
-          post_id: post.id,
-          emoji: '❤️',
-        });
+        await supabase
+          .from('notifications')
+          .insert({
+            user_id: post.user_id,
+            type: 'reaction',
+            from_user_id: userId,
+            post_id: post.id,
+            emoji: '❤️',
+          })
+          .select();
       }
     },
-    [currentIndex, posts, session?.user?.id, userReaction, reactionCounts]
+    [session?.user?.id, userReaction, reactionCounts]
   );
 
   const handleReactionToggle = useCallback(
@@ -677,7 +771,7 @@ export function CardStack({
                 cardImagePlaceholder: styles.cardImagePlaceholder,
                 cardImageErrorText: styles.cardImageErrorText,
               }}
-              onDoubleTap={isCurrent ? handleDoubleTapHeart : undefined}
+              onDoubleTap={() => handleDoubleTapHeartForPost(post)}
             />
             {!imageError[post.id] && (
               <TouchableOpacity
@@ -984,9 +1078,9 @@ const styles = StyleSheet.create({
   },
   cardHeartEmoji: {
     fontSize: 80,
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
+    textShadowColor: 'rgba(255, 50, 50, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 20,
   },
   closeButton: {
     position: 'absolute',
