@@ -257,6 +257,38 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     fabGalleryScale,
   ]);
 
+  const resetFabToClosed = useCallback(() => {
+    // Stop any running animations first
+    fabIconRotate.stopAnimation();
+    fabOverlayOpacity.stopAnimation();
+    fabCameraTranslateY.stopAnimation();
+    fabCameraOpacity.stopAnimation();
+    fabCameraScale.stopAnimation();
+    fabGalleryTranslateY.stopAnimation();
+    fabGalleryOpacity.stopAnimation();
+    fabGalleryScale.stopAnimation();
+
+    // Then reset all values
+    setFabExpanded(false);
+    fabIconRotate.setValue(0);
+    fabOverlayOpacity.setValue(0);
+    fabCameraTranslateY.setValue(0);
+    fabCameraOpacity.setValue(0);
+    fabCameraScale.setValue(0.5);
+    fabGalleryTranslateY.setValue(0);
+    fabGalleryOpacity.setValue(0);
+    fabGalleryScale.setValue(0.5);
+  }, [
+    fabIconRotate,
+    fabOverlayOpacity,
+    fabCameraTranslateY,
+    fabCameraOpacity,
+    fabCameraScale,
+    fabGalleryTranslateY,
+    fabGalleryOpacity,
+    fabGalleryScale,
+  ]);
+
   const runCloseAnimation = useCallback(
     (onComplete?: () => void) => {
       Animated.parallel([
@@ -315,46 +347,42 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     return true;
   }
 
-  function handleFabCamera() {
+  async function handleFabCamera() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    runCloseAnimation(async () => {
-      const hasPermission = await requestCameraPermission();
-      if (!hasPermission) return;
+    // Close the menu visually but don't wait for it
+    resetFabToClosed();
 
-      const result = await ImagePicker.launchCameraAsync(IMAGE_OPTIONS);
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const exif = asset.exif as Record<string, unknown> | undefined;
-        const exifLocation = parseExifGps(exif) ?? null;
-        navigation.navigate('Upload', {
-          imageUri: asset.uri,
-          exifLocation,
-        });
-      }
-    });
+    const hasPermission = await requestCameraPermission();
+    if (!hasPermission) return;
+    const result = await ImagePicker.launchCameraAsync(IMAGE_OPTIONS);
+    if (result.canceled) return;
+    if (result.assets[0]) {
+      const asset = result.assets[0];
+      const exif = asset.exif as Record<string, unknown> | undefined;
+      const exifLocation = parseExifGps(exif) ?? null;
+      navigation.navigate('Upload', { imageUri: asset.uri, exifLocation });
+    }
   }
 
-  function handleFabGallery() {
+  async function handleFabGallery() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    runCloseAnimation(async () => {
-      const hasPermission = await requestMediaLibraryPermission();
-      if (!hasPermission) return;
+    // Close the menu visually but don't wait for it
+    resetFabToClosed();
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        ...IMAGE_OPTIONS,
-        mediaTypes: ['images'],
-        exif: true,
-      });
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        const exif = asset.exif as Record<string, unknown> | undefined;
-        const exifLocation = parseExifGps(exif) ?? null;
-        navigation.navigate('Upload', {
-          imageUri: asset.uri,
-          exifLocation,
-        });
-      }
+    const hasPermission = await requestMediaLibraryPermission();
+    if (!hasPermission) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      ...IMAGE_OPTIONS,
+      mediaTypes: ['images'],
+      exif: true,
     });
+    if (result.canceled) return;
+    if (result.assets[0]) {
+      const asset = result.assets[0];
+      const exif = asset.exif as Record<string, unknown> | undefined;
+      const exifLocation = parseExifGps(exif) ?? null;
+      navigation.navigate('Upload', { imageUri: asset.uri, exifLocation });
+    }
   }
 
   const heatmapPoints = posts.map((post) => ({
@@ -490,6 +518,15 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       hasInitiallyFetched.current = true;
       fetchPosts(isInitial);
     }, [fetchPosts])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      resetFabToClosed();
+      return () => {
+        resetFabToClosed();
+      };
+    }, [resetFabToClosed])
   );
 
   React.useEffect(() => {
@@ -779,6 +816,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
                     }),
                   },
                 ]}
+                pointerEvents="none"
               />
             </Pressable>
           )}
@@ -805,7 +843,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
             <TouchableOpacity
               style={styles.fabSubButton}
               onPress={handleFabCamera}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
               <Feather name="camera" size={22} color={theme.colors.primary} />
             </TouchableOpacity>
@@ -832,7 +870,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
             <TouchableOpacity
               style={styles.fabSubButton}
               onPress={handleFabGallery}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
               <Feather name="image" size={22} color={theme.colors.primary} />
             </TouchableOpacity>
@@ -1082,14 +1120,15 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   fabOverlayPressable: {
-    zIndex: 101,
+    zIndex: 1,
   },
   fabContainer: {
     position: 'absolute',
     right: 20,
     width: 56,
     alignItems: 'flex-end',
-    zIndex: 102,
+    zIndex: 10,
+    elevation: 20,
   },
   fabOverlay: {
     ...StyleSheet.absoluteFillObject,
