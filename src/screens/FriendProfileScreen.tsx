@@ -77,18 +77,47 @@ export function FriendProfileScreen() {
   }, [targetUserId, showToast]);
 
   const fetchPosts = useCallback(async () => {
-    if (!targetUserId) return;
-    const { data, error } = await supabase
+    if (!targetUserId || !myUserId) return;
+    const { data: friendships } = await supabase
+      .from('friendships')
+      .select('requester_id, addressee_id')
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${myUserId},addressee_id.eq.${myUserId}`);
+    const friendIds =
+      friendships?.map((f: { requester_id: string; addressee_id: string }) =>
+        f.requester_id === myUserId ? f.addressee_id : f.requester_id
+      ) ?? [];
+
+    const { data: ownData, error: ownError } = await supabase
       .from('posts')
-      .select('*, profiles:user_id(username, display_name, avatar_url)')
+      .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false });
-    if (error) {
-      console.error('Error fetching friend posts:', error);
+    if (ownError) {
+      console.error('Error fetching friend posts:', ownError);
       return;
     }
-    setPosts((data ?? []) as PostWithProfile[]);
-  }, [targetUserId]);
+    const ownPosts = (ownData ?? []) as PostWithProfile[];
+
+    const { data: taggedData } = await supabase
+      .from('post_tags')
+      .select('post_id, posts:post_id(*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
+      .eq('tagged_user_id', targetUserId);
+    const taggedPosts = ((taggedData ?? []) as { post_id: string; posts: PostWithProfile }[])
+      .map((t) => t.posts)
+      .filter((p): p is PostWithProfile => !!p && (friendIds.includes(p.user_id) || p.user_id === myUserId));
+
+    const merged = [...ownPosts];
+    const seenIds = new Set(ownPosts.map((p) => p.id));
+    for (const p of taggedPosts) {
+      if (!seenIds.has(p.id)) {
+        merged.push(p);
+        seenIds.add(p.id);
+      }
+    }
+    merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    setPosts(merged);
+  }, [targetUserId, myUserId]);
 
   const fetchPostsCount = useCallback(async () => {
     if (!targetUserId) return;
@@ -338,6 +367,7 @@ export function FriendProfileScreen() {
 
       <ScrollView
         style={styles.scroll}
+        scrollEnabled={selectedPosts === null}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: bottomPadding },
@@ -434,12 +464,21 @@ export function FriendProfileScreen() {
                         <Feather name="image" size={24} color={theme.colors.textTertiary} />
                       </View>
                     ) : (
-                      <SmoothImage
-                        source={{ uri: post.image_url }}
-                        style={styles.gridImage}
-                        resizeMode="cover"
-                        onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
-                      />
+                      <>
+                        <SmoothImage
+                          source={{ uri: post.image_url }}
+                          style={styles.gridImage}
+                          resizeMode="cover"
+                          onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
+                        />
+                        {post.user_id !== targetUserId && (
+                          <View style={styles.tagBanner}>
+                            <Text style={styles.tagBannerText} numberOfLines={1}>
+                              tagged by @{post.profiles?.username ?? 'user'}
+                            </Text>
+                          </View>
+                        )}
+                      </>
                     )}
                   </TouchableOpacity>
                 ) : (
@@ -595,6 +634,22 @@ const styles = StyleSheet.create({
     height: GRID_CELL_SIZE,
     overflow: 'hidden',
     borderRadius: 4,
+    position: 'relative',
+  },
+  tagBanner: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+  },
+  tagBannerText: {
+    color: '#FFF',
+    fontSize: 10,
+    fontWeight: '500',
   },
   gridCellEmpty: {
     backgroundColor: theme.colors.surfaceLight,

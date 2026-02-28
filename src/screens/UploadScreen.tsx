@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -28,6 +30,7 @@ import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { StyledTextInput } from '../components/StyledTextInput';
 import { SuccessToast } from '../components/SuccessToast';
+import { Avatar } from '../components/Avatar';
 import type { MapStackParamList } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
 
@@ -68,8 +71,45 @@ export function UploadScreen() {
   } | null>(null);
   const [locationSource, setLocationSource] = useState<'exif' | 'current' | null>(null);
   const [originalPhotoDate, setOriginalPhotoDate] = useState<string | null>(null);
+  const [taggedFriends, setTaggedFriends] = useState<{ id: string; display_name: string; username: string }[]>([]);
+  const [showTagPicker, setShowTagPicker] = useState(false);
+  const [pickerFriends, setPickerFriends] = useState<{ id: string; display_name: string; username: string; avatar_url: string | null }[]>([]);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const [pickerLoading, setPickerLoading] = useState(false);
 
   const appliedParamsRef = React.useRef<string | null>(null);
+
+  const fetchFriendsForPicker = useCallback(async () => {
+    const userId = session?.user?.id;
+    if (!userId) return;
+    setPickerLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('friendships')
+        .select(
+          'requester_id, addressee_id, requester:requester_id(id, username, display_name, avatar_url), addressee:addressee_id(id, username, display_name, avatar_url)'
+        )
+        .eq('status', 'accepted')
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+
+      if (error) throw error;
+      const friends = (data ?? []).map((f: { requester_id: string; addressee_id: string; requester: { id: string; username: string; display_name: string; avatar_url: string | null }; addressee: { id: string; username: string; display_name: string; avatar_url: string | null } }) =>
+        f.requester_id === userId ? f.addressee : f.requester
+      );
+      setPickerFriends(friends);
+    } catch (err) {
+      console.error('Error fetching friends:', err);
+    } finally {
+      setPickerLoading(false);
+    }
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (showTagPicker) {
+      setPickerSearch('');
+      fetchFriendsForPicker();
+    }
+  }, [showTagPicker, fetchFriendsForPicker]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -81,6 +121,7 @@ export function UploadScreen() {
       setSelectedImageUri(imageUri);
       setVenueName('');
       setCaption('');
+      setTaggedFriends([]);
       setLocationCoords(exifLocation);
       setLocationSource(exifLocation ? 'exif' : null);
       setOriginalPhotoDate(null);
@@ -188,6 +229,7 @@ export function UploadScreen() {
       setSelectedImageUri(result.assets[0].uri);
       setVenueName('');
       setCaption('');
+      setTaggedFriends([]);
       setLocationCoords(null);
       setLocationSource(null);
       setOriginalPhotoDate(null);
@@ -210,6 +252,7 @@ export function UploadScreen() {
       setSelectedImageUri(result.assets[0].uri);
       setVenueName('');
       setCaption('');
+      setTaggedFriends([]);
       setLocationCoords(null);
       setLocationSource(null);
       previewOpacity.setValue(0);
@@ -239,10 +282,12 @@ export function UploadScreen() {
     setSelectedImageUri(null);
     setVenueName('');
     setCaption('');
+    setTaggedFriends([]);
     setLocationCoords(null);
     setLocationSource(null);
     setOriginalPhotoDate(null);
     setPostSuccess(false);
+    setShowTagPicker(false);
     navigation.goBack();
   }
 
@@ -290,9 +335,31 @@ export function UploadScreen() {
         longitude: locationCoords.longitude,
         ...(originalPhotoDate ? { created_at: originalPhotoDate } : {}),
       };
-      const { error: insertError } = await supabase.from('posts').insert(postData);
+      const { data: insertedPost, error: insertError } = await supabase
+        .from('posts')
+        .insert(postData)
+        .select('id')
+        .single();
 
       if (insertError) throw insertError;
+
+      const newPostId = insertedPost?.id;
+      if (newPostId && taggedFriends.length > 0) {
+        const tagInserts = taggedFriends.map((friend) => ({
+          post_id: newPostId,
+          tagged_user_id: friend.id,
+        }));
+        await supabase.from('post_tags').insert(tagInserts);
+
+        for (const friend of taggedFriends) {
+          await supabase.from('notifications').insert({
+            user_id: friend.id,
+            type: 'tag',
+            from_user_id: userId,
+            post_id: newPostId,
+          });
+        }
+      }
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPostSuccess(true);
@@ -385,6 +452,36 @@ export function UploadScreen() {
           />
 
           <TouchableOpacity
+            style={styles.tagFriendsRow}
+            onPress={() => setShowTagPicker(true)}
+            activeOpacity={0.7}
+          >
+            <Feather name="user-plus" size={18} color={theme.colors.textSecondary} />
+            <Text style={styles.tagFriendsLabel}>Tag Friends</Text>
+            <Feather name="chevron-right" size={18} color={theme.colors.textTertiary} />
+          </TouchableOpacity>
+          {taggedFriends.length > 0 && (
+            <View style={styles.taggedChipsWrap}>
+              {taggedFriends.map((friend) => (
+                <View key={friend.id} style={styles.taggedChip}>
+                  <Text style={styles.taggedChipText} numberOfLines={1}>
+                    {friend.display_name}
+                  </Text>
+                  <TouchableOpacity
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    onPress={() =>
+                      setTaggedFriends((prev) => prev.filter((f) => f.id !== friend.id))
+                    }
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="x" size={14} color={theme.colors.textSecondary} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <TouchableOpacity
             style={[styles.primaryButton, (isPosting || postSuccess) && styles.buttonDisabled]}
             onPress={handlePost}
             disabled={isPosting}
@@ -412,6 +509,95 @@ export function UploadScreen() {
       )}
       </View>
       </TouchableWithoutFeedback>
+
+      <Modal
+        visible={showTagPicker}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowTagPicker(false)}
+      >
+        <View style={[styles.pickerContainer, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+          <View style={styles.pickerHeader}>
+            <Text style={styles.pickerTitle}>Tag Friends</Text>
+            <TouchableOpacity
+              onPress={() => setShowTagPicker(false)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.7}
+            >
+              <Feather name="x" size={24} color={theme.colors.text} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.pickerSearchWrap}>
+            <Feather name="search" size={18} color={theme.colors.textTertiary} />
+            <StyledTextInput
+              auth
+              style={styles.pickerSearchInput}
+              placeholder="Search friends..."
+              value={pickerSearch}
+              onChangeText={setPickerSearch}
+            />
+          </View>
+          {pickerLoading ? (
+            <View style={styles.pickerLoading}>
+              <ActivityIndicator size="large" color={theme.colors.primary} />
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.pickerList}
+              contentContainerStyle={styles.pickerListContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {pickerFriends
+                .filter(
+                  (f) =>
+                    !pickerSearch.trim() ||
+                    f.display_name.toLowerCase().includes(pickerSearch.toLowerCase()) ||
+                    f.username.toLowerCase().includes(pickerSearch.toLowerCase())
+                )
+                .map((friend) => {
+                  const isTagged = taggedFriends.some((t) => t.id === friend.id);
+                  return (
+                    <TouchableOpacity
+                      key={friend.id}
+                      style={styles.pickerRow}
+                      onPress={() => {
+                        if (isTagged) {
+                          setTaggedFriends((prev) => prev.filter((f) => f.id !== friend.id));
+                        } else {
+                          setTaggedFriends((prev) => [...prev, { id: friend.id, display_name: friend.display_name, username: friend.username }]);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Avatar uri={friend.avatar_url} size={24} />
+                      <View style={styles.pickerRowText}>
+                        <Text style={styles.pickerRowName} numberOfLines={1}>
+                          {friend.display_name}
+                        </Text>
+                        <Text style={styles.pickerRowUsername} numberOfLines={1}>
+                          @{friend.username}
+                        </Text>
+                      </View>
+                      {isTagged ? (
+                        <Feather name="check" size={20} color={theme.colors.primary} />
+                      ) : (
+                        <View style={styles.pickerRowEmpty} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+            </ScrollView>
+          )}
+          <TouchableOpacity
+            style={styles.pickerDoneBtn}
+            onPress={() => setShowTagPicker(false)}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.pickerDoneText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
 
       <SuccessToast
         message="Posted!"
@@ -509,5 +695,121 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
     fontSize: 16,
     fontWeight: '600',
+  },
+  tagFriendsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.md,
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.sm,
+  },
+  tagFriendsLabel: {
+    flex: 1,
+    fontSize: 16,
+    color: theme.colors.text,
+    fontWeight: '500',
+  },
+  taggedChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: theme.spacing.sm,
+    marginBottom: theme.spacing.md,
+  },
+  taggedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    paddingVertical: 6,
+    paddingLeft: 12,
+    paddingRight: 8,
+    borderRadius: theme.borderRadius.full,
+    gap: 6,
+    maxWidth: '100%',
+  },
+  taggedChipText: {
+    fontSize: 14,
+    color: theme.colors.text,
+    maxWidth: 120,
+  },
+  pickerContainer: {
+    flex: 1,
+    backgroundColor: theme.colors.background,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: theme.screenPadding,
+    paddingVertical: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderLight,
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  pickerSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    margin: theme.screenPadding,
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: 10,
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.borderRadius.full,
+    gap: theme.spacing.sm,
+  },
+  pickerSearchInput: {
+    flex: 1,
+    padding: 0,
+  },
+  pickerLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerList: {
+    flex: 1,
+  },
+  pickerListContent: {
+    paddingHorizontal: theme.screenPadding,
+    paddingBottom: theme.spacing.lg,
+  },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: theme.spacing.md,
+    gap: theme.spacing.md,
+  },
+  pickerRowText: {
+    flex: 1,
+  },
+  pickerRowName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  pickerRowUsername: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    marginTop: 2,
+  },
+  pickerRowEmpty: {
+    width: 20,
+  },
+  pickerDoneBtn: {
+    backgroundColor: theme.colors.primary,
+    marginHorizontal: theme.screenPadding,
+    marginBottom: theme.spacing.lg,
+    height: 52,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...theme.shadows.button,
+  },
+  pickerDoneText: {
+    color: theme.colors.textOnPrimary,
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

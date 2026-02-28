@@ -114,7 +114,7 @@ export function FeedScreen() {
 
       const { data: postsData, error } = await supabase
         .from('posts')
-        .select('*, profiles:user_id(username, display_name, avatar_url)')
+        .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
         .neq('user_id', userId)
         .in('user_id', friendIds)
         .order('created_at', { ascending: false })

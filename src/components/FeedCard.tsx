@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import type { PostWithProfile } from '../types';
+import type { PostWithProfile, PostTag } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
@@ -27,6 +27,33 @@ const BOTTOM_BAR_HEIGHT = 50;
 const CARD_BORDER_RADIUS = 16;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_WIDTH = SCREEN_WIDTH - CARD_MARGIN_H * 2;
+
+function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onProfilePress?: (userId: string) => void }) {
+  if (!tags || tags.length === 0) return null;
+  const maxShow = 2;
+  const shown = tags.slice(0, maxShow);
+  const rest = tags.length - maxShow;
+  return (
+    <Text style={styles.infoTaggedLine} numberOfLines={1}>
+      {' with '}
+      {shown.map((t, i) => {
+        const username = t.profiles?.username ?? 'user';
+        const content = `@${username}`;
+        return onProfilePress ? (
+          <Text key={t.tagged_user_id}>
+            {i > 0 ? ', ' : ''}
+            <Text style={styles.infoTaggedLink} onPress={() => onProfilePress(t.tagged_user_id)}>
+              {content}
+            </Text>
+          </Text>
+        ) : (
+          <Text key={t.tagged_user_id}>{i > 0 ? `, ${content}` : content}</Text>
+        );
+      })}
+      {rest > 0 ? ` +${rest} others` : ''}
+    </Text>
+  );
+}
 
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -432,6 +459,7 @@ export function FeedCard({
                   {displayName}
                 </Text>
               )}
+              <TaggedLine tags={post.post_tags} onProfilePress={onProfilePress} />
               <TouchableOpacity
                 style={styles.infoVenueRow}
                 onPress={() => {
@@ -550,6 +578,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.text,
     marginBottom: 2,
+  },
+  infoTaggedLine: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: theme.colors.textSecondary,
+    marginTop: 1,
+    marginBottom: 2,
+  },
+  infoTaggedLink: {
+    color: theme.colors.primary,
   },
   infoVenueRow: {
     flexDirection: 'row',

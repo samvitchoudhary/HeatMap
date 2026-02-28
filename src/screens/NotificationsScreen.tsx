@@ -42,7 +42,7 @@ type PostInfo = { id: string; image_url: string; latitude: number; longitude: nu
 type NotificationWithRelations = {
   id: string;
   user_id: string;
-  type: 'reaction' | 'comment' | 'friend_request';
+  type: 'reaction' | 'comment' | 'friend_request' | 'tag';
   from_user_id: string;
   post_id: string | null;
   comment_id: string | null;
@@ -156,7 +156,7 @@ export function NotificationsScreen() {
 
       const rootNav = navigation.getParent() as any;
 
-      if (n.type === 'reaction' || n.type === 'comment') {
+      if (n.type === 'reaction' || n.type === 'comment' || n.type === 'tag') {
         const postInfo = normPost(n);
         if (n.post_id && postInfo) {
           const { latitude, longitude } = postInfo;
@@ -234,6 +234,9 @@ export function NotificationsScreen() {
     if (n.type === 'comment') {
       return { bold: name, rest: ' commented on your post' };
     }
+    if (n.type === 'tag') {
+      return { bold: name, rest: ' tagged you in a post' };
+    }
     return { bold: name, rest: ' sent you a friend request' };
   };
 
@@ -251,7 +254,13 @@ export function NotificationsScreen() {
         onPress={() => handleNotificationPress(item)}
         activeOpacity={0.7}
       >
-        <Avatar uri={normFromUser(item)?.avatar_url ?? null} size={36} />
+        {item.type === 'tag' ? (
+          <View style={styles.tagIconWrap}>
+            <Feather name="tag" size={18} color={theme.colors.primary} />
+          </View>
+        ) : (
+          <Avatar uri={normFromUser(item)?.avatar_url ?? null} size={36} />
+        )}
         <View style={styles.middle}>
           <Text style={styles.text} numberOfLines={2}>
             <Text style={styles.bold}>{bold}</Text>
@@ -389,6 +398,14 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.xs,
     textAlign: 'center',
     paddingHorizontal: theme.spacing.xl,
+  },
+  tagIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   row: {
     flexDirection: 'row',

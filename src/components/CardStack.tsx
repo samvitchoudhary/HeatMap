@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import type { PostWithProfile } from '../types';
+import type { PostWithProfile, PostTag } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -79,6 +79,33 @@ function DotIndicator({
         );
       })}
     </View>
+  );
+}
+
+function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onProfilePress?: (userId: string) => void }) {
+  if (!tags || tags.length === 0) return null;
+  const maxShow = 2;
+  const shown = tags.slice(0, maxShow);
+  const rest = tags.length - maxShow;
+  return (
+    <Text style={styles.infoTaggedLine} numberOfLines={1}>
+      {' with '}
+      {shown.map((t, i) => {
+        const username = t.profiles?.username ?? 'user';
+        const content = `@${username}`;
+        return onProfilePress ? (
+          <Text key={t.tagged_user_id}>
+            {i > 0 ? ', ' : ''}
+            <Text style={styles.infoTaggedLink} onPress={() => onProfilePress(t.tagged_user_id)}>
+              {content}
+            </Text>
+          </Text>
+        ) : (
+          <Text key={t.tagged_user_id}>{i > 0 ? `, ${content}` : content}</Text>
+        );
+      })}
+      {rest > 0 ? ` +${rest} others` : ''}
+    </Text>
   );
 }
 
@@ -808,6 +835,7 @@ export function CardStack({
                 {post.user_id === currentUserId ? 'You' : (post.profiles?.display_name ?? 'Unknown')}
               </Text>
             )}
+            <TaggedLine tags={post.post_tags} onProfilePress={onProfilePress} />
             <View style={styles.infoVenueRow}>
               <Feather name="map-pin" size={12} color={theme.colors.primary} />
               <Text style={styles.infoVenueText} numberOfLines={1}>
@@ -988,7 +1016,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: theme.colors.text,
+  },
+  infoTaggedLine: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: theme.colors.textSecondary,
+    marginTop: 1,
     marginBottom: 2,
+  },
+  infoTaggedLink: {
+    color: theme.colors.primary,
   },
   infoVenueRow: {
     flexDirection: 'row',

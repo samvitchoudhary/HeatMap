@@ -216,7 +216,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
       const { data, error } = await supabase
         .from('posts')
-        .select('*, profiles(username, display_name, avatar_url)')
+        .select('*, profiles(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
         .in('user_id', allowedIds)
         .order('created_at', { ascending: false });
       if (error) {

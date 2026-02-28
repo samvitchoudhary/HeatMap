@@ -97,6 +97,7 @@ export function GalleryScreen({ navigation }: Props) {
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <ScrollView
         style={styles.scroll}
+        scrollEnabled={selectedPosts === null}
         contentContainerStyle={styles.gridContainer}
         showsVerticalScrollIndicator={false}
         overScrollMode="never"
