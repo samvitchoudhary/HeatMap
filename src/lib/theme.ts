@@ -1,39 +1,42 @@
 export const theme = {
   colors: {
-    // Backgrounds
+    // Backgrounds — clean whites
     background: '#FFFFFF',
-    surface: '#F5F5F7',
-    surfaceLight: '#EEEEF0',
+    surface: '#F5F5F5',
+    surfaceLight: '#EEEEEE',
 
-    // Primary accent — red/coral gradient endpoints
-    primary: '#FF4D6A', // Vibrant coral-red
-    primaryDark: '#E63956', // Deeper red for pressed states
-    primaryLight: '#FF7A8F', // Lighter coral for subtle accents
+    // Primary — bold vibrant coral/red
+    primary: '#FF2D55',
+    primaryDark: '#E6002E',
+    primaryLight: '#FF6B8A',
 
-    // Secondary accent — warm orange (complements the red)
-    secondary: '#FF8C42', // Warm amber-orange
-    secondaryLight: '#FFB074', // Light orange for backgrounds
+    // Secondary — warm vibrant orange
+    secondary: '#FF9500',
+    secondaryLight: '#FFB366',
 
-    // Tertiary accent — deep charcoal (grounds the vibrant colors)
-    tertiary: '#2D2D3A', // Near-black with a slight warmth
+    // Tertiary — deep charcoal
+    tertiary: '#1A1A1A',
 
-    // Text
-    text: '#1A1A2E', // Very dark navy-black
-    textSecondary: '#6B6B7B', // Medium gray with slight warmth
-    textTertiary: '#9E9EAE', // Light gray
-    textOnPrimary: '#FFFFFF', // White text on colored backgrounds
+    // Text — strong contrast
+    text: '#1A1A1A',
+    textSecondary: '#555555',
+    textTertiary: '#888888',
+    textOnPrimary: '#FFFFFF',
 
-    // Borders & dividers
-    border: '#E5E5EA',
-    borderLight: '#F0F0F5',
+    // Borders
+    border: '#DDDDDD',
+    borderLight: '#EEEEEE',
 
-    // Functional colors
+    // Functional colors — bold and vivid
     red: '#FF3B30',
     green: '#34C759',
+    blue: '#007AFF',
+    orange: '#FF9500',
+    yellow: '#FFCC00',
 
     // Overlays
-    overlay: 'rgba(26, 26, 46, 0.75)',
-    overlayMedium: 'rgba(26, 26, 46, 0.5)',
+    overlay: 'rgba(0, 0, 0, 0.6)',
+    overlayMedium: 'rgba(0, 0, 0, 0.5)',
 
     // Aliases (backwards compatibility)
     light: '#FFFFFF',
@@ -41,7 +44,11 @@ export const theme = {
 
     // Cards
     cardBackground: '#FFFFFF',
-    cardShadow: 'rgba(255, 77, 106, 0.08)', // Subtle pink shadow for cards
+    cardShadow: 'rgba(255, 45, 85, 0.12)',
+
+    // Tab bar
+    tabActive: '#FF2D55',
+    tabInactive: '#BBBBBB',
   },
   spacing: {
     xs: 4,
@@ -67,16 +74,16 @@ export const theme = {
   },
   shadows: {
     card: {
-      shadowColor: '#FF4D6A',
+      shadowColor: '#FF2D55',
       shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.08,
+      shadowOpacity: 0.12,
       shadowRadius: 12,
       elevation: 4,
     },
     button: {
-      shadowColor: '#FF4D6A',
+      shadowColor: '#FF2D55',
       shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.2,
+      shadowOpacity: 0.25,
       shadowRadius: 8,
       elevation: 3,
     },

@@ -21,7 +21,7 @@ function TabIcon({
   name: React.ComponentProps<typeof Feather>['name'];
   focused: boolean;
 }) {
-  const color = focused ? theme.colors.primary : theme.colors.textTertiary;
+  const color = focused ? theme.colors.tabActive : theme.colors.tabInactive;
   return (
     <View style={styles.tabIconWrap}>
       <Feather name={name} size={TAB_ICON_SIZE} color={color} />
@@ -217,8 +217,8 @@ function MainTabs({ profile }: { profile: Profile }) {
         screenOptions={{
           tabBarShowLabel: false,
           tabBarShowIcon: true,
-          tabBarActiveTintColor: theme.colors.primary,
-          tabBarInactiveTintColor: theme.colors.textTertiary,
+          tabBarActiveTintColor: theme.colors.tabActive,
+          tabBarInactiveTintColor: theme.colors.tabInactive,
         }}
       >
         <Tab.Screen
