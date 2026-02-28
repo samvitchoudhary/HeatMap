@@ -336,11 +336,9 @@ export function CardStack({
   const cardTranslateY = useRef(new Animated.Value(80)).current;
   const cardScale = useRef(new Animated.Value(0.9)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
-  const panY = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const endMessageOpacity = useRef(new Animated.Value(0)).current;
   const activeDotAnimated = useRef(new Animated.Value(safeInitial)).current;
-  const gestureModeRef = useRef<'horizontal' | 'dismiss' | null>(null);
   const currentIndexRef = useRef(0);
   const postsLengthRef = useRef(0);
   const postsRef = useRef<PostWithProfile[]>([]);
@@ -355,7 +353,6 @@ export function CardStack({
     cardTranslateY.setValue(80);
     cardScale.setValue(0.9);
     cardOpacity.setValue(0);
-    panY.setValue(0);
 
     Animated.parallel([
       // Overlay fade in
@@ -666,49 +663,15 @@ export function CardStack({
         const currentPost = postsRef.current[currentIndexRef.current];
         if (currentPost && flippedByPostIdRef.current[currentPost.id]) return false;
         const { dx, dy } = gesture;
-        if (dy > 10 && Math.abs(dy) > Math.abs(dx)) {
-          gestureModeRef.current = 'dismiss';
-          return true;
-        }
         if (postsLengthRef.current > 1 && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
-          gestureModeRef.current = 'horizontal';
           return true;
         }
         return false;
       },
       onPanResponderMove: (_, gesture) => {
-        const mode = gestureModeRef.current;
-        if (mode === 'dismiss') {
-          if (gesture.dy > 0) panY.setValue(gesture.dy);
-        } else if (mode === 'horizontal') {
-          pan.setValue(gesture.dx);
-        }
+        pan.setValue(gesture.dx);
       },
       onPanResponderRelease: (_, gesture) => {
-        const mode = gestureModeRef.current;
-        gestureModeRef.current = null;
-        if (mode === 'dismiss') {
-          const { dy, vy } = gesture;
-          if (dy > 150 || vy > 0.5) {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            Animated.timing(panY, {
-              toValue: SCREEN_HEIGHT,
-              duration: 250,
-              useNativeDriver: true,
-            }).start(() => {
-              panY.setValue(0);
-              onClose();
-            });
-          } else {
-            Animated.spring(panY, {
-              toValue: 0,
-              friction: 8,
-              tension: 80,
-              useNativeDriver: true,
-            }).start();
-          }
-          return;
-        }
         const len = postsLengthRef.current;
         if (len === 0) return;
         const isFirst = currentIndexRef.current === 0;
@@ -886,16 +849,7 @@ export function CardStack({
         style={[
           StyleSheet.absoluteFillObject,
           styles.overlayBg,
-          {
-            opacity: Animated.multiply(
-              overlayOpacity,
-              panY.interpolate({
-                inputRange: [0, 300],
-                outputRange: [1, 0.5],
-                extrapolate: 'clamp',
-              })
-            ),
-          },
+          { opacity: overlayOpacity },
         ]}
         pointerEvents="none"
       />
@@ -913,26 +867,14 @@ export function CardStack({
           styles.stackContainer,
           {
             transform: [
-              { translateY: Animated.add(cardTranslateY, panY) },
-              {
-                scale: Animated.multiply(
-                  cardScale,
-                  panY.interpolate({
-                    inputRange: [0, 300],
-                    outputRange: [1, 0.92],
-                    extrapolate: 'clamp',
-                  })
-                ),
-              },
+              { translateY: cardTranslateY },
+              { scale: cardScale },
             ],
             opacity: cardOpacity,
           },
         ]}
         {...panResponder.panHandlers}
       >
-        <View style={styles.dragHandle}>
-          <View style={styles.dragHandleBar} />
-        </View>
         <View style={styles.cardsWrapper}>
           {posts.map((post, index) => {
             if (Math.abs(index - currentIndex) > 1) return null;
@@ -1148,20 +1090,6 @@ const styles = StyleSheet.create({
     height: CARD_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  dragHandle: {
-    position: 'absolute',
-    top: 8,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  dragHandleBar: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.textTertiary,
   },
   stackCard: {
     position: 'absolute',

@@ -349,15 +349,24 @@ export function UploadScreen() {
           post_id: newPostId,
           tagged_user_id: friend.id,
         }));
-        await supabase.from('post_tags').insert(tagInserts);
+        const { error: tagError } = await supabase.from('post_tags').insert(tagInserts);
+        if (tagError) {
+          console.error('Error inserting post_tags:', tagError);
+        }
 
         for (const friend of taggedFriends) {
-          await supabase.from('notifications').insert({
-            user_id: friend.id,
-            type: 'tag',
-            from_user_id: userId,
-            post_id: newPostId,
-          });
+          const { error } = await supabase
+            .from('notifications')
+            .insert({
+              user_id: friend.id,
+              type: 'tag',
+              from_user_id: userId,
+              post_id: newPostId,
+            })
+            .select();
+          if (error) {
+            console.error('Tag notification failed for', friend.id, error);
+          }
         }
       }
 
