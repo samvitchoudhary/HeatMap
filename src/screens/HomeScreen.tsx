@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCardStack } from '../lib/CardStackContext';
 import type { MapStackParamList } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
-import { LIGHT_MAP_STYLE, HEATMAP_GRADIENT } from '../lib/mapConfig';
+import { HEATMAP_GRADIENT, HEATMAP_RADIUS, HEATMAP_OPACITY } from '../lib/mapConfig';
 import MapView, { Heatmap, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
@@ -43,10 +43,37 @@ const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
 };
 
 const NEARBY_RADIUS_METERS = 100;
+
+const INITIAL_MAP_REGION = {
+  latitude: 37.78825,
+  longitude: -122.4324,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
+
 const GOOGLE_MAPS_API_KEY =
   Constants.expoConfig?.ios?.config?.googleMapsApiKey ||
   Constants.expoConfig?.android?.config?.googleMapsApiKey ||
   '';
+
+const LIGHT_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#f5f5f5' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#616161' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#f5f5f5' }] },
+  { featureType: 'administrative.land_parcel', elementType: 'labels.text.fill', stylers: [{ color: '#bdbdbd' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#eeeeee' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
+  { featureType: 'poi.park', elementType: 'geometry', stylers: [{ color: '#e5e5e5' }] },
+  { featureType: 'poi.park', elementType: 'labels.text.fill', stylers: [{ color: '#9e9e9e' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road.arterial', elementType: 'labels.text.fill', stylers: [{ color: '#757575' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#dadada' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#616161' }] },
+  { featureType: 'road.local', elementType: 'labels.text.fill', stylers: [{ color: '#9e9e9e' }] },
+  { featureType: 'transit.line', elementType: 'geometry', stylers: [{ color: '#e5e5e5' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#c9d6e6' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#9e9e9e' }] },
+];
 
 type PlacePrediction = {
   placeId: string;
@@ -129,7 +156,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     longitude: number;
     latitudeDelta: number;
     longitudeDelta: number;
-  } | null>(null);
+  } | null>(INITIAL_MAP_REGION);
   const dynamicRadius = currentRegion
     ? Math.max(50, Math.min(500, currentRegion.latitudeDelta * 111000 * 0.05))
     : NEARBY_RADIUS_METERS;
@@ -323,6 +350,20 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
   }, [fabExpanded, runOpenAnimation]);
 
+  const handleFabToggle = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (fabExpanded) {
+      runCloseAnimation();
+    } else {
+      setFabExpanded(true);
+    }
+  }, [fabExpanded, runCloseAnimation]);
+
+  const handleFabOverlayPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    runCloseAnimation();
+  }, [runCloseAnimation]);
+
   async function requestCameraPermission(): Promise<boolean> {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -347,9 +388,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     return true;
   }
 
-  async function handleFabCamera() {
+  const handleFabCamera = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Close the menu visually but don't wait for it
     resetFabToClosed();
 
     const hasPermission = await requestCameraPermission();
@@ -362,11 +402,10 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       const exifLocation = parseExifGps(exif) ?? null;
       navigation.navigate('Upload', { imageUri: asset.uri, exifLocation });
     }
-  }
+  }, [navigation, resetFabToClosed]);
 
-  async function handleFabGallery() {
+  const handleFabGallery = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    // Close the menu visually but don't wait for it
     resetFabToClosed();
 
     const hasPermission = await requestMediaLibraryPermission();
@@ -383,29 +422,29 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       const exifLocation = parseExifGps(exif) ?? null;
       navigation.navigate('Upload', { imageUri: asset.uri, exifLocation });
     }
-  }
+  }, [navigation, resetFabToClosed]);
 
-  const heatmapPoints = posts.map((post) => ({
-    latitude: post.latitude,
-    longitude: post.longitude,
-    weight: 1,
-  }));
+  const heatmapPoints = useMemo(
+    () =>
+      posts.map((post) => ({
+        latitude: post.latitude,
+        longitude: post.longitude,
+        weight: 1,
+      })),
+    [posts]
+  );
 
   const clusters = useMemo(() => clusterPosts(posts, 100), [posts]);
   const showBadges = !currentRegion || (currentRegion.latitudeDelta ?? 1) <= 0.5;
 
-  function handleClusterPress(cluster: Cluster) {
+  const handleClusterPress = useCallback((cluster: Cluster) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const sorted = [...cluster.posts].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
     setSelectedInitialIndex(0);
     setSelectedPosts(sorted);
-  }
-
-  if (__DEV__) {
-    console.log('Heatmap points:', heatmapPoints.length);
-  }
+  }, []);
 
   async function searchPlaces(query: string): Promise<PlacePrediction[]> {
     if (!query.trim() || !GOOGLE_MAPS_API_KEY) return [];
@@ -468,7 +507,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     };
   }, [searchText]);
 
-  async function handleSelectPlace(place: PlacePrediction) {
+  const handleSelectPlace = useCallback(async (place: PlacePrediction) => {
     Keyboard.dismiss();
     setSearchText('');
     setShowDropdown(false);
@@ -484,33 +523,36 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         1000
       );
     }
-  }
+  }, []);
 
-  function handleMapPress(event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) {
-    Keyboard.dismiss();
-    if (showDropdown) {
-      setShowDropdown(false);
-      return;
-    }
-    const { latitude, longitude } = event.nativeEvent.coordinate;
-    const nearby = posts.filter((post) => {
-      const distance = getDistanceMeters(
-        latitude,
-        longitude,
-        post.latitude,
-        post.longitude
-      );
-      return distance <= dynamicRadius;
-    });
-    if (nearby.length > 0) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const sorted = [...nearby].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      setSelectedInitialIndex(0);
-      setSelectedPosts(sorted);
-    }
-  }
+  const handleMapPress = useCallback(
+    (event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
+      Keyboard.dismiss();
+      if (showDropdown) {
+        setShowDropdown(false);
+        return;
+      }
+      const { latitude, longitude } = event.nativeEvent.coordinate;
+      const nearby = posts.filter((post) => {
+        const distance = getDistanceMeters(
+          latitude,
+          longitude,
+          post.latitude,
+          post.longitude
+        );
+        return distance <= dynamicRadius;
+      });
+      if (nearby.length > 0) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        const sorted = [...nearby].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        setSelectedInitialIndex(0);
+        setSelectedPosts(sorted);
+      }
+    },
+    [posts, dynamicRadius, showDropdown]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -534,7 +576,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     return () => setCardStackOpen(false);
   }, [selectedPosts, setCardStackOpen]);
 
-  async function handleRecenter() {
+  const handleRecenter = useCallback(async () => {
     try {
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
@@ -551,7 +593,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     } catch (err) {
       console.error('Error getting location:', err);
     }
-  }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -651,26 +693,13 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         customMapStyle={LIGHT_MAP_STYLE}
         showsUserLocation={true}
         onPress={handleMapPress}
-        onRegionChangeComplete={(region) =>
-          setCurrentRegion({
-            latitude: region.latitude,
-            longitude: region.longitude,
-            latitudeDelta: region.latitudeDelta,
-            longitudeDelta: region.longitudeDelta,
-          })
-        }
-        initialRegion={{
-          latitude: 37.78825,
-          longitude: -122.4324,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        }}
+        initialRegion={INITIAL_MAP_REGION}
       >
         {heatmapPoints.length > 0 && (
           <Heatmap
             points={heatmapPoints}
-            radius={40}
-            opacity={0.8}
+            radius={HEATMAP_RADIUS}
+            opacity={HEATMAP_OPACITY}
             gradient={HEATMAP_GRADIENT}
           />
         )}
@@ -801,10 +830,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           {fabExpanded && (
             <Pressable
               style={[StyleSheet.absoluteFill, styles.fabOverlayPressable]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                runCloseAnimation();
-              }}
+              onPress={handleFabOverlayPress}
             >
               <Animated.View
                 style={[
@@ -878,14 +904,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
           <TouchableOpacity
             style={[styles.fabButton, theme.shadows.button as object]}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              if (fabExpanded) {
-                runCloseAnimation();
-              } else {
-                setFabExpanded(true);
-              }
-            }}
+            onPress={handleFabToggle}
             activeOpacity={0.8}
           >
             <Animated.View
