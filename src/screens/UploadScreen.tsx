@@ -102,7 +102,8 @@ export function UploadScreen() {
           'requester_id, addressee_id, requester:requester_id(id, username, display_name, avatar_url), addressee:addressee_id(id, username, display_name, avatar_url)'
         )
         .eq('status', 'accepted')
-        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+        .limit(500);
 
       if (error) throw error;
       const friends = (data ?? []).map((f: { requester_id: string; addressee_id: string; requester: { id: string; username: string; display_name: string; avatar_url: string | null }; addressee: { id: string; username: string; display_name: string; avatar_url: string | null } }) =>

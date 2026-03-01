@@ -55,7 +55,8 @@ export function GalleryScreen({ navigation }: Props) {
       .from('posts')
       .select('*, profiles:user_id(username, display_name, avatar_url)')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(200);
     if (error) {
       __DEV__ && console.error('Error fetching gallery posts:', error);
       return;

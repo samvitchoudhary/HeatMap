@@ -328,7 +328,7 @@ const FeedCardInner = function FeedCard({
   const handleCommentPosted = useCallback(async () => {
     const { count, error: countError } = await supabase
       .from('comments')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('post_id', post.id);
     const newCount = countError ? commentCount : (count ?? commentCount);
 

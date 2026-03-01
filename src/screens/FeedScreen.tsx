@@ -117,7 +117,8 @@ export function FeedScreen() {
         .from('friendships')
         .select('requester_id, addressee_id')
         .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-        .eq('status', 'accepted');
+        .eq('status', 'accepted')
+        .limit(500);
 
       const friendIds =
         friendships?.map((f) =>

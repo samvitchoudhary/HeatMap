@@ -138,7 +138,8 @@ export function ProfileScreen() {
       .from('friendships')
       .select('requester_id, addressee_id')
       .eq('status', 'accepted')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+      .limit(500);
     const friendIds =
       friendships?.map((f: { requester_id: string; addressee_id: string }) =>
         f.requester_id === userId ? f.addressee_id : f.requester_id
@@ -149,7 +150,7 @@ export function ProfileScreen() {
       .select('id, image_url, caption, latitude, longitude, created_at, user_id, venue_name, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100);
     if (ownError) {
       if (__DEV__) console.error('Error fetching profile posts:', ownError);
       return;
@@ -181,7 +182,7 @@ export function ProfileScreen() {
     if (!userId) return;
     const { count, error } = await supabase
       .from('posts')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('user_id', userId);
     if (!error) setPostsCount(count ?? 0);
   }, [userId]);
@@ -190,7 +191,7 @@ export function ProfileScreen() {
     if (!userId) return;
     const { count, error } = await supabase
       .from('friendships')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('status', 'accepted')
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
     if (!error) setFriendsCount(count ?? 0);

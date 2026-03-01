@@ -94,7 +94,8 @@ export function FriendProfileScreen() {
       .from('friendships')
       .select('requester_id, addressee_id')
       .eq('status', 'accepted')
-      .or(`requester_id.eq.${myUserId},addressee_id.eq.${myUserId}`);
+      .or(`requester_id.eq.${myUserId},addressee_id.eq.${myUserId}`)
+      .limit(500);
     const friendIds =
       friendships?.map((f: { requester_id: string; addressee_id: string }) =>
         f.requester_id === myUserId ? f.addressee_id : f.requester_id
@@ -104,7 +105,8 @@ export function FriendProfileScreen() {
       .from('posts')
       .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
       .eq('user_id', targetUserId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(100);
     if (ownError) {
       __DEV__ && console.error('Error fetching friend posts:', ownError);
       return;
@@ -114,7 +116,8 @@ export function FriendProfileScreen() {
     const { data: taggedData } = await supabase
       .from('post_tags')
       .select('post_id, posts:post_id(*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
-      .eq('tagged_user_id', targetUserId);
+      .eq('tagged_user_id', targetUserId)
+      .limit(100);
     const taggedPosts = ((taggedData ?? []) as { post_id: string; posts: PostWithProfile }[])
       .map((t) => t.posts)
       .filter((p): p is PostWithProfile => !!p && (friendIds.includes(p.user_id) || p.user_id === myUserId));
@@ -135,7 +138,7 @@ export function FriendProfileScreen() {
     if (!targetUserId) return;
     const { count, error } = await supabase
       .from('posts')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('user_id', targetUserId);
     if (!error) setPostsCount(count ?? 0);
   }, [targetUserId]);
@@ -144,7 +147,7 @@ export function FriendProfileScreen() {
     if (!targetUserId) return;
     const { count, error } = await supabase
       .from('friendships')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('status', 'accepted')
       .or(`requester_id.eq.${targetUserId},addressee_id.eq.${targetUserId}`);
     if (!error) setFriendsCount(count ?? 0);
@@ -155,7 +158,8 @@ export function FriendProfileScreen() {
     const { data: rows, error } = await supabase
       .from('friendships')
       .select('id, requester_id, addressee_id, status')
-      .or(`requester_id.eq.${myUserId},addressee_id.eq.${myUserId}`);
+      .or(`requester_id.eq.${myUserId},addressee_id.eq.${myUserId}`)
+      .limit(500);
     if (error) return 'none';
     const match = (rows ?? []).find(
       (r: { requester_id: string; addressee_id: string }) =>

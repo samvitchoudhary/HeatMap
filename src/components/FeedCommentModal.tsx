@@ -130,7 +130,8 @@ export function FeedCommentModal({
       .from('comments')
       .select('*, profiles:user_id(display_name, username, avatar_url)')
       .eq('post_id', pid)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(50);
     if (error) {
       __DEV__ && console.error('Error fetching comments:', error);
       setLoading(false);

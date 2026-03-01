@@ -198,7 +198,7 @@ export function CommentSheet({
   const fetchCommentCount = useCallback(async (pid: string) => {
     const { count, error } = await supabase
       .from('comments')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('post_id', pid);
     if (!error) {
       setCommentCount(count ?? 0);

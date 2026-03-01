@@ -224,7 +224,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         .from('friendships')
         .select('requester_id, addressee_id')
         .or(`requester_id.eq.${currentUserId},addressee_id.eq.${currentUserId}`)
-        .eq('status', 'accepted');
+        .eq('status', 'accepted')
+        .limit(500);
 
       const friendIds =
         friendships?.map((f) =>
@@ -237,7 +238,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         .select('*, profiles(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
         .in('user_id', allowedIds)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
       if (error) {
         if (__DEV__) console.error('Error fetching posts:', error);
         setPostsLoading(false);

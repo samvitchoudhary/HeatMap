@@ -74,7 +74,8 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
         .from('friendships')
         .select('requester_id, addressee_id')
         .or(`requester_id.eq.${profile.id},addressee_id.eq.${profile.id}`)
-        .eq('status', 'accepted');
+        .eq('status', 'accepted')
+        .limit(500);
 
       const friendIds =
         friendships?.map((f) =>
@@ -88,10 +89,11 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
 
       const { count } = await supabase
         .from('posts')
-        .select('*', { count: 'exact', head: true })
+        .select('id', { count: 'exact', head: true })
         .gt('created_at', lastSeen)
         .neq('user_id', profile.id)
-        .in('user_id', friendIds);
+        .in('user_id', friendIds)
+        .limit(50);
 
       if (__DEV__) {
         console.log('[FeedBadge] Friend IDs:', friendIds, 'New posts count:', count);

@@ -94,7 +94,8 @@ export function FriendsScreen() {
     const { data, error } = await supabase
       .from('friendships')
       .select('*')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+      .limit(500);
     if (error) {
       __DEV__ && console.error('Error fetching friendships:', error);
       return;
@@ -109,7 +110,8 @@ export function FriendsScreen() {
       .from('friendships')
       .select('*')
       .eq('status', 'accepted')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
+      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+      .limit(500);
     if (error) {
       __DEV__ && console.error('Error fetching friends:', error);
       setFriendsLoading(false);
@@ -172,7 +174,7 @@ export function FriendsScreen() {
         .select('*')
         .ilike('username', `%${searchText.trim()}%`)
         .neq('id', userId)
-        .limit(10);
+        .limit(20);
       if (error) {
         __DEV__ && console.error('Error searching profiles:', error);
         setSearchProfiles([]);
