@@ -390,22 +390,18 @@ export function UploadScreen() {
         }));
         const { error: tagError } = await supabase.from('post_tags').insert(tagInserts);
         if (tagError) {
-          __DEV__ && console.error('Error inserting post_tags:', tagError);
+          __DEV__ && console.error('Failed to insert tags:', tagError);
         }
 
-        for (const friend of taggedFriends) {
-          const { error } = await supabase
-            .from('notifications')
-            .insert({
-              user_id: friend.id,
-              type: 'tag',
-              from_user_id: userId,
-              post_id: newPostId,
-            })
-            .select();
-          if (error) {
-            __DEV__ && console.error('Tag notification failed for', friend.id, error);
-          }
+        const notificationInserts = taggedFriends.map((friend) => ({
+          user_id: friend.id,
+          type: 'tag',
+          from_user_id: userId,
+          post_id: newPostId,
+        }));
+        const { error: notifError } = await supabase.from('notifications').insert(notificationInserts);
+        if (notifError) {
+          __DEV__ && console.error('Failed to send tag notifications:', notifError);
         }
       }
 
