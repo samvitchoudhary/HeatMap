@@ -39,6 +39,7 @@ import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/ToastContext';
+import { useFriends, usePosts } from '../hooks';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { StyledTextInput } from '../components/StyledTextInput';
@@ -82,7 +83,7 @@ export function UploadScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<MapStackParamList, 'Upload'>>();
   const route = useRoute<RouteProp<MapStackParamList, 'Upload'>>();
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const { showToast } = useToast();
   const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
   const [venueName, setVenueName] = useState('');
@@ -100,44 +101,18 @@ export function UploadScreen() {
   const [originalPhotoDate, setOriginalPhotoDate] = useState<string | null>(null);
   const [taggedFriends, setTaggedFriends] = useState<{ id: string; display_name: string; username: string }[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
-  const [pickerFriends, setPickerFriends] = useState<{ id: string; display_name: string; username: string; avatar_url: string | null }[]>([]);
   const [pickerSearch, setPickerSearch] = useState('');
-  const [pickerLoading, setPickerLoading] = useState(false);
+  const { friends: pickerFriends, loading: pickerLoading, refresh: refreshFriends } = useFriends();
+  const { addPost } = usePosts();
 
   const appliedParamsRef = React.useRef<string | null>(null);
-
-  const fetchFriendsForPicker = useCallback(async () => {
-    const userId = session?.user?.id;
-    if (!userId) return;
-    setPickerLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('friendships')
-        .select(
-          'requester_id, addressee_id, requester:requester_id(id, username, display_name, avatar_url), addressee:addressee_id(id, username, display_name, avatar_url)'
-        )
-        .eq('status', 'accepted')
-        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-        .limit(500);
-
-      if (error) throw error;
-      const friends = (data ?? []).map((f: { requester_id: string; addressee_id: string; requester: { id: string; username: string; display_name: string; avatar_url: string | null }; addressee: { id: string; username: string; display_name: string; avatar_url: string | null } }) =>
-        f.requester_id === userId ? f.addressee : f.requester
-      );
-      setPickerFriends(friends);
-    } catch (err) {
-      __DEV__ && console.error('Error fetching friends:', err);
-    } finally {
-      setPickerLoading(false);
-    }
-  }, [session?.user?.id]);
 
   useEffect(() => {
     if (showTagPicker) {
       setPickerSearch('');
-      fetchFriendsForPicker();
+      refreshFriends();
     }
-  }, [showTagPicker, fetchFriendsForPicker]);
+  }, [showTagPicker, refreshFriends]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -378,6 +353,31 @@ export function UploadScreen() {
       if (insertError) throw insertError;
 
       const newPostId = insertedPost?.id;
+
+      if (profile && newPostId) {
+        addPost({
+          id: newPostId,
+          user_id: userId,
+          image_url: imageUrl,
+          caption: caption.trim() || null,
+          venue_name: venueName.trim() || null,
+          latitude: locationCoords.latitude,
+          longitude: locationCoords.longitude,
+          created_at: originalPhotoDate ?? new Date().toISOString(),
+          profiles: {
+            username: profile.username,
+            display_name: profile.display_name,
+            avatar_url: profile.avatar_url,
+          },
+          post_tags: taggedFriends.length > 0
+            ? taggedFriends.map((f) => ({
+                tagged_user_id: f.id,
+                profiles: { display_name: f.display_name, username: f.username },
+              }))
+            : undefined,
+        } as any);
+      }
+
       if (newPostId && taggedFriends.length > 0) {
         const tagInserts = taggedFriends.map((friend) => ({
           post_id: newPostId,

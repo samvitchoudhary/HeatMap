@@ -25,7 +25,7 @@ import { useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../lib/AuthContext';
-import { useNotifications } from '../lib/NotificationContext';
+import { useNotifications } from '../hooks';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { Avatar } from '../components/Avatar';
@@ -84,7 +84,7 @@ export function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { session } = useAuth();
-  const { refreshUnreadCount } = useNotifications();
+  const { refreshUnreadCount, markAllRead } = useNotifications();
   const userId = session?.user?.id;
 
   const [notifications, setNotifications] = useState<NotificationWithRelations[] | null>(null);
@@ -132,16 +132,11 @@ export function NotificationsScreen() {
     useCallback(() => {
       if (!userId) return;
       const timer = setTimeout(async () => {
-        await supabase
-          .from('notifications')
-          .update({ read: true })
-          .eq('user_id', userId)
-          .eq('read', false);
+        await markAllRead();
         setNotifications((prev) => (prev ? prev.map((n) => ({ ...n, read: true })) : []));
-        await refreshUnreadCount();
       }, 2000);
       return () => clearTimeout(timer);
-    }, [userId, refreshUnreadCount])
+    }, [userId, markAllRead])
   );
 
   const onRefresh = useCallback(() => {

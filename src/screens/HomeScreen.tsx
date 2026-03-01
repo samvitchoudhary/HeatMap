@@ -41,6 +41,7 @@ import MapView, { Heatmap, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
+import { useFriends, usePosts } from '../hooks';
 import type { Profile, PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
 import { StyledTextInput } from '../components/StyledTextInput';
@@ -178,8 +179,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<MapStackParamList, 'Map'>>();
   const { cardStackOpen, setCardStackOpen } = useCardStack();
-  const [posts, setPosts] = useState<PostWithProfile[]>([]);
-  const [postsLoading, setPostsLoading] = useState(true);
+  const { friendIds, loading: friendsLoading } = useFriends();
+  const { posts, loading: postsLoading, fetchAllPosts, removePost } = usePosts();
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [openWithCommentsPostId, setOpenWithCommentsPostId] = useState<string | null>(null);
@@ -197,7 +198,6 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasInitiallyFetched = useRef(false);
-  const lastFetchRef = useRef(0);
 
   const [fabExpanded, setFabExpanded] = useState(false);
   const fabIconRotate = useRef(new Animated.Value(0)).current;
@@ -209,49 +209,9 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const fabGalleryOpacity = useRef(new Animated.Value(0)).current;
   const fabGalleryScale = useRef(new Animated.Value(0.5)).current;
 
-  const fetchPosts = useCallback(
-    async (showLoading: boolean) => {
-      const currentUserId = profile?.id;
-      if (!currentUserId) {
-        setPostsLoading(false);
-        return;
-      }
-      const now = Date.now();
-      if (now - lastFetchRef.current < 30000 && !showLoading) return;
-      lastFetchRef.current = now;
-      if (showLoading) setPostsLoading(true);
-      const { data: friendships } = await supabase
-        .from('friendships')
-        .select('requester_id, addressee_id')
-        .or(`requester_id.eq.${currentUserId},addressee_id.eq.${currentUserId}`)
-        .eq('status', 'accepted')
-        .limit(500);
-
-      const friendIds =
-        friendships?.map((f) =>
-          f.requester_id === currentUserId ? f.addressee_id : f.requester_id
-        ) ?? [];
-      const allowedIds = [currentUserId, ...friendIds];
-
-      const { data, error } = await supabase
-        .from('posts')
-        .select('*, profiles(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
-        .in('user_id', allowedIds)
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (error) {
-        if (__DEV__) console.error('Error fetching posts:', error);
-        setPostsLoading(false);
-        return;
-      }
-      setPosts((data ?? []) as PostWithProfile[]);
-      setPostsLoading(false);
-    },
-    [profile?.id]
-  );
-
   useEffect(() => {
-    if (!postsLoading) {
+    const loading = friendsLoading || postsLoading;
+    if (!loading) {
       Animated.timing(loadingOpacity, {
         toValue: 0,
         duration: 300,
@@ -260,7 +220,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     } else {
       loadingOpacity.setValue(1);
     }
-  }, [postsLoading, loadingOpacity]);
+  }, [friendsLoading, postsLoading, loadingOpacity]);
 
   useEffect(() => {
     if (showDropdown) {
@@ -594,11 +554,18 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
   useFocusEffect(
     useCallback(() => {
-      const isInitial = !hasInitiallyFetched.current;
+      const currentUserId = profile?.id;
+      if (!currentUserId) return;
       hasInitiallyFetched.current = true;
-      fetchPosts(isInitial);
-    }, [fetchPosts])
+      fetchAllPosts(friendIds, currentUserId);
+    }, [profile?.id, friendIds, fetchAllPosts])
   );
+
+  useEffect(() => {
+    if (profile?.id && friendIds.length > 0) {
+      fetchAllPosts(friendIds, profile.id);
+    }
+  }, [profile?.id, friendIds, fetchAllPosts]);
 
   useFocusEffect(
     useCallback(() => {
@@ -985,7 +952,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           initialFlippedPostId={openWithCommentsPostId ?? undefined}
           onInitialFlippedConsumed={() => setOpenWithCommentsPostId(null)}
           onPostDeleted={(postId) => {
-            setPosts((prev) => prev.filter((p) => p.id !== postId));
+            removePost(postId);
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
           }}
           onProfilePress={(userId) => {

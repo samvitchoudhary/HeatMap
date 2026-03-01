@@ -27,6 +27,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
+import { useFriends } from '../hooks';
 import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
@@ -55,6 +56,7 @@ export function FriendProfileScreen() {
   const { setCardStackOpen } = useCardStack();
   const { showToast } = useToast();
   const myUserId = session?.user?.id;
+  const { friendIds } = useFriends();
 
   const [profile, setProfile] = useState<{
     id: string;
@@ -90,16 +92,6 @@ export function FriendProfileScreen() {
 
   const fetchPosts = useCallback(async () => {
     if (!targetUserId || !myUserId) return;
-    const { data: friendships } = await supabase
-      .from('friendships')
-      .select('requester_id, addressee_id')
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${myUserId},addressee_id.eq.${myUserId}`)
-      .limit(500);
-    const friendIds =
-      friendships?.map((f: { requester_id: string; addressee_id: string }) =>
-        f.requester_id === myUserId ? f.addressee_id : f.requester_id
-      ) ?? [];
 
     const { data: ownData, error: ownError } = await supabase
       .from('posts')
@@ -132,7 +124,7 @@ export function FriendProfileScreen() {
     }
     merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     setPosts(merged);
-  }, [targetUserId, myUserId]);
+  }, [targetUserId, myUserId, friendIds]);
 
   const fetchPostsCount = useCallback(async () => {
     if (!targetUserId) return;

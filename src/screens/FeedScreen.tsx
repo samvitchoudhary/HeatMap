@@ -28,6 +28,7 @@ import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useFeedBadge } from '../lib/FeedBadgeContext';
+import { useFriends, usePosts } from '../hooks';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
@@ -45,6 +46,8 @@ export function FeedScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<FeedScreenNav>();
   const { profile } = useAuth();
+  const { friendIds } = useFriends();
+  const { removePost } = usePosts();
   const { markFeedSeen, lastSeenAt } = useFeedBadge();
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [reactionsByPostId, setReactionsByPostId] = useState<FeedReactionCounts>({});
@@ -112,18 +115,6 @@ export function FeedScreen() {
           setLoadingMore(true);
         }
       }
-
-      const { data: friendships } = await supabase
-        .from('friendships')
-        .select('requester_id, addressee_id')
-        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-        .eq('status', 'accepted')
-        .limit(500);
-
-      const friendIds =
-        friendships?.map((f) =>
-          f.requester_id === userId ? f.addressee_id : f.requester_id
-        ) ?? [];
 
       if (friendIds.length === 0) {
         setPosts([]);
@@ -230,7 +221,7 @@ export function FeedScreen() {
       setLoading(false);
       setLoadingMore(false);
     },
-    [profile?.id]
+    [profile?.id, friendIds]
   );
 
   useFocusEffect(
@@ -277,9 +268,10 @@ export function FeedScreen() {
   );
 
   const handleFadeComplete = useCallback((postId: string) => {
+    removePost(postId);
     setPosts((prev) => prev.filter((p) => p.id !== postId));
     setFadingOutId(null);
-  }, []);
+  }, [removePost]);
 
   const handleReactionChange = useCallback(
     (postId: string, counts: Record<string, number>, userReaction: string | null) => {

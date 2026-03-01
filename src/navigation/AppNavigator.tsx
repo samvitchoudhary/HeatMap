@@ -13,7 +13,7 @@
 
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { NotificationProvider, useNotifications } from '../lib/NotificationContext';
+import { FriendsProvider, NotificationsProvider, PostsProvider, useNotifications } from '../hooks';
 import { FeedBadgeProvider, useFeedBadge } from '../lib/FeedBadgeContext';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { View, TouchableOpacity, ActivityIndicator, StyleSheet, useWindowDimensions, Text, Animated, Keyboard } from 'react-native';
@@ -319,11 +319,15 @@ export function AppNavigator() {
     >
       <Stack.Screen name="MainTabs">
         {() => (
-          <NotificationProvider>
-            <FeedBadgeProvider>
-              <MainTabs profile={profile as Profile} />
-            </FeedBadgeProvider>
-          </NotificationProvider>
+          <FriendsProvider userId={profile!.id}>
+            <PostsProvider>
+              <NotificationsProvider>
+                <FeedBadgeProvider>
+                  <MainTabs profile={profile as Profile} />
+                </FeedBadgeProvider>
+              </NotificationsProvider>
+            </PostsProvider>
+          </FriendsProvider>
         )}
       </Stack.Screen>
       <Stack.Screen

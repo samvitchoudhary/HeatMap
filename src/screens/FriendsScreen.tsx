@@ -32,6 +32,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/ToastContext';
+import { useFriends } from '../hooks';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { Profile, Friendship } from '../types';
@@ -60,9 +61,7 @@ export function FriendsScreen() {
   const { session } = useAuth();
   const { showToast } = useToast();
   const userId = session?.user?.id;
-
-  const [friends, setFriends] = useState<FriendshipWithProfile[]>([]);
-  const [friendsLoading, setFriendsLoading] = useState(true);
+  const { friends: friendsFromContext, loading: friendsLoading, refresh: refreshFriends } = useFriends();
   const [refreshing, setRefreshing] = useState(false);
 
   const [searchFocused, setSearchFocused] = useState(false);
@@ -103,59 +102,28 @@ export function FriendsScreen() {
     setFriendships((data ?? []) as Friendship[]);
   }, [userId]);
 
-  const fetchFriends = useCallback(async (showLoading = true) => {
-    if (!userId) return;
-    if (showLoading) setFriendsLoading(true);
-    const { data, error } = await supabase
-      .from('friendships')
-      .select('*')
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-      .limit(500);
-    if (error) {
-      __DEV__ && console.error('Error fetching friends:', error);
-      setFriendsLoading(false);
-      return;
-    }
-    const rows = (data ?? []) as Friendship[];
-    const otherIds = rows.map((r) =>
-      r.requester_id === userId ? r.addressee_id : r.requester_id
-    );
-    if (otherIds.length === 0) {
-      setFriends([]);
-      setFriendsLoading(false);
-      return;
-    }
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('*')
-      .in('id', otherIds);
-    const profileMap = new Map(
-      ((profiles ?? []) as Profile[]).map((p) => [p.id, p])
-    );
-    setFriends(
-      rows.map((r) => ({
-        ...r,
-        other_user:
-          profileMap.get(r.requester_id === userId ? r.addressee_id : r.requester_id)!,
-      }))
-    );
-    setFriendsLoading(false);
-  }, [userId]);
-
-  const hasInitiallyFetched = useRef(false);
+  const friends: FriendshipWithProfile[] = React.useMemo(() => {
+    return friendsFromContext.map((f) => ({
+      id: '',
+      requester_id: userId ?? '',
+      addressee_id: f.id,
+      status: 'accepted' as const,
+      created_at: '',
+      other_user: {
+        id: f.id,
+        username: f.username,
+        display_name: f.display_name,
+        avatar_url: f.avatar_url,
+        created_at: '',
+      },
+    }));
+  }, [friendsFromContext, userId]);
 
   useFocusEffect(
     useCallback(() => {
-      const isInitial = !hasInitiallyFetched.current;
-      hasInitiallyFetched.current = true;
       fetchFriendships();
-      if (isInitial) {
-        fetchFriends();
-      } else {
-        fetchFriends(false);
-      }
-    }, [fetchFriendships, fetchFriends])
+      refreshFriends();
+    }, [fetchFriendships, refreshFriends])
   );
 
   useEffect(() => {
@@ -190,7 +158,7 @@ export function FriendsScreen() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([fetchFriends(false), fetchFriendships()]);
+    await Promise.all([refreshFriends(), fetchFriendships()]);
     setRefreshing(false);
   }
 
@@ -227,7 +195,7 @@ export function FriendsScreen() {
       showToast(error.message);
       return;
     }
-    await Promise.all([fetchFriendships(), fetchFriends(false)]);
+    await Promise.all([fetchFriendships(), refreshFriends()]);
   }
 
   function renderSearchResultButton(item: SearchResultWithStatus) {

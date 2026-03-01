@@ -12,6 +12,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
+import { useFriends } from '../hooks';
 import { supabase } from './supabase';
 
 /** AsyncStorage key for feed last-seen ISO timestamp */
@@ -28,6 +29,7 @@ const FeedBadgeContext = createContext<FeedBadgeContextValue | null>(null);
 /** Provider that manages feed badge state */
 export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
+  const { friendIds } = useFriends();
   /** ISO timestamp of when user last viewed the feed */
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
   /** True if friends have posted since lastSeenAt */
@@ -70,18 +72,6 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const { data: friendships } = await supabase
-        .from('friendships')
-        .select('requester_id, addressee_id')
-        .or(`requester_id.eq.${profile.id},addressee_id.eq.${profile.id}`)
-        .eq('status', 'accepted')
-        .limit(500);
-
-      const friendIds =
-        friendships?.map((f) =>
-          f.requester_id === profile.id ? f.addressee_id : f.requester_id
-        ) ?? [];
-
       if (friendIds.length === 0) {
         setHasNewPosts(false);
         return;
@@ -102,7 +92,7 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setHasNewPosts(false);
     }
-  }, [profile?.id, lastSeenAt, loadLastSeen]);
+  }, [profile?.id, lastSeenAt, loadLastSeen, friendIds]);
 
   useEffect(() => {
     loadLastSeen();

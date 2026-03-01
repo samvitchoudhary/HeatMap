@@ -38,6 +38,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
+import { useFriends } from '../hooks';
 import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
@@ -115,10 +116,10 @@ export function ProfileScreen() {
   const { setCardStackOpen } = useCardStack();
   const { showToast } = useToast();
   const userId = profile?.id ?? session?.user?.id;
+  const { friendIds, refresh: refreshFriends } = useFriends();
 
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [postsCount, setPostsCount] = useState(0);
-  const [friendsCount, setFriendsCount] = useState(0);
   const [profileDataReady, setProfileDataReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
@@ -134,16 +135,6 @@ export function ProfileScreen() {
 
   const fetchMyPosts = useCallback(async () => {
     if (!userId) return;
-    const { data: friendships } = await supabase
-      .from('friendships')
-      .select('requester_id, addressee_id')
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-      .limit(500);
-    const friendIds =
-      friendships?.map((f: { requester_id: string; addressee_id: string }) =>
-        f.requester_id === userId ? f.addressee_id : f.requester_id
-      ) ?? [];
 
     const { data: ownData, error: ownError } = await supabase
       .from('posts')
@@ -176,7 +167,7 @@ export function ProfileScreen() {
     }
     merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     setPosts(merged);
-  }, [userId]);
+  }, [userId, friendIds]);
 
   const fetchPostsCount = useCallback(async () => {
     if (!userId) return;
@@ -187,15 +178,7 @@ export function ProfileScreen() {
     if (!error) setPostsCount(count ?? 0);
   }, [userId]);
 
-  const fetchFriendsCount = useCallback(async () => {
-    if (!userId) return;
-    const { count, error } = await supabase
-      .from('friendships')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-    if (!error) setFriendsCount(count ?? 0);
-  }, [userId]);
+  const friendsCount = friendIds.length;
 
   useFocusEffect(
     useCallback(() => {
@@ -203,16 +186,16 @@ export function ProfileScreen() {
       hasInitiallyFetched.current = true;
       let mounted = true;
       if (isInitial) setProfileDataReady(false);
-      Promise.all([fetchMyPosts(), fetchPostsCount(), fetchFriendsCount()]).then(() => {
+      Promise.all([fetchMyPosts(), fetchPostsCount()]).then(() => {
         if (mounted) setProfileDataReady(true);
       });
       return () => { mounted = false; };
-    }, [fetchMyPosts, fetchPostsCount, fetchFriendsCount])
+    }, [fetchMyPosts, fetchPostsCount])
   );
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([fetchMyPosts(), fetchPostsCount(), fetchFriendsCount()]);
+    await Promise.all([fetchMyPosts(), fetchPostsCount(), refreshFriends()]);
     await refreshProfile();
     setRefreshing(false);
   }
