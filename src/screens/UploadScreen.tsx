@@ -34,6 +34,7 @@ import type { RouteProp } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
@@ -49,6 +50,20 @@ import { parseExifGps } from '../lib/exif';
 const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
   allowsEditing: true,
   quality: 0.7,
+};
+
+/**
+ * Compresses and resizes an image to a max width of 1080px (Instagram-quality).
+ * Keeps aspect ratio. Compresses to JPEG at 0.7 quality.
+ * This dramatically reduces file size (typically 10-20MB → 200-500KB).
+ */
+const compressImage = async (uri: string): Promise<string> => {
+  const result = await manipulateAsync(
+    uri,
+    [{ resize: { width: 1080 } }],
+    { compress: 0.7, format: SaveFormat.JPEG }
+  );
+  return result.uri;
 };
 
 /** Parse EXIF date (YYYY:MM:DD HH:MM:SS) to ISO string. */
@@ -320,21 +335,27 @@ export function UploadScreen() {
 
     setIsPosting(true);
     try {
-      const timestamp = Date.now();
-      const filePath = `${userId}/${timestamp}.jpg`;
+      const compressedUri = await compressImage(selectedImageUri);
 
-      const response = await fetch(selectedImageUri);
-      const blob = await response.blob();
-      const arrayBuffer = await new Response(blob).arrayBuffer();
+      const fileExt = 'jpg';
+      const fileName = `${Date.now()}.${fileExt}`;
+      const filePath = `${userId}/${fileName}`;
+
+      const response = await fetch(compressedUri);
+      const arraybuffer = await response.arrayBuffer();
 
       const { error: uploadError } = await supabase.storage
         .from('posts')
-        .upload(filePath, arrayBuffer, {
+        .upload(filePath, arraybuffer, {
           contentType: 'image/jpeg',
           upsert: false,
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        __DEV__ && console.error('Upload failed:', uploadError);
+        throw uploadError;
+      }
+      if (__DEV__) console.log('Upload success, path:', filePath);
 
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(filePath);
       const imageUrl = urlData.publicUrl;
