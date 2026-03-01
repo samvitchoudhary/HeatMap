@@ -22,6 +22,7 @@ import {
   Platform,
   ActivityIndicator,
   Pressable,
+  Alert,
 } from 'react-native';
 import type { TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -126,19 +127,20 @@ export function FeedCommentModal({
 
   const fetchComments = useCallback(async (pid: string) => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('comments')
-      .select('*, profiles:user_id(display_name, username, avatar_url)')
-      .eq('post_id', pid)
-      .order('created_at', { ascending: true })
-      .limit(50);
-    if (error) {
-      __DEV__ && console.error('Error fetching comments:', error);
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .select('*, profiles:user_id(display_name, username, avatar_url)')
+        .eq('post_id', pid)
+        .order('created_at', { ascending: true })
+        .limit(50);
+      if (error) throw error;
+      setComments((data ?? []) as CommentWithProfile[]);
+    } catch (err) {
+      if (__DEV__) console.error('Failed to fetch comments:', err);
+    } finally {
       setLoading(false);
-      return;
     }
-    setComments((data ?? []) as CommentWithProfile[]);
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -154,36 +156,42 @@ export function FeedCommentModal({
     if (!content || !userId || posting) return;
 
     setPosting(true);
-    const { data: newComment, error } = await supabase
-      .from('comments')
-      .insert({
-        post_id: postId,
-        user_id: userId,
-        content,
-        parent_id: replyTarget?.id ?? null,
-      })
-      .select('id')
-      .single();
-    if (error) {
-      __DEV__ && console.error('Error posting comment:', error);
+    try {
+      const { data: newComment, error } = await supabase
+        .from('comments')
+        .insert({
+          post_id: postId,
+          user_id: userId,
+          content,
+          parent_id: replyTarget?.id ?? null,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
+      if (shouldNotify) {
+        try {
+          await supabase.from('notifications').insert({
+            user_id: postUserId!,
+            type: 'comment',
+            from_user_id: userId,
+            post_id: postId,
+            comment_id: newComment!.id,
+          });
+        } catch (notifErr) {
+          if (__DEV__) console.error('Notification insert failed:', notifErr);
+        }
+      }
+      setInputText('');
+      setReplyTarget(null);
+      await fetchComments(postId);
+      onCommentPosted?.();
+    } catch (err) {
+      if (__DEV__) console.error('Error posting comment:', err);
+      Alert.alert('Error', 'Could not post comment. Please try again.');
+    } finally {
       setPosting(false);
-      return;
     }
-    const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
-    if (shouldNotify) {
-      await supabase.from('notifications').insert({
-        user_id: postUserId!,
-        type: 'comment',
-        from_user_id: userId,
-        post_id: postId,
-        comment_id: newComment!.id,
-      });
-    }
-    setInputText('');
-    setReplyTarget(null);
-    await fetchComments(postId);
-    onCommentPosted?.();
-    setPosting(false);
   }, [inputText, userId, postId, postUserId, posting, replyTarget, fetchComments, onCommentPosted]);
 
   useEffect(() => {

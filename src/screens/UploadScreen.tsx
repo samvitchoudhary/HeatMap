@@ -310,13 +310,18 @@ export function UploadScreen() {
 
     setIsPosting(true);
     try {
-      const compressedUri = await compressImage(selectedImageUri);
+      let finalUri = selectedImageUri;
+      try {
+        finalUri = await compressImage(selectedImageUri);
+      } catch (compressErr) {
+        if (__DEV__) console.error('Compression failed, using original:', compressErr);
+      }
 
       const fileExt = 'jpg';
       const fileName = `${Date.now()}.${fileExt}`;
       const filePath = `${userId}/${fileName}`;
 
-      const response = await fetch(compressedUri);
+      const response = await fetch(finalUri);
       const arraybuffer = await response.arrayBuffer();
 
       const { error: uploadError } = await supabase.storage
@@ -408,8 +413,8 @@ export function UploadScreen() {
       setPostSuccess(true);
       setShowSuccessToast(true);
     } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Failed to post. Please try again.';
-      showToast(message);
+      if (__DEV__) console.error('Post failed:', error);
+      Alert.alert('Error', 'Failed to post. Please try again.');
     } finally {
       setIsPosting(false);
     }

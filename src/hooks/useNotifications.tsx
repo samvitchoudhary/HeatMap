@@ -37,25 +37,30 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       setUnreadCount(0);
       return;
     }
-    const { count, error } = await supabase
-      .from('notifications')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('read', false);
-
-    if (!error && count !== null) {
-      setUnreadCount(count);
+    try {
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('read', false);
+      if (!error && count !== null) setUnreadCount(count);
+    } catch (err) {
+      if (__DEV__) console.error('Failed to fetch unread count:', err);
     }
   }, [userId]);
 
   const markAllRead = useCallback(async () => {
     if (!userId) return;
-    await supabase
-      .from('notifications')
-      .update({ read: true })
-      .eq('user_id', userId)
-      .eq('read', false);
-    setUnreadCount(0);
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', userId)
+        .eq('read', false);
+      if (!error) setUnreadCount(0);
+    } catch (err) {
+      if (__DEV__) console.error('Mark all read failed:', err);
+    }
   }, [userId]);
 
   useFocusEffect(

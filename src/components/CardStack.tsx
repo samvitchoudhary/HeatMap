@@ -429,9 +429,11 @@ export function CardStack({
             try {
               const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
               if (imagePath) {
-                await supabase.storage.from('posts').remove([imagePath]);
+                const { error: storageErr } = await supabase.storage.from('posts').remove([imagePath]);
+                if (storageErr) throw storageErr;
               }
-              await supabase.from('posts').delete().eq('id', post.id);
+              const { error } = await supabase.from('posts').delete().eq('id', post.id);
+              if (error) throw error;
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               onPostDeleted?.(post.id);
               if (posts.length <= 1) {
@@ -439,6 +441,7 @@ export function CardStack({
               }
             } catch (err) {
               if (__DEV__) console.error('Error deleting post:', err);
+              Alert.alert('Error', 'Could not delete post. Please try again.');
             }
           },
         },
@@ -574,7 +577,8 @@ export function CardStack({
 
       // Delete old reaction if exists
       if (existingReactions) {
-        await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+        const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+        if (delErr) throw delErr;
       }
 
       // Insert heart reaction
@@ -597,18 +601,19 @@ export function CardStack({
       newCounts['❤️'] = (newCounts['❤️'] ?? 0) + 1;
       reactionsCache.current[post.id] = { counts: newCounts, userReaction: '❤️' };
 
-      // Send notification
+      // Send notification (best-effort, don't block UI)
       if (post.user_id !== userId) {
-        await supabase
-          .from('notifications')
-          .insert({
+        try {
+          await supabase.from('notifications').insert({
             user_id: post.user_id,
             type: 'reaction',
             from_user_id: userId,
             post_id: post.id,
             emoji: '❤️',
-          })
-          .select();
+          });
+        } catch (notifErr) {
+          if (__DEV__) console.error('Notification insert failed:', notifErr);
+        }
       }
     },
     [session?.user?.id, userReaction, reactionCounts]
@@ -648,13 +653,15 @@ export function CardStack({
           setUserReaction(prevReaction);
           setReactionCounts(prevCounts);
           if (__DEV__) console.error('Error deleting reaction:', error);
+          Alert.alert('Error', 'Could not remove reaction. Please try again.');
           return;
         }
         const nextCounts = { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) };
         reactionsCache.current[post.id] = { counts: nextCounts, userReaction: null };
       } else {
         if (prevReaction) {
-          await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+          const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+          if (delErr) throw delErr;
         }
         const { error } = await supabase.from('reactions').insert({
           post_id: post.id,
@@ -665,6 +672,7 @@ export function CardStack({
           setUserReaction(prevReaction);
           setReactionCounts(prevCounts);
           if (__DEV__) console.error('Error inserting reaction:', error);
+          Alert.alert('Error', 'Could not save reaction. Please try again.');
           return;
         }
         const nextCounts = { ...prevCounts };
@@ -675,13 +683,17 @@ export function CardStack({
         reactionsCache.current[post.id] = { counts: nextCounts, userReaction: emoji };
         const shouldNotify = post.user_id !== userId;
         if (shouldNotify) {
-          await supabase.from('notifications').insert({
-            user_id: post.user_id,
-            type: 'reaction',
-            from_user_id: userId,
-            post_id: post.id,
-            emoji,
-          });
+          try {
+            await supabase.from('notifications').insert({
+              user_id: post.user_id,
+              type: 'reaction',
+              from_user_id: userId,
+              post_id: post.id,
+              emoji,
+            });
+          } catch (notifErr) {
+            if (__DEV__) console.error('Notification insert failed:', notifErr);
+          }
         }
       }
     },

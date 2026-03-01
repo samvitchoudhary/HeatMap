@@ -23,6 +23,7 @@ import {
   ActivityIndicator,
   Animated,
   Pressable,
+  Alert,
 } from 'react-native';
 import type { TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -196,32 +197,35 @@ export function CommentSheet({
   const inputRef = useRef<TextInput>(null);
 
   const fetchCommentCount = useCallback(async (pid: string) => {
-    const { count, error } = await supabase
-      .from('comments')
-      .select('id', { count: 'exact', head: true })
-      .eq('post_id', pid);
-    if (!error) {
-      setCommentCount(count ?? 0);
+    try {
+      const { count, error } = await supabase
+        .from('comments')
+        .select('id', { count: 'exact', head: true })
+        .eq('post_id', pid);
+      if (!error) setCommentCount(count ?? 0);
+    } catch (err) {
+      if (__DEV__) console.error('Failed to fetch comment count:', err);
     }
   }, []);
 
   const fetchComments = useCallback(async (pid: string) => {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('comments')
-      .select('id, post_id, user_id, content, created_at, parent_id, profiles:user_id(display_name, username, avatar_url)')
-      .eq('post_id', pid)
-      .order('created_at', { ascending: true })
-      .limit(30);
-    if (error) {
-      if (__DEV__) console.error('Error fetching comments:', error);
+    try {
+      const { data, error } = await supabase
+        .from('comments')
+        .select('id, post_id, user_id, content, created_at, parent_id, profiles:user_id(display_name, username, avatar_url)')
+        .eq('post_id', pid)
+        .order('created_at', { ascending: true })
+        .limit(30);
+      if (error) throw error;
+      const list = (data ?? []) as CommentWithProfile[];
+      setComments(list);
+      setCommentCount(list.length);
+    } catch (err) {
+      if (__DEV__) console.error('Failed to fetch comments:', err);
+    } finally {
       setLoading(false);
-      return;
     }
-    const list = (data ?? []) as CommentWithProfile[];
-    setComments(list);
-    setCommentCount(list.length);
-    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -238,36 +242,42 @@ export function CommentSheet({
     if (!content || !userId || posting) return;
 
     setPosting(true);
-    const { data: newComment, error } = await supabase
-      .from('comments')
-      .insert({
-        post_id: postId,
-        user_id: userId,
-        content,
-        parent_id: replyTarget?.id ?? null,
-      })
-      .select('id')
-      .single();
-    if (error) {
-      if (__DEV__) console.error('Error posting comment:', error);
+    try {
+      const { data: newComment, error } = await supabase
+        .from('comments')
+        .insert({
+          post_id: postId,
+          user_id: userId,
+          content,
+          parent_id: replyTarget?.id ?? null,
+        })
+        .select('id')
+        .single();
+      if (error) throw error;
+      const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
+      if (shouldNotify) {
+        try {
+          await supabase.from('notifications').insert({
+            user_id: postUserId,
+            type: 'comment',
+            from_user_id: userId,
+            post_id: postId,
+            comment_id: newComment!.id,
+          });
+        } catch (notifErr) {
+          if (__DEV__) console.error('Notification insert failed:', notifErr);
+        }
+      }
+      setInputText('');
+      setReplyTarget(null);
+      await fetchComments(postId);
+      onCommentPosted?.();
+    } catch (err) {
+      if (__DEV__) console.error('Error posting comment:', err);
+      Alert.alert('Error', 'Could not post comment. Please try again.');
+    } finally {
       setPosting(false);
-      return;
     }
-    const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
-    if (shouldNotify) {
-      await supabase.from('notifications').insert({
-        user_id: postUserId,
-        type: 'comment',
-        from_user_id: userId,
-        post_id: postId,
-        comment_id: newComment!.id,
-      });
-    }
-    setInputText('');
-    setReplyTarget(null);
-    await fetchComments(postId);
-    onCommentPosted?.();
-    setPosting(false);
   }, [inputText, userId, postId, postUserId, posting, replyTarget, fetchComments, onCommentPosted]);
 
   useEffect(() => {

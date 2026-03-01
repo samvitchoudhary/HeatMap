@@ -610,12 +610,13 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
       if (postId && typeof lat === 'number' && typeof lng === 'number') {
         (async () => {
-          const { data } = await supabase
-            .from('posts')
-            .select('*, profiles:user_id(username, display_name, avatar_url)')
-            .eq('id', postId)
-            .single();
-          if (data && mapRef.current) {
+          try {
+            const { data } = await supabase
+              .from('posts')
+              .select('*, profiles:user_id(username, display_name, avatar_url)')
+              .eq('id', postId)
+              .single();
+            if (data && mapRef.current) {
             const post = data as PostWithProfile;
             mapRef.current.animateToRegion(
               { latitude: lat, longitude: lng, latitudeDelta: 0.005, longitudeDelta: 0.005 },
@@ -624,6 +625,9 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
             setSelectedInitialIndex(0);
             setSelectedPosts([post]);
             setOpenWithCommentsPostId(showComments ? postId : null);
+          }
+          } catch (err) {
+            if (__DEV__) console.error('Failed to fetch post for deep link:', err);
           }
           (navigation as { setParams: (p: object) => void }).setParams({
             latitude: undefined,

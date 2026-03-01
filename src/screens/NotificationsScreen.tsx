@@ -19,6 +19,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -96,27 +97,25 @@ export function NotificationsScreen() {
     async (showLoading = false) => {
       if (!userId) return;
       if (showLoading) setLoading(true);
-      const { data, error } = await supabase
-        .from('notifications')
-        .select(
-          '*, from_user:from_user_id(display_name, username, avatar_url), post:post_id(id, image_url, latitude, longitude)'
-        )
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
-
-      if (error) {
-        __DEV__ && console.error('Error fetching notifications:', error);
+      try {
+        const { data, error } = await supabase
+          .from('notifications')
+          .select(
+            '*, from_user:from_user_id(display_name, username, avatar_url), post:post_id(id, image_url, latitude, longitude)'
+          )
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(50);
+        if (error) throw error;
+        const list = (data ?? []) as NotificationWithRelations[];
+        setNotifications(list);
+        await refreshUnreadCount();
+      } catch (err) {
+        if (__DEV__) console.error('Failed to fetch notifications:', err);
+      } finally {
         setLoading(false);
         setRefreshing(false);
-        return;
       }
-
-      const list = (data ?? []) as NotificationWithRelations[];
-      setNotifications(list);
-      setLoading(false);
-      setRefreshing(false);
-      await refreshUnreadCount();
     },
     [userId, refreshUnreadCount]
   );
@@ -132,8 +131,12 @@ export function NotificationsScreen() {
     useCallback(() => {
       if (!userId) return;
       const timer = setTimeout(async () => {
-        await markAllRead();
-        setNotifications((prev) => (prev ? prev.map((n) => ({ ...n, read: true })) : []));
+        try {
+          await markAllRead();
+          setNotifications((prev) => (prev ? prev.map((n) => ({ ...n, read: true })) : []));
+        } catch (err) {
+          if (__DEV__) console.error('Mark all read failed:', err);
+        }
       }, 2000);
       return () => clearTimeout(timer);
     }, [userId, markAllRead])
@@ -146,11 +149,16 @@ export function NotificationsScreen() {
 
   const markAsRead = useCallback(
     async (notificationId: string) => {
-      await supabase.from('notifications').update({ read: true }).eq('id', notificationId);
-      setNotifications((prev) =>
-        prev ? prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)) : []
-      );
-      await refreshUnreadCount();
+      try {
+        const { error } = await supabase.from('notifications').update({ read: true }).eq('id', notificationId);
+        if (error) throw error;
+        setNotifications((prev) =>
+          prev ? prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)) : []
+        );
+        await refreshUnreadCount();
+      } catch (err) {
+        if (__DEV__) console.error('Mark as read failed:', err);
+      }
     },
     [refreshUnreadCount]
   );
@@ -188,21 +196,26 @@ export function NotificationsScreen() {
       if (!userId || n.type !== 'friend_request') return;
       setActionLoadingId(n.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-      const { data: friendship } = await supabase
-        .from('friendships')
-        .select('id')
-        .eq('requester_id', n.from_user_id)
-        .eq('addressee_id', userId)
-        .eq('status', 'pending')
-        .single();
-
-      if (friendship) {
-        await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendship.id);
+      try {
+        const { data: friendship } = await supabase
+          .from('friendships')
+          .select('id')
+          .eq('requester_id', n.from_user_id)
+          .eq('addressee_id', userId)
+          .eq('status', 'pending')
+          .single();
+        if (friendship) {
+          const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendship.id);
+          if (error) throw error;
+        }
+        await markAsRead(n.id);
+        setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
+      } catch (err) {
+        if (__DEV__) console.error('Accept friend request failed:', err);
+        Alert.alert('Error', 'Could not accept friend request. Please try again.');
+      } finally {
+        setActionLoadingId(null);
       }
-      await markAsRead(n.id);
-      setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
-      setActionLoadingId(null);
     },
     [userId, markAsRead]
   );
@@ -212,21 +225,26 @@ export function NotificationsScreen() {
       if (!userId || n.type !== 'friend_request') return;
       setActionLoadingId(n.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-      const { data: friendship } = await supabase
-        .from('friendships')
-        .select('id')
-        .eq('requester_id', n.from_user_id)
-        .eq('addressee_id', userId)
-        .eq('status', 'pending')
-        .single();
-
-      if (friendship) {
-        await supabase.from('friendships').update({ status: 'declined' }).eq('id', friendship.id);
+      try {
+        const { data: friendship } = await supabase
+          .from('friendships')
+          .select('id')
+          .eq('requester_id', n.from_user_id)
+          .eq('addressee_id', userId)
+          .eq('status', 'pending')
+          .single();
+        if (friendship) {
+          const { error } = await supabase.from('friendships').update({ status: 'declined' }).eq('id', friendship.id);
+          if (error) throw error;
+        }
+        await markAsRead(n.id);
+        setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
+      } catch (err) {
+        if (__DEV__) console.error('Decline friend request failed:', err);
+        Alert.alert('Error', 'Could not decline friend request. Please try again.');
+      } finally {
+        setActionLoadingId(null);
       }
-      await markAsRead(n.id);
-      setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
-      setActionLoadingId(null);
     },
     [userId, markAsRead]
   );

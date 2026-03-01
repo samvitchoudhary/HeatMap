@@ -91,14 +91,17 @@ export function GalleryScreen({ navigation }: Props) {
           try {
             const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
             if (imagePath) {
-              await supabase.storage.from('posts').remove([imagePath]);
+              const { error: storageErr } = await supabase.storage.from('posts').remove([imagePath]);
+              if (storageErr) throw storageErr;
             }
-            await supabase.from('posts').delete().eq('id', post.id);
+            const { error } = await supabase.from('posts').delete().eq('id', post.id);
+            if (error) throw error;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setPosts((prev) => prev.filter((p) => p.id !== post.id));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
           } catch (err) {
-            __DEV__ && console.error('Error deleting post:', err);
+            if (__DEV__) console.error('Error deleting post:', err);
+            Alert.alert('Error', 'Could not delete post. Please try again.');
           }
         },
       },

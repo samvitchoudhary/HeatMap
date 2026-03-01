@@ -19,6 +19,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -128,6 +129,7 @@ export function FeedScreen() {
         return;
       }
 
+      try {
       const { data: postsData, error } = await supabase
         .from('posts')
         .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
@@ -136,12 +138,7 @@ export function FeedScreen() {
         .order('created_at', { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
 
-      if (error) {
-        if (__DEV__) console.error('Error fetching feed posts:', error);
-        setLoading(false);
-        setLoadingMore(false);
-        return;
-      }
+      if (error) throw error;
 
       const postsList = (postsData ?? []) as PostWithProfile[];
       setHasMore(postsList.length === PAGE_SIZE);
@@ -218,8 +215,12 @@ export function FeedScreen() {
         setLatestCommentByPostId(latestByPost);
       }
 
-      setLoading(false);
-      setLoadingMore(false);
+      } catch (err) {
+        if (__DEV__) console.error('Failed to fetch feed:', err);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
     },
     [profile?.id, friendIds]
   );
@@ -255,13 +256,16 @@ export function FeedScreen() {
       try {
         const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
         if (imagePath) {
-          await supabase.storage.from('posts').remove([imagePath]);
+          const { error: storageErr } = await supabase.storage.from('posts').remove([imagePath]);
+          if (storageErr) throw storageErr;
         }
-        await supabase.from('posts').delete().eq('id', post.id);
+        const { error } = await supabase.from('posts').delete().eq('id', post.id);
+        if (error) throw error;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setFadingOutId(post.id);
       } catch (err) {
         if (__DEV__) console.error('Error deleting post:', err);
+        Alert.alert('Error', 'Could not delete post. Please try again.');
       }
     },
     []

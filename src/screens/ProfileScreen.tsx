@@ -231,7 +231,7 @@ export function ProfileScreen() {
       await refreshProfile();
     } catch (err) {
       if (__DEV__) console.error('Error uploading avatar:', err);
-      showToast('Could not update profile photo. Please try again.');
+      Alert.alert('Error', 'Could not update profile photo. Please try again.');
     } finally {
       setUploadingAvatar(false);
     }
@@ -311,21 +311,23 @@ export function ProfileScreen() {
     }
     if (!userId) return;
     setSaving(true);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ display_name: newDisplayName, username: newUsername })
-      .eq('id', userId);
-    setSaving(false);
-    if (error) {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ display_name: newDisplayName, username: newUsername })
+        .eq('id', userId);
+      if (error) throw error;
+      setEditModalVisible(false);
+      await refreshProfile();
+    } catch (err: unknown) {
       const message =
-        error.code === '23505'
+        err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505'
           ? 'That username is already taken.'
-          : error.message ?? 'Could not update profile.';
-      showToast(message);
-      return;
+          : err instanceof Error ? err.message : 'Could not update profile. Please try again.';
+      Alert.alert('Error', message);
+    } finally {
+      setSaving(false);
     }
-    setEditModalVisible(false);
-    await refreshProfile();
   }
 
   function handleFriendsPress() {
@@ -352,15 +354,18 @@ export function ProfileScreen() {
           try {
             const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
             if (imagePath) {
-              await supabase.storage.from('posts').remove([imagePath]);
+              const { error: storageErr } = await supabase.storage.from('posts').remove([imagePath]);
+              if (storageErr) throw storageErr;
             }
-            await supabase.from('posts').delete().eq('id', post.id);
+            const { error } = await supabase.from('posts').delete().eq('id', post.id);
+            if (error) throw error;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setPosts((prev) => prev.filter((p) => p.id !== post.id));
             setPostsCount((prev) => Math.max(0, prev - 1));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
           } catch (err) {
             if (__DEV__) console.error('Error deleting post:', err);
+            Alert.alert('Error', 'Could not delete post. Please try again.');
           }
         },
       },

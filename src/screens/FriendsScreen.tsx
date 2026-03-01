@@ -165,37 +165,42 @@ export function FriendsScreen() {
   async function handleAddFriend(addresseeId: string) {
     if (!userId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { error } = await supabase.from('friendships').insert({
-      requester_id: userId,
-      addressee_id: addresseeId,
-      status: 'pending',
-    });
-    if (error) {
-      showToast(error.message);
-      return;
+    try {
+      const { error } = await supabase.from('friendships').insert({
+        requester_id: userId,
+        addressee_id: addresseeId,
+        status: 'pending',
+      });
+      if (error) throw error;
+      try {
+        await supabase.from('notifications').insert({
+          user_id: addresseeId,
+          type: 'friend_request',
+          from_user_id: userId,
+        });
+      } catch (notifErr) {
+        if (__DEV__) console.error('Friend request notification failed:', notifErr);
+      }
+      await fetchFriendships();
+    } catch (err) {
+      if (__DEV__) console.error('Friend request failed:', err);
+      Alert.alert('Error', 'Could not send friend request. Please try again.');
     }
-    supabase
-      .from('notifications')
-      .insert({
-        user_id: addresseeId,
-        type: 'friend_request',
-        from_user_id: userId,
-      })
-      .catch(() => {});
-    await fetchFriendships();
   }
 
   async function handleAccept(friendshipId: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const { error } = await supabase
-      .from('friendships')
-      .update({ status: 'accepted' })
-      .eq('id', friendshipId);
-    if (error) {
-      showToast(error.message);
-      return;
+    try {
+      const { error } = await supabase
+        .from('friendships')
+        .update({ status: 'accepted' })
+        .eq('id', friendshipId);
+      if (error) throw error;
+      await Promise.all([fetchFriendships(), refreshFriends()]);
+    } catch (err) {
+      if (__DEV__) console.error('Accept friend request failed:', err);
+      Alert.alert('Error', 'Could not accept friend request. Please try again.');
     }
-    await Promise.all([fetchFriendships(), refreshFriends()]);
   }
 
   function renderSearchResultButton(item: SearchResultWithStatus) {

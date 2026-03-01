@@ -147,36 +147,44 @@ const FeedCardInner = function FeedCard({
     }
   }, [isFadingOut, cardOpacity, onFadeComplete, post.id]);
 
-  const triggerHeartReaction = useCallback(() => {
+  const triggerHeartReaction = useCallback(async () => {
     if (!userId) return;
     if (initialUserReaction === '❤️') return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    const prevCounts = { ...initialReactionCounts };
+    const previousReaction = initialUserReaction;
+    const previousCounts = { ...initialReactionCounts };
+    const prevCounts = { ...previousCounts };
     if (initialUserReaction) {
       prevCounts[initialUserReaction] = Math.max(0, (prevCounts[initialUserReaction] ?? 1) - 1);
     }
     prevCounts['❤️'] = (prevCounts['❤️'] ?? 0) + 1;
     onReactionChange?.(post.id, prevCounts, '❤️');
 
-    if (initialUserReaction) {
-      supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId).then(() => {});
+    try {
+      if (initialUserReaction) {
+        const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+        if (delErr) throw delErr;
+      }
+      const { error } = await supabase.from('reactions').insert({ post_id: post.id, user_id: userId, emoji: '❤️' });
+      if (error) throw error;
+      if (post.user_id !== userId) {
+        const { error: notifErr } = await supabase.from('notifications').insert({
+          user_id: post.user_id,
+          type: 'reaction',
+          from_user_id: userId,
+          post_id: post.id,
+          emoji: '❤️',
+        });
+        if (notifErr) throw notifErr;
+      }
+    } catch (err) {
+      if (__DEV__) console.error('Reaction failed:', err);
+      onReactionChange?.(post.id, previousCounts, previousReaction);
+      Alert.alert('Error', 'Could not save reaction. Please try again.');
+      return;
     }
-    supabase
-      .from('reactions')
-      .insert({ post_id: post.id, user_id: userId, emoji: '❤️' })
-      .then(async () => {
-        if (post.user_id !== userId) {
-          await supabase.from('notifications').insert({
-            user_id: post.user_id,
-            type: 'reaction',
-            from_user_id: userId,
-            post_id: post.id,
-            emoji: '❤️',
-          });
-        }
-      });
 
     setHeartVisible(true);
     heartScale.setValue(0);
@@ -273,53 +281,54 @@ const FeedCardInner = function FeedCard({
   }, [triggerHeartReaction]);
 
   const handleReactionToggle = useCallback(
-    (emoji: string) => {
+    async (emoji: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (!userId) return;
-      const prevReaction = initialUserReaction;
-      const prevCounts = { ...initialReactionCounts };
+      const previousReaction = initialUserReaction;
+      const previousCounts = { ...initialReactionCounts };
 
-      if (prevReaction === emoji) {
-        onReactionChange?.(
-          post.id,
-          { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) },
-          null
-        );
+      let nextCounts: Record<string, number>;
+      let nextReaction: string | null;
+      if (previousReaction === emoji) {
+        nextCounts = { ...previousCounts, [emoji]: Math.max(0, (previousCounts[emoji] ?? 1) - 1) };
+        nextReaction = null;
+        onReactionChange?.(post.id, nextCounts, nextReaction);
       } else {
-        const nextCounts = { ...prevCounts };
-        if (prevReaction) {
-          nextCounts[prevReaction] = Math.max(0, (nextCounts[prevReaction] ?? 1) - 1);
+        nextCounts = { ...previousCounts };
+        if (previousReaction) {
+          nextCounts[previousReaction] = Math.max(0, (nextCounts[previousReaction] ?? 1) - 1);
         }
         nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
-        onReactionChange?.(post.id, nextCounts, emoji);
+        nextReaction = emoji;
+        onReactionChange?.(post.id, nextCounts, nextReaction);
       }
 
-      if (prevReaction === emoji) {
-        supabase
-          .from('reactions')
-          .delete()
-          .eq('post_id', post.id)
-          .eq('user_id', userId)
-          .then(() => {});
-      } else {
-        if (prevReaction) {
-          supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId).then(() => {});
+      try {
+        if (previousReaction === emoji) {
+          const { error } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+          if (error) throw error;
+        } else {
+          if (previousReaction) {
+            const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
+            if (delErr) throw delErr;
+          }
+          const { error } = await supabase.from('reactions').insert({ post_id: post.id, user_id: userId, emoji });
+          if (error) throw error;
+          if (post.user_id !== userId) {
+            const { error: notifErr } = await supabase.from('notifications').insert({
+              user_id: post.user_id,
+              type: 'reaction',
+              from_user_id: userId,
+              post_id: post.id,
+              emoji,
+            });
+            if (notifErr) throw notifErr;
+          }
         }
-        supabase
-          .from('reactions')
-          .insert({ post_id: post.id, user_id: userId, emoji })
-          .then(async () => {
-            const shouldNotify = post.user_id !== userId;
-            if (shouldNotify) {
-              await supabase.from('notifications').insert({
-                user_id: post.user_id,
-                type: 'reaction',
-                from_user_id: userId,
-                post_id: post.id,
-                emoji,
-              });
-            }
-          });
+      } catch (err) {
+        if (__DEV__) console.error('Reaction failed:', err);
+        onReactionChange?.(post.id, previousCounts, previousReaction);
+        Alert.alert('Error', 'Could not save reaction. Please try again.');
       }
     },
     [post.id, post.user_id, userId, initialUserReaction, initialReactionCounts, onReactionChange]
