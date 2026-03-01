@@ -47,6 +47,7 @@ import { SuccessToast } from '../components/SuccessToast';
 import { Avatar } from '../components/Avatar';
 import type { MapStackParamList } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
+import { withRetry } from '../lib/retry';
 
 const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
   allowsEditing: true,
@@ -324,12 +325,16 @@ export function UploadScreen() {
       const response = await fetch(finalUri);
       const arraybuffer = await response.arrayBuffer();
 
-      const { error: uploadError } = await supabase.storage
-        .from('posts')
-        .upload(filePath, arraybuffer, {
-          contentType: 'image/jpeg',
-          upsert: false,
-        });
+      const { error: uploadError } = await withRetry(async () => {
+        const result = await supabase.storage
+          .from('posts')
+          .upload(filePath, arraybuffer, {
+            contentType: 'image/jpeg',
+            upsert: false,
+          });
+        if (result.error) throw result.error;
+        return result;
+      });
 
       if (uploadError) {
         __DEV__ && console.error('Upload failed:', uploadError);
@@ -349,11 +354,15 @@ export function UploadScreen() {
         longitude: locationCoords.longitude,
         ...(originalPhotoDate ? { created_at: originalPhotoDate } : {}),
       };
-      const { data: insertedPost, error: insertError } = await supabase
-        .from('posts')
-        .insert(postData)
-        .select('id')
-        .single();
+      const { data: insertedPost, error: insertError } = await withRetry(async () => {
+        const result = await supabase
+          .from('posts')
+          .insert(postData)
+          .select('id')
+          .single();
+        if (result.error) throw result.error;
+        return result;
+      });
 
       if (insertError) throw insertError;
 

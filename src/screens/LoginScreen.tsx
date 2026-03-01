@@ -30,6 +30,7 @@ import { supabase } from '../lib/supabase';
 import { useToast } from '../lib/ToastContext';
 import { StyledTextInput } from '../components/StyledTextInput';
 import { theme } from '../lib/theme';
+import { withRetry } from '../lib/retry';
 
 type LoginNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -76,9 +77,13 @@ export function LoginScreen() {
         emailToUse = input.toLowerCase();
       }
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email: emailToUse,
-        password,
+      const { error } = await withRetry(async () => {
+        const result = await supabase.auth.signInWithPassword({
+          email: emailToUse,
+          password,
+        });
+        if (result.error) throw result.error;
+        return result;
       });
       if (error) throw error;
       // Auth state change will handle navigation

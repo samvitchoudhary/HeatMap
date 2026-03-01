@@ -8,6 +8,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { withRetry } from '../lib/retry';
 
 type FriendProfile = {
   id: string;
@@ -49,12 +50,16 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
     lastFetchRef.current = now;
 
     try {
-      const { data, error } = await supabase
-        .from('friendships')
-        .select('requester_id, addressee_id, requester:requester_id(id, username, display_name, avatar_url), addressee:addressee_id(id, username, display_name, avatar_url)')
-        .eq('status', 'accepted')
-        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-        .limit(500);
+      const { data, error } = await withRetry(async () => {
+        const result = await supabase
+          .from('friendships')
+          .select('requester_id, addressee_id, requester:requester_id(id, username, display_name, avatar_url), addressee:addressee_id(id, username, display_name, avatar_url)')
+          .eq('status', 'accepted')
+          .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
+          .limit(500);
+        if (result.error) throw result.error;
+        return result;
+      });
 
       if (error) {
         if (__DEV__) console.error('Failed to fetch friends:', error);

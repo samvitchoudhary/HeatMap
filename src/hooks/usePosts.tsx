@@ -8,6 +8,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { withRetry } from '../lib/retry';
 import type { PostWithProfile } from '../types';
 
 type PostsContextType = {
@@ -47,12 +48,16 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     try {
       const allUserIds = [userId, ...friendIds];
-      const { data, error } = await supabase
-        .from('posts')
-        .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
-        .in('user_id', allUserIds)
-        .order('created_at', { ascending: false })
-        .limit(200);
+      const { data, error } = await withRetry(async () => {
+        const result = await supabase
+          .from('posts')
+          .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+          .in('user_id', allUserIds)
+          .order('created_at', { ascending: false })
+          .limit(200);
+        if (result.error) throw result.error;
+        return result;
+      });
 
       if (error) {
         if (__DEV__) console.error('Failed to fetch posts:', error);
