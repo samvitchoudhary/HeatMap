@@ -34,11 +34,11 @@ const SecureStoreAdapter = {
   },
 };
 
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+
 /** Supabase client instance - use for all database, auth, and storage operations */
-export const supabase = createClient(
-  'https://tymmtkdumpqbepttgfcn.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InR5bW10a2R1bXBxYmVwdHRnZmNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEzNjc2NDIsImV4cCI6MjA4Njk0MzY0Mn0.QDw-DAKmpqmlMrWwIypsVjDFAQ5reUymjF6jm9OUKYw',
-  {
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       storage: SecureStoreAdapter,
       autoRefreshToken: true,
