@@ -117,6 +117,12 @@ type Cluster = {
   posts: PostWithProfile[];
 };
 
+const ClusterBadge = React.memo(({ count }: { count: number }) => (
+  <View style={[styles.clusterBadge, count >= 10 && styles.clusterBadgeLarge]}>
+    <Text style={styles.clusterBadgeText}>{count}</Text>
+  </View>
+));
+
 function clusterPosts(posts: PostWithProfile[], radiusMeters: number = 100): Cluster[] {
   const clusters: Cluster[] = [];
 
@@ -161,15 +167,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [openWithCommentsPostId, setOpenWithCommentsPostId] = useState<string | null>(null);
-  const [currentRegion, setCurrentRegion] = useState<{
-    latitude: number;
-    longitude: number;
-    latitudeDelta: number;
-    longitudeDelta: number;
-  } | null>(INITIAL_MAP_REGION);
-  const dynamicRadius = currentRegion
-    ? Math.max(50, Math.min(500, currentRegion.latitudeDelta * 111000 * 0.05))
-    : NEARBY_RADIUS_METERS;
+  const currentRegionRef = useRef(INITIAL_MAP_REGION);
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -183,6 +181,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasInitiallyFetched = useRef(false);
+  const lastFetchRef = useRef(0);
 
   const [fabExpanded, setFabExpanded] = useState(false);
   const fabIconRotate = useRef(new Animated.Value(0)).current;
@@ -201,6 +200,9 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         setPostsLoading(false);
         return;
       }
+      const now = Date.now();
+      if (now - lastFetchRef.current < 30000 && !showLoading) return;
+      lastFetchRef.current = now;
       if (showLoading) setPostsLoading(true);
       const { data: friendships } = await supabase
         .from('friendships')
@@ -218,9 +220,10 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         .from('posts')
         .select('*, profiles(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
         .in('user_id', allowedIds)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50);
       if (error) {
-        console.error('Error fetching posts:', error);
+        if (__DEV__) console.error('Error fetching posts:', error);
         setPostsLoading(false);
         return;
       }
@@ -445,7 +448,11 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   );
 
   const clusters = useMemo(() => clusterPosts(posts, 100), [posts]);
-  const showBadges = !currentRegion || (currentRegion.latitudeDelta ?? 1) <= 0.5;
+  const showBadges = (currentRegionRef.current?.latitudeDelta ?? 0.05) <= 0.5;
+
+  const onRegionChangeComplete = useCallback((region: typeof INITIAL_MAP_REGION) => {
+    currentRegionRef.current = region;
+  }, []);
 
   const handleClusterPress = useCallback((cluster: Cluster) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -463,7 +470,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       const response = await fetch(url);
       const data = await response.json();
       if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-        console.error('Places API error:', data.status);
+        if (__DEV__) console.error('Places API error:', data.status);
         return [];
       }
       return (data.predictions || []).map((prediction: any) => ({
@@ -472,7 +479,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         description: prediction.structured_formatting?.secondary_text || prediction.description,
       }));
     } catch (error) {
-      console.error('Places API fetch error:', error);
+      if (__DEV__) console.error('Places API fetch error:', error);
       return [];
     }
   }
@@ -484,7 +491,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       const response = await fetch(url);
       const data = await response.json();
       if (data.status !== 'OK' || !data.result?.geometry?.location) {
-        console.error('Place Details API error:', data.status);
+        if (__DEV__) console.error('Place Details API error:', data.status);
         return null;
       }
       return {
@@ -492,7 +499,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         longitude: data.result.geometry.location.lng,
       };
     } catch (error) {
-      console.error('Place Details API fetch error:', error);
+      if (__DEV__) console.error('Place Details API fetch error:', error);
       return null;
     }
   }
@@ -543,6 +550,10 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         return;
       }
       const { latitude, longitude } = event.nativeEvent.coordinate;
+      const radius = Math.max(
+        50,
+        Math.min(500, (currentRegionRef.current?.latitudeDelta ?? 0.05) * 111000 * 0.05)
+      );
       const nearby = posts.filter((post) => {
         const distance = getDistanceMeters(
           latitude,
@@ -550,7 +561,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           post.latitude,
           post.longitude
         );
-        return distance <= dynamicRadius;
+        return distance <= radius;
       });
       if (nearby.length > 0) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -561,7 +572,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         setSelectedPosts(sorted);
       }
     },
-    [posts, dynamicRadius, showDropdown]
+    [posts, showDropdown]
   );
 
   useFocusEffect(
@@ -601,7 +612,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         mapRef.current.animateToRegion(userRegion, 1000);
       }
     } catch (err) {
-      console.error('Error getting location:', err);
+      if (__DEV__) console.error('Error getting location:', err);
     }
   }, []);
 
@@ -685,7 +696,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           mapRef.current.animateToRegion(userRegion, 500);
         }
       } catch (err) {
-        console.error('Error getting location:', err);
+        if (__DEV__) console.error('Error getting location:', err);
       }
     })();
   }, []);
@@ -703,6 +714,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         customMapStyle={LIGHT_MAP_STYLE}
         showsUserLocation={true}
         onPress={handleMapPress}
+        onRegionChangeComplete={onRegionChangeComplete}
         initialRegion={INITIAL_MAP_REGION}
       >
         {heatmapPoints.length > 0 && (
@@ -721,14 +733,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
               onPress={() => handleClusterPress(cluster)}
               anchor={{ x: 0.5, y: 0.5 }}
             >
-              <View
-                style={[
-                  styles.clusterBadge,
-                  cluster.count > 9 ? styles.clusterBadgeLarge : undefined,
-                ]}
-              >
-                <Text style={styles.clusterBadgeText}>{cluster.count}</Text>
-              </View>
+              <ClusterBadge count={cluster.count} />
             </Marker>
           ))}
       </MapView>

@@ -46,7 +46,7 @@ export function GalleryScreen({ navigation }: Props) {
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
     if (error) {
-      console.error('Error fetching gallery posts:', error);
+      __DEV__ && console.error('Error fetching gallery posts:', error);
       return;
     }
     setPosts((data ?? []) as PostWithProfile[]);
@@ -86,7 +86,7 @@ export function GalleryScreen({ navigation }: Props) {
             setPosts((prev) => prev.filter((p) => p.id !== post.id));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
           } catch (err) {
-            console.error('Error deleting post:', err);
+            __DEV__ && console.error('Error deleting post:', err);
           }
         },
       },

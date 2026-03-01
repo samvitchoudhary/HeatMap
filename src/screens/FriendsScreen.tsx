@@ -84,7 +84,7 @@ export function FriendsScreen() {
       .select('*')
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
     if (error) {
-      console.error('Error fetching friendships:', error);
+      __DEV__ && console.error('Error fetching friendships:', error);
       return;
     }
     setFriendships((data ?? []) as Friendship[]);
@@ -99,7 +99,7 @@ export function FriendsScreen() {
       .eq('status', 'accepted')
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
     if (error) {
-      console.error('Error fetching friends:', error);
+      __DEV__ && console.error('Error fetching friends:', error);
       setFriendsLoading(false);
       return;
     }
@@ -162,7 +162,7 @@ export function FriendsScreen() {
         .neq('id', userId)
         .limit(10);
       if (error) {
-        console.error('Error searching profiles:', error);
+        __DEV__ && console.error('Error searching profiles:', error);
         setSearchProfiles([]);
       } else {
         setSearchProfiles((data ?? []) as Profile[]);

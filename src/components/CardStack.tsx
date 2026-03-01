@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -343,6 +343,8 @@ export function CardStack({
   const postsLengthRef = useRef(0);
   const postsRef = useRef<PostWithProfile[]>([]);
   const flippedByPostIdRef = useRef<Record<string, boolean>>({});
+  const reactionsCache = useRef<Record<string, { counts: Record<string, number>; userReaction: string | null }>>({});
+  const prefetchedRef = useRef(false);
   currentIndexRef.current = currentIndex;
   postsLengthRef.current = posts.length;
   postsRef.current = posts;
@@ -407,7 +409,7 @@ export function CardStack({
                 onClose();
               }
             } catch (err) {
-              console.error('Error deleting post:', err);
+              if (__DEV__) console.error('Error deleting post:', err);
             }
           },
         },
@@ -427,13 +429,20 @@ export function CardStack({
 
   const fetchReactions = useCallback(
     async (postId: string) => {
+      const cached = reactionsCache.current[postId];
+      if (cached) {
+        setReactionCounts(cached.counts);
+        setUserReaction(cached.userReaction);
+        return;
+      }
       const userId = session?.user?.id;
       const { data, error } = await supabase
         .from('reactions')
-        .select('*')
-        .eq('post_id', postId);
+        .select('emoji, user_id')
+        .eq('post_id', postId)
+        .limit(200);
       if (error) {
-        console.error('Error fetching reactions:', error);
+        if (__DEV__) console.error('Error fetching reactions:', error);
         return;
       }
       const counts: Record<string, number> = {};
@@ -445,6 +454,7 @@ export function CardStack({
           myReaction = emoji;
         }
       }
+      reactionsCache.current[postId] = { counts, userReaction: myReaction };
       setReactionCounts(counts);
       setUserReaction(myReaction);
     },
@@ -477,7 +487,8 @@ export function CardStack({
   }, [initialFlippedPostId, onInitialFlippedConsumed]);
 
   useEffect(() => {
-    if (posts?.length > 0) {
+    if (!prefetchedRef.current && posts.length > 0) {
+      prefetchedRef.current = true;
       posts.forEach((post) => {
         if (post?.image_url) {
           Image.prefetch(post.image_url).catch(() => {});
@@ -545,11 +556,17 @@ export function CardStack({
       });
 
       if (error) {
-        console.error('Double tap heart error:', error);
+        if (__DEV__) console.error('Double tap heart error:', error);
         setUserReaction(prevReaction);
         setReactionCounts(prevCounts);
         return;
       }
+      const newCounts = { ...prevCounts };
+      if (prevReaction) {
+        newCounts[prevReaction] = Math.max(0, (newCounts[prevReaction] ?? 1) - 1);
+      }
+      newCounts['❤️'] = (newCounts['❤️'] ?? 0) + 1;
+      reactionsCache.current[post.id] = { counts: newCounts, userReaction: '❤️' };
 
       // Send notification
       if (post.user_id !== userId) {
@@ -578,22 +595,18 @@ export function CardStack({
       const prevReaction = userReaction;
       const prevCounts = { ...reactionCounts };
 
-      if (prevReaction === emoji) {
+        if (prevReaction === emoji) {
         setUserReaction(null);
-        setReactionCounts((c) => ({
-          ...c,
-          [emoji]: Math.max(0, (c[emoji] ?? 1) - 1),
-        }));
+        const nextCounts = { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) };
+        setReactionCounts(nextCounts);
       } else {
         setUserReaction(emoji);
-        setReactionCounts((c) => {
-          const next = { ...c };
-          if (prevReaction) {
-            next[prevReaction] = Math.max(0, (next[prevReaction] ?? 1) - 1);
-          }
-          next[emoji] = (next[emoji] ?? 0) + 1;
-          return next;
-        });
+        const nextCounts = { ...prevCounts };
+        if (prevReaction) {
+          nextCounts[prevReaction] = Math.max(0, (nextCounts[prevReaction] ?? 1) - 1);
+        }
+        nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
+        setReactionCounts(nextCounts);
       }
 
       if (prevReaction === emoji) {
@@ -605,9 +618,11 @@ export function CardStack({
         if (error) {
           setUserReaction(prevReaction);
           setReactionCounts(prevCounts);
-          console.error('Error deleting reaction:', error);
+          if (__DEV__) console.error('Error deleting reaction:', error);
           return;
         }
+        const nextCounts = { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) };
+        reactionsCache.current[post.id] = { counts: nextCounts, userReaction: null };
       } else {
         if (prevReaction) {
           await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
@@ -620,9 +635,15 @@ export function CardStack({
         if (error) {
           setUserReaction(prevReaction);
           setReactionCounts(prevCounts);
-          console.error('Error inserting reaction:', error);
+          if (__DEV__) console.error('Error inserting reaction:', error);
           return;
         }
+        const nextCounts = { ...prevCounts };
+        if (prevReaction) {
+          nextCounts[prevReaction] = Math.max(0, (nextCounts[prevReaction] ?? 1) - 1);
+        }
+        nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
+        reactionsCache.current[post.id] = { counts: nextCounts, userReaction: emoji };
         const shouldNotify = post.user_id !== userId;
         if (shouldNotify) {
           await supabase.from('notifications').insert({
@@ -735,7 +756,18 @@ export function CardStack({
   const len = posts.length;
   const currentUserId = session?.user?.id;
 
-  const renderCard = (post: PostWithProfile, isCurrent: boolean) => (
+  const cardImageStyles = useMemo(
+    () => ({
+      cardImageWrap: styles.cardImageWrap,
+      cardImage: styles.cardImage,
+      cardImagePlaceholder: styles.cardImagePlaceholder,
+      cardImageErrorText: styles.cardImageErrorText,
+    }),
+    []
+  );
+
+  const renderCard = useCallback(
+    (post: PostWithProfile, isCurrent: boolean) => (
     <CommentSheet
       key={post.id}
       postId={post.id}
@@ -755,12 +787,7 @@ export function CardStack({
               post={post}
               imageError={imageError}
               setImageError={setImageError}
-              s={{
-                cardImageWrap: styles.cardImageWrap,
-                cardImage: styles.cardImage,
-                cardImagePlaceholder: styles.cardImagePlaceholder,
-                cardImageErrorText: styles.cardImageErrorText,
-              }}
+              s={cardImageStyles}
               onDoubleTap={() => handleDoubleTapHeartForPost(post)}
             />
             {!imageError[post.id] && (
@@ -838,7 +865,26 @@ export function CardStack({
         </View>
       )}
     </CommentSheet>
-  );
+  ),
+  [
+    imageError,
+    cardImageStyles,
+    handleDoubleTapHeartForPost,
+    setViewerImage,
+    currentUserId,
+    handleDeletePost,
+    onProfilePress,
+    handleFlippedChange,
+    initialFlippedPostId,
+    reactionCounts,
+    userReaction,
+    handleReactionToggle,
+    currentIndex,
+    posts.length,
+    activeDotAnimated,
+    session?.user?.id,
+  ]
+);
 
   return (
     <KeyboardAvoidingView

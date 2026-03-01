@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -47,6 +48,16 @@ export function FeedScreen() {
   const hasInitiallyFetched = useRef(false);
 
   const PAGE_SIZE = 20;
+
+  const FEED_CARD_HEIGHT = useMemo(() => {
+    const { width } = Dimensions.get('window');
+    const cardWidth = width - 40;
+    const photoHeight = cardWidth * (5 / 4);
+    const infoHeight = 110;
+    const barHeight = 50;
+    const margins = 20;
+    return photoHeight + infoHeight + barHeight + margins;
+  }, []);
 
   const FeedSkeleton = () => (
     <View style={styles.skeletonFeed}>
@@ -121,7 +132,7 @@ export function FeedScreen() {
         .range(offset, offset + PAGE_SIZE - 1);
 
       if (error) {
-        console.error('Error fetching feed posts:', error);
+        if (__DEV__) console.error('Error fetching feed posts:', error);
         setLoading(false);
         setLoadingMore(false);
         return;
@@ -151,14 +162,16 @@ export function FeedScreen() {
 
       const { data: reactions } = await supabase
         .from('reactions')
-        .select('*')
-        .in('post_id', postIds);
+        .select('post_id, emoji, user_id')
+        .in('post_id', postIds)
+        .limit(500);
 
       const { data: comments } = await supabase
         .from('comments')
-        .select('*, profiles:user_id(display_name, username)')
+        .select('id, post_id, content, profiles:user_id(display_name, username)')
         .in('post_id', postIds)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(200);
 
       const countsByPost: Record<string, Record<string, number>> = {};
       const userReactionsByPost: Record<string, string | null> = {};
@@ -243,7 +256,7 @@ export function FeedScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setFadingOutId(post.id);
       } catch (err) {
-        console.error('Error deleting post:', err);
+        if (__DEV__) console.error('Error deleting post:', err);
       }
     },
     []
@@ -253,6 +266,36 @@ export function FeedScreen() {
     setPosts((prev) => prev.filter((p) => p.id !== postId));
     setFadingOutId(null);
   }, []);
+
+  const handleReactionChange = useCallback(
+    (postId: string, counts: Record<string, number>, userReaction: string | null) => {
+      setReactionsByPostId((prev) => ({ ...prev, [postId]: counts }));
+      setUserReactionsByPostId((prev) => ({ ...prev, [postId]: userReaction }));
+    },
+    []
+  );
+
+  const handleCommentPosted = useCallback(
+    (postId: string, count: number, latestComment: FeedLatestComment | null) => {
+      setCommentCountByPostId((prev) => ({ ...prev, [postId]: count }));
+      setLatestCommentByPostId((prev) => ({ ...prev, [postId]: latestComment }));
+    },
+    []
+  );
+
+  const handleVenuePress = useCallback(
+    (latitude: number, longitude: number) => {
+      navigation.navigate('Map', { latitude, longitude });
+    },
+    [navigation]
+  );
+
+  const handleProfilePress = useCallback(
+    (userId: string) => {
+      (navigation.getParent() as any)?.navigate('FriendProfile', { userId });
+    },
+    [navigation]
+  );
 
   function handleEndReached() {
     if (loadingMore || !hasMore || loading || posts.length === 0) return;
@@ -292,8 +335,15 @@ export function FeedScreen() {
         <FlatList
           data={posts}
           keyExtractor={(item) => item.id}
+          getItemLayout={(_, index) => ({
+            length: FEED_CARD_HEIGHT,
+            offset: FEED_CARD_HEIGHT * index,
+            index,
+          })}
+          windowSize={5}
+          maxToRenderPerBatch={5}
+          initialNumToRender={3}
           removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={({ item }) => (
@@ -308,23 +358,10 @@ export function FeedScreen() {
               userReaction={userReactionsByPostId[item.id] ?? null}
               commentCount={commentCountByPostId[item.id] ?? 0}
               latestComment={latestCommentByPostId[item.id] ?? null}
-              onReactionChange={(counts, userReaction) => {
-                setReactionsByPostId((prev) => ({ ...prev, [item.id]: counts }));
-                setUserReactionsByPostId((prev) => ({ ...prev, [item.id]: userReaction }));
-              }}
-              onCommentPosted={(count, latestComment) => {
-                setCommentCountByPostId((prev) => ({ ...prev, [item.id]: count }));
-                setLatestCommentByPostId((prev) => ({
-                  ...prev,
-                  [item.id]: latestComment,
-                }));
-              }}
-              onVenuePress={(latitude, longitude) => {
-                navigation.navigate('Map', { latitude, longitude });
-              }}
-              onProfilePress={(userId) => {
-                (navigation.getParent() as any)?.navigate('FriendProfile', { userId });
-              }}
+              onReactionChange={handleReactionChange}
+              onCommentPosted={handleCommentPosted}
+              onVenuePress={handleVenuePress}
+              onProfilePress={handleProfilePress}
               onDeletePost={handleDeletePost}
               onExpandPhoto={setExpandedPhoto}
               isFadingOut={fadingOutId === item.id}

@@ -95,7 +95,7 @@ export function NotificationsScreen() {
         .limit(50);
 
       if (error) {
-        console.error('Error fetching notifications:', error);
+        __DEV__ && console.error('Error fetching notifications:', error);
         setLoading(false);
         setRefreshing(false);
         return;

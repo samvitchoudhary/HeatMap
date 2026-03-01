@@ -2,19 +2,21 @@ import React, { useRef } from 'react';
 import { Animated, View, StyleSheet, ImageProps } from 'react-native';
 import { theme } from '../lib/theme';
 
-const CACHED_LOAD_THRESHOLD_MS = 50;
+const CACHED_LOAD_THRESHOLD_MS = 100;
 
-interface SmoothImageProps extends Omit<ImageProps, 'onLoad'> {
+interface SmoothImageProps extends Omit<ImageProps, 'onLoad' | 'onError'> {
   style?: ImageProps['style'];
   placeholderColor?: string;
-  /** Fade duration in ms. Default 300. Use 200 for small images like avatars. */
+  /** Fade duration in ms. Default 200. Use 200 for small images like avatars. */
   fadeDuration?: number;
+  onLoad?: ImageProps['onLoad'];
+  onError?: ImageProps['onError'];
 }
 
 export const SmoothImage: React.FC<SmoothImageProps> = ({
   style,
   placeholderColor = theme.colors.surface,
-  fadeDuration = 300,
+  fadeDuration = 200,
   onLoad,
   onError,
   ...props

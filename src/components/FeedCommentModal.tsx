@@ -119,7 +119,7 @@ export function FeedCommentModal({
       .eq('post_id', pid)
       .order('created_at', { ascending: true });
     if (error) {
-      console.error('Error fetching comments:', error);
+      __DEV__ && console.error('Error fetching comments:', error);
       setLoading(false);
       return;
     }
@@ -151,30 +151,19 @@ export function FeedCommentModal({
       .select('id')
       .single();
     if (error) {
-      console.error('Error posting comment:', error);
+      __DEV__ && console.error('Error posting comment:', error);
       setPosting(false);
       return;
     }
     const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
-    console.log('[FeedCommentModal] Comment notification check:', {
-      postUserId,
-      currentUserId: userId,
-      newCommentId: newComment?.id,
-      shouldNotify,
-    });
     if (shouldNotify) {
-      console.log('About to create notification for comment');
-      const { data, error } = await supabase
-        .from('notifications')
-        .insert({
-          user_id: postUserId!,
-          type: 'comment',
-          from_user_id: userId,
-          post_id: postId,
-          comment_id: newComment!.id,
-        })
-        .select();
-      console.log('Notification result:', { data, error });
+      await supabase.from('notifications').insert({
+        user_id: postUserId!,
+        type: 'comment',
+        from_user_id: userId,
+        post_id: postId,
+        comment_id: newComment!.id,
+      });
     }
     setInputText('');
     setReplyTarget(null);

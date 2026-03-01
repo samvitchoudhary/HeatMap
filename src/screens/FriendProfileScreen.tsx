@@ -94,7 +94,7 @@ export function FriendProfileScreen() {
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false });
     if (ownError) {
-      console.error('Error fetching friend posts:', ownError);
+      __DEV__ && console.error('Error fetching friend posts:', ownError);
       return;
     }
     const ownPosts = (ownData ?? []) as PostWithProfile[];

@@ -98,7 +98,7 @@ export function UploadScreen() {
       );
       setPickerFriends(friends);
     } catch (err) {
-      console.error('Error fetching friends:', err);
+      __DEV__ && console.error('Error fetching friends:', err);
     } finally {
       setPickerLoading(false);
     }
@@ -351,7 +351,7 @@ export function UploadScreen() {
         }));
         const { error: tagError } = await supabase.from('post_tags').insert(tagInserts);
         if (tagError) {
-          console.error('Error inserting post_tags:', tagError);
+          __DEV__ && console.error('Error inserting post_tags:', tagError);
         }
 
         for (const friend of taggedFriends) {
@@ -365,7 +365,7 @@ export function UploadScreen() {
             })
             .select();
           if (error) {
-            console.error('Tag notification failed for', friend.id, error);
+            __DEV__ && console.error('Tag notification failed for', friend.id, error);
           }
         }
       }

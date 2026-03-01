@@ -83,8 +83,8 @@ type FeedCardProps = {
   userReaction: string | null;
   commentCount: number;
   latestComment: FeedLatestComment | null;
-  onReactionChange?: (counts: Record<string, number>, userReaction: string | null) => void;
-  onCommentPosted?: (count: number, latestComment: FeedLatestComment | null) => void;
+  onReactionChange?: (postId: string, counts: Record<string, number>, userReaction: string | null) => void;
+  onCommentPosted?: (postId: string, count: number, latestComment: FeedLatestComment | null) => void;
   onVenuePress?: (latitude: number, longitude: number) => void;
   onProfilePress?: (userId: string) => void;
   onDeletePost?: (post: PostWithProfile) => void;
@@ -93,7 +93,7 @@ type FeedCardProps = {
   onFadeComplete?: (postId: string) => void;
 };
 
-export function FeedCard({
+const FeedCardInner = function FeedCard({
   post,
   isNew,
   reactionCounts: initialReactionCounts,
@@ -143,7 +143,7 @@ export function FeedCard({
       prevCounts[initialUserReaction] = Math.max(0, (prevCounts[initialUserReaction] ?? 1) - 1);
     }
     prevCounts['❤️'] = (prevCounts['❤️'] ?? 0) + 1;
-    onReactionChange?.(prevCounts, '❤️');
+    onReactionChange?.(post.id, prevCounts, '❤️');
 
     if (initialUserReaction) {
       supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId).then(() => {});
@@ -266,6 +266,7 @@ export function FeedCard({
 
       if (prevReaction === emoji) {
         onReactionChange?.(
+          post.id,
           { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) },
           null
         );
@@ -275,7 +276,7 @@ export function FeedCard({
           nextCounts[prevReaction] = Math.max(0, (nextCounts[prevReaction] ?? 1) - 1);
         }
         nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
-        onReactionChange?.(nextCounts, emoji);
+        onReactionChange?.(post.id, nextCounts, emoji);
       }
 
       if (prevReaction === emoji) {
@@ -294,24 +295,14 @@ export function FeedCard({
           .insert({ post_id: post.id, user_id: userId, emoji })
           .then(async () => {
             const shouldNotify = post.user_id !== userId;
-            console.log('[FeedCard] Reaction notification check:', {
-              postUserId: post.user_id,
-              currentUserId: userId,
-              shouldNotify,
-            });
             if (shouldNotify) {
-              console.log('About to create notification for reaction');
-              const { data, error } = await supabase
-                .from('notifications')
-                .insert({
-                  user_id: post.user_id,
-                  type: 'reaction',
-                  from_user_id: userId,
-                  post_id: post.id,
-                  emoji,
-                })
-                .select();
-              console.log('Notification result:', { data, error });
+              await supabase.from('notifications').insert({
+                user_id: post.user_id,
+                type: 'reaction',
+                from_user_id: userId,
+                post_id: post.id,
+                emoji,
+              });
             }
           });
       }
@@ -341,7 +332,7 @@ export function FeedCard({
           }
         : null;
 
-    onCommentPosted?.(newCount, newLatest);
+    onCommentPosted?.(post.id, newCount, newLatest);
   }, [post.id, commentCount, onCommentPosted]);
 
   const displayName = post.user_id === userId ? 'You' : (post.profiles?.display_name ?? 'Unknown');
@@ -515,7 +506,9 @@ export function FeedCard({
       </CommentSheet>
     </Animated.View>
   );
-}
+};
+
+export const FeedCard = React.memo(FeedCardInner);
 
 const styles = StyleSheet.create({
   card: {

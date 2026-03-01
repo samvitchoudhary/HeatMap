@@ -195,11 +195,12 @@ export function CommentSheet({
     setLoading(true);
     const { data, error } = await supabase
       .from('comments')
-      .select('*, profiles:user_id(display_name, username, avatar_url)')
+      .select('id, post_id, user_id, content, created_at, parent_id, profiles:user_id(display_name, username, avatar_url)')
       .eq('post_id', pid)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(30);
     if (error) {
-      console.error('Error fetching comments:', error);
+      if (__DEV__) console.error('Error fetching comments:', error);
       setLoading(false);
       return;
     }
@@ -234,30 +235,19 @@ export function CommentSheet({
       .select('id')
       .single();
     if (error) {
-      console.error('Error posting comment:', error);
+      if (__DEV__) console.error('Error posting comment:', error);
       setPosting(false);
       return;
     }
     const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
-    console.log('[CommentSheet] Comment notification check:', {
-      postUserId,
-      currentUserId: userId,
-      newCommentId: newComment?.id,
-      shouldNotify,
-    });
     if (shouldNotify) {
-      console.log('About to create notification for comment');
-      const { data, error } = await supabase
-        .from('notifications')
-        .insert({
-          user_id: postUserId,
-          type: 'comment',
-          from_user_id: userId,
-          post_id: postId,
-          comment_id: newComment!.id,
-        })
-        .select();
-      console.log('Notification result:', { data, error });
+      await supabase.from('notifications').insert({
+        user_id: postUserId,
+        type: 'comment',
+        from_user_id: userId,
+        post_id: postId,
+        comment_id: newComment!.id,
+      });
     }
     setInputText('');
     setReplyTarget(null);

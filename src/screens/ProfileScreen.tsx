@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   RefreshControl,
   Dimensions,
   ActivityIndicator,
+  FlatList,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
@@ -45,6 +46,53 @@ function validateUsername(value: string): boolean {
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_CELL_SIZE = (SCREEN_WIDTH - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
+
+const GalleryThumbnail = React.memo(function GalleryThumbnail({
+  post,
+  userId,
+  onPress,
+  onLongPress,
+  hasError,
+  onError,
+}: {
+  post: PostWithProfile;
+  userId: string | undefined;
+  onPress: () => void;
+  onLongPress: () => void;
+  hasError: boolean;
+  onError: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.gridCell}
+      onPress={onPress}
+      onLongPress={onLongPress}
+      activeOpacity={0.7}
+    >
+      {hasError ? (
+        <View style={[styles.gridCellEmpty, styles.gridImagePlaceholder]}>
+          <Feather name="image" size={24} color={theme.colors.textTertiary} />
+        </View>
+      ) : (
+        <>
+          <SmoothImage
+            source={{ uri: post.image_url }}
+            style={styles.gridImage}
+            resizeMode="cover"
+            onError={onError}
+          />
+          {post.user_id !== userId && (
+            <View style={styles.tagBanner}>
+              <Text style={styles.tagBannerText} numberOfLines={1}>
+                tagged by @{post.profiles?.username ?? 'user'}
+              </Text>
+            </View>
+          )}
+        </>
+      )}
+    </TouchableOpacity>
+  );
+});
 
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
@@ -84,19 +132,21 @@ export function ProfileScreen() {
 
     const { data: ownData, error: ownError } = await supabase
       .from('posts')
-      .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+      .select('id, image_url, caption, latitude, longitude, created_at, user_id, venue_name, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(50);
     if (ownError) {
-      console.error('Error fetching profile posts:', ownError);
+      if (__DEV__) console.error('Error fetching profile posts:', ownError);
       return;
     }
     const ownPosts = (ownData ?? []) as PostWithProfile[];
 
     const { data: taggedData } = await supabase
       .from('post_tags')
-      .select('post_id, posts:post_id(*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
-      .eq('tagged_user_id', userId);
+      .select('post_id, posts:post_id(id, image_url, caption, latitude, longitude, created_at, user_id, venue_name, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
+      .eq('tagged_user_id', userId)
+      .limit(100);
     const taggedPosts = ((taggedData ?? []) as { post_id: string; posts: PostWithProfile }[])
       .map((t) => t.posts)
       .filter((p): p is PostWithProfile => !!p && friendIds.includes(p.user_id));
@@ -182,7 +232,7 @@ export function ProfileScreen() {
       if (updateError) throw updateError;
       await refreshProfile();
     } catch (err) {
-      console.error('Error uploading avatar:', err);
+      if (__DEV__) console.error('Error uploading avatar:', err);
       showToast('Could not update profile photo. Please try again.');
     } finally {
       setUploadingAvatar(false);
@@ -312,7 +362,7 @@ export function ProfileScreen() {
             setPostsCount((prev) => Math.max(0, prev - 1));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
           } catch (err) {
-            console.error('Error deleting post:', err);
+            if (__DEV__) console.error('Error deleting post:', err);
           }
         },
       },
@@ -358,6 +408,7 @@ export function ProfileScreen() {
       <ScrollView
         style={styles.scroll}
         scrollEnabled={selectedPosts === null}
+        nestedScrollEnabled={true}
         contentContainerStyle={[
           styles.scrollContent,
           { paddingTop: insets.top + 20, paddingBottom: bottomPadding },
@@ -426,43 +477,29 @@ export function ProfileScreen() {
               <Text style={styles.emptyGalleryText}>No posts yet</Text>
             </View>
           ) : (
-            <View style={styles.grid}>
-              {gridSlots.map((post, i) =>
+            <FlatList
+              data={gridSlots}
+              numColumns={3}
+              scrollEnabled={false}
+              keyExtractor={(item, index) => (item ? item.id : `empty-${index}`)}
+              renderItem={({ item: post, index }) =>
                 post ? (
-                  <TouchableOpacity
-                    key={post.id}
-                    style={styles.gridCell}
+                  <GalleryThumbnail
+                    post={post}
+                    userId={userId}
                     onPress={() => handlePhotoPress(post)}
                     onLongPress={() => handleLongPressDelete(post)}
-                    activeOpacity={0.7}
-                  >
-                    {gridImageErrors[post.id] ? (
-                      <View style={[styles.gridCellEmpty, styles.gridImagePlaceholder]}>
-                        <Feather name="image" size={24} color={theme.colors.textTertiary} />
-                      </View>
-                    ) : (
-                      <>
-                        <SmoothImage
-                          source={{ uri: post.image_url }}
-                          style={styles.gridImage}
-                          resizeMode="cover"
-                          onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
-                        />
-                        {post.user_id !== userId && (
-                          <View style={styles.tagBanner}>
-                            <Text style={styles.tagBannerText} numberOfLines={1}>
-                              tagged by @{post.profiles?.username ?? 'user'}
-                            </Text>
-                          </View>
-                        )}
-                      </>
-                    )}
-                  </TouchableOpacity>
+                    hasError={!!gridImageErrors[post.id]}
+                    onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
+                  />
                 ) : (
-                  <View key={`empty-${i}`} style={[styles.gridCell, styles.gridCellEmpty]} />
+                  <View style={[styles.gridCell, styles.gridCellEmpty]} />
                 )
-              )}
-            </View>
+              }
+              columnWrapperStyle={{ gap: GRID_GAP, marginBottom: GRID_GAP }}
+              removeClippedSubviews={true}
+              style={styles.grid}
+            />
           )}
           {hasMorePosts && (
             <TouchableOpacity
@@ -693,9 +730,6 @@ const styles = StyleSheet.create({
     textAlign: 'left',
   },
   grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: GRID_GAP,
     backgroundColor: theme.colors.background,
   },
   gridCell: {
