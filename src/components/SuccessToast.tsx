@@ -1,3 +1,14 @@
+/**
+ * SuccessToast.tsx
+ *
+ * Full-screen success toast with check icon animation.
+ *
+ * Key responsibilities:
+ * - Slides down from top, shows check icon scale animation
+ * - Auto-dismisses after ~2s, calls onHide when done
+ * - Used for upload success, profile save, etc.
+ */
+
 import React, { useEffect, useRef } from 'react';
 import { Animated, View, Text, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -9,13 +20,14 @@ interface SuccessToastProps {
   onHide: () => void;
 }
 
+/** Success toast - slides in, check animates, then slides out and calls onHide */
 export const SuccessToast: React.FC<SuccessToastProps> = ({ message, visible, onHide }) => {
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
-
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  /** Animates in on visible, then schedules hide after 2s */
   useEffect(() => {
     if (visible) {
       translateY.setValue(-100);

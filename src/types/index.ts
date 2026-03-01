@@ -1,3 +1,14 @@
+/**
+ * types/index.ts
+ *
+ * Core TypeScript type definitions for HeatMap.
+ *
+ * Key responsibilities:
+ * - Profile, Post, PostTag, PostWithProfile, Friendship types used across the app
+ * - Shapes align with Supabase table schemas and joined query results
+ */
+
+/** User profile from profiles table - used for avatars, display names, usernames */
 export type Profile = {
   id: string;
   username: string;
@@ -6,6 +17,7 @@ export type Profile = {
   created_at: string;
 };
 
+/** Post from posts table - core content type for map pins and feed cards */
 export type Post = {
   id: string;
   user_id: string;
@@ -17,6 +29,7 @@ export type Post = {
   created_at: string;
 };
 
+/** Tag on a post - links a tagged user to their profile for display */
 export type PostTag = {
   tagged_user_id: string;
   profiles: {
@@ -25,6 +38,7 @@ export type PostTag = {
   } | null;
 };
 
+/** Post with author profile and optional tags - used in feed, map, profile views */
 export type PostWithProfile = Post & {
   profiles: {
     username: string;
@@ -34,6 +48,7 @@ export type PostWithProfile = Post & {
   post_tags?: PostTag[];
 };
 
+/** Friendship record - requester/addressee and status for friend feed filtering */
 export type Friendship = {
   id: string;
   requester_id: string;

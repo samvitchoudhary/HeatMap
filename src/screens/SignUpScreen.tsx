@@ -1,3 +1,14 @@
+/**
+ * SignUpScreen.tsx
+ *
+ * New user registration - email + password.
+ *
+ * Key responsibilities:
+ * - Validates email, password (min 6 chars), confirm password match
+ * - Supabase signUp; auth state change navigates to ProfileSetup for username/displayName
+ * - Links to Login screen
+ */
+
 import React, { useState } from 'react';
 import {
   View,
@@ -22,6 +33,7 @@ import { theme } from '../lib/theme';
 
 type SignUpNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
 
+/** Sign up screen - email, password, confirm password form */
 export function SignUpScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<SignUpNavigationProp>();
@@ -31,6 +43,7 @@ export function SignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  /** Validates and calls supabase.auth.signUp */
   async function handleSignUp() {
     if (password !== confirmPassword) {
       Alert.alert('Error', 'Passwords do not match.');

@@ -1,3 +1,14 @@
+/**
+ * ToastContext.tsx
+ *
+ * Global toast notification system.
+ *
+ * Key responsibilities:
+ * - Provides showToast(message) to display a temporary banner
+ * - Renders toast at top of screen with slide-in animation
+ * - Auto-dismisses after 3 seconds
+ */
+
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
@@ -16,6 +27,7 @@ type ToastContextValue = {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
+/** How long the toast stays visible before sliding out */
 const TOAST_DURATION_MS = 3000;
 
 export function useToast() {
@@ -23,9 +35,13 @@ export function useToast() {
   return ctx ?? { showToast: () => {} };
 }
 
+/** Provider that renders toast banner and exposes showToast */
 export function ToastProvider({ children }: { children: React.ReactNode }) {
+  /** Current toast message - null when hidden */
   const [message, setMessage] = useState<string | null>(null);
+  /** Animates toast from off-screen (-100) to visible (0) */
   const translateY = useRef(new Animated.Value(-100)).current;
+  /** Stores timeout ID for auto-dismiss so we can clear on new toast */
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();

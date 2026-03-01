@@ -1,3 +1,14 @@
+/**
+ * PhotoViewer.tsx
+ *
+ * Full-screen modal photo viewer with pinch-to-zoom and pan.
+ *
+ * Key responsibilities:
+ * - Pinch to zoom (1x–3x), pan when zoomed
+ * - Swipe down to dismiss (when at 1x zoom)
+ * - Double-tap toggles 1x/2x zoom; single tap toggles close button visibility
+ */
+
 import React, { useRef, useState, useCallback } from 'react';
 import {
   View,
@@ -14,6 +25,7 @@ import { Feather } from '@expo/vector-icons';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+/** Euclidean distance between two points - used for pinch gesture */
 function getDistance(x1: number, y1: number, x2: number, y2: number): number {
   return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
 }
@@ -23,13 +35,17 @@ type PhotoViewerProps = {
   onClose: () => void;
 };
 
+/** Full-screen photo viewer with pinch/pan gestures */
 export function PhotoViewer({ imageUrl, onClose }: PhotoViewerProps) {
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(0)).current;
+  /** Overlay opacity - fades on swipe-down to dismiss */
   const overlayOpacity = useRef(new Animated.Value(1)).current;
+  /** Whether close button is visible - toggled by single tap */
   const [showUI, setShowUI] = useState(true);
 
+  // Gesture state refs - updated during pan, read on release
   const baseScale = useRef(1);
   const baseTranslateX = useRef(0);
   const baseTranslateY = useRef(0);
@@ -37,8 +53,10 @@ export function PhotoViewer({ imageUrl, onClose }: PhotoViewerProps) {
   const initialPinchScale = useRef(1);
   const scaleValueRef = useRef(1);
   const lastTapTime = useRef(0);
+  /** Distinguishes tap from swipe - used for double-tap vs dismiss */
   const didMoveRef = useRef(false);
 
+  /** Resets zoom and pan to initial state */
   const resetTransforms = useCallback(() => {
     scale.setValue(1);
     translateX.setValue(0);
@@ -54,6 +72,7 @@ export function PhotoViewer({ imageUrl, onClose }: PhotoViewerProps) {
     onClose();
   }, [resetTransforms, onClose]);
 
+  /** Double-tap: zoom to 2x if at 1x, reset to 1x if zoomed */
   const animateDoubleTapZoom = useCallback(() => {
     const currentScale = baseScale.current;
     const newScale = currentScale < 1.5 ? 2 : 1;
@@ -83,6 +102,7 @@ export function PhotoViewer({ imageUrl, onClose }: PhotoViewerProps) {
     ]).start();
   }, [scale, translateX, translateY]);
 
+  /** Handles pinch (2 fingers), pan (when zoomed), swipe-down (dismiss), tap/double-tap */
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,

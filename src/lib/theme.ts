@@ -1,3 +1,15 @@
+/**
+ * theme.ts
+ *
+ * Central design system for the HeatMap app.
+ *
+ * Key responsibilities:
+ * - Defines colors (primary coral/red, text hierarchy, overlays, functional colors)
+ * - Spacing scale (xs through xl) for consistent margins/padding
+ * - Typography sizes, border radii, and shadow presets
+ * - Button and input dimensions for form consistency
+ */
+
 export const theme = {
   colors: {
     // Backgrounds — clean whites

@@ -1,3 +1,14 @@
+/**
+ * LoginScreen.tsx
+ *
+ * Authentication - email/username + password login.
+ *
+ * Key responsibilities:
+ * - Accepts email or username (looks up email from profiles if username)
+ * - Supabase signInWithPassword; auth state change triggers navigation to MainTabs
+ * - Links to SignUp screen
+ */
+
 import React, { useState } from 'react';
 import {
   View,
@@ -22,6 +33,7 @@ import { theme } from '../lib/theme';
 
 type LoginNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
+/** Login screen - email/username + password form */
 export function LoginScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<LoginNavigationProp>();
@@ -30,6 +42,7 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
+  /** Validates input, resolves username→email if needed, calls signInWithPassword */
   async function handleLogin() {
     const input = emailOrUsername.trim();
     if (!input) {

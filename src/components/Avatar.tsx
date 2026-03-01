@@ -1,3 +1,14 @@
+/**
+ * Avatar.tsx
+ *
+ * User avatar image with fallback placeholder.
+ *
+ * Key responsibilities:
+ * - Displays profile/avatar image from URL
+ * - Shows user icon or broken-image icon when no URL or load error
+ * - Supports profilePlaceholder variant (primary-tinted background) for profile screens
+ */
+
 import React, { useState } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -11,8 +22,18 @@ type AvatarProps = {
   profilePlaceholder?: boolean;
 };
 
+/**
+ * Avatar
+ *
+ * Renders a circular avatar image or placeholder.
+ *
+ * @param uri - Image URL or null for placeholder
+ * @param size - Diameter in pixels
+ * @param profilePlaceholder - Use primary-tinted background for profile screens
+ */
 export function Avatar({ uri, size, profilePlaceholder }: AvatarProps) {
   const radius = size / 2;
+  /** True when image fails to load - shows broken-image icon instead */
   const [loadError, setLoadError] = useState(false);
 
   if (!uri || loadError) {

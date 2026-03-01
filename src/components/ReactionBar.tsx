@@ -1,7 +1,20 @@
+/**
+ * ReactionBar.tsx
+ *
+ * Emoji reaction bar for posts.
+ *
+ * Key responsibilities:
+ * - Renders 6 emoji buttons with counts
+ * - Highlights user's selected reaction, shows count per emoji
+ * - Supports compact, cardStyle, and cardStackBar layouts
+ * - Spring animations on press and selection
+ */
+
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { theme } from '../lib/theme';
 
+/** Emoji options for reactions - order matches UI */
 export const REACTION_EMOJIS = ['🔥', '❤️', '😂', '😮', '😍', '👏'] as const;
 export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
 
@@ -17,6 +30,7 @@ type ReactionBarProps = {
   cardStackBar?: boolean;
 };
 
+/** Single emoji button with count - animates on selection and press */
 function ReactionButton({
   emoji,
   count,
@@ -38,6 +52,7 @@ function ReactionButton({
   scaleVal: Animated.Value;
   isAnimating: boolean;
 }) {
+  /** Lifts selected emoji slightly (-4px) */
   const translateY = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -99,6 +114,7 @@ function ReactionButton({
   );
 }
 
+/** Row of emoji reaction buttons - used in FeedCard and CardStack */
 export function ReactionBar({
   counts,
   userReaction,
@@ -107,9 +123,12 @@ export function ReactionBar({
   cardStyle = false,
   cardStackBar = false,
 }: ReactionBarProps) {
+  /** Scale animation for press feedback - shared across buttons */
   const scaleVal = useRef(new Animated.Value(1)).current;
+  /** Index of button currently animating (only one at a time) */
   const [animatingIndex, setAnimatingIndex] = useState<number | null>(null);
 
+  /** Triggers scale bounce and forwards to parent handler */
   function handlePress(emoji: string, index: number) {
     setAnimatingIndex(index);
     scaleVal.setValue(1);

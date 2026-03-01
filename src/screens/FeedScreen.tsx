@@ -1,3 +1,15 @@
+/**
+ * FeedScreen.tsx
+ *
+ * Activity feed - posts from friends.
+ *
+ * Key responsibilities:
+ * - FlatList of FeedCards; fetches posts from friends (friendships + posts)
+ * - Pagination (load more on scroll), pull-to-refresh
+ * - Reactions and comments fetched per batch; FeedBadge integration (markFeedSeen)
+ * - Delete post with fade animation; expand photo, navigate to venue/profile
+ */
+
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
@@ -49,6 +61,7 @@ export function FeedScreen() {
 
   const PAGE_SIZE = 20;
 
+  /** Estimated card height for FlatList getItemLayout - improves scroll perf */
   const FEED_CARD_HEIGHT = useMemo(() => {
     const { width } = Dimensions.get('window');
     const cardWidth = width - 40;

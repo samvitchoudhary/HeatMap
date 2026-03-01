@@ -1,3 +1,15 @@
+/**
+ * CommentSheet.tsx
+ *
+ * Flip-card component: front = post content, back = comments list with reply support.
+ *
+ * Key responsibilities:
+ * - 3D flip animation (rotateY) between front (photo/info) and back (comments)
+ * - Fetches and displays threaded comments, supports reply-to
+ * - Used inside CardStack and FeedCard - provides onCommentPress + commentCount to children
+ * - Lazy-loads comments when flipped to back (or when initialFlipped)
+ */
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
@@ -20,6 +32,7 @@ import { Avatar } from './Avatar';
 import { SmoothImage } from './SmoothImage';
 import { StyledTextInput } from './StyledTextInput';
 
+/** Formats timestamp as relative time string */
 function timeAgo(dateString: string): string {
   const now = new Date();
   const date = new Date(dateString);
@@ -51,6 +64,7 @@ type CommentWithProfile = {
 
 type ReplyTarget = { id: string; username: string; parentUserId: string };
 
+/** Groups comments into top-level + replies, sorted by created_at */
 function buildThreadedComments(comments: CommentWithProfile[]): Array<
   | { type: 'top'; comment: CommentWithProfile }
   | { type: 'reply'; comment: CommentWithProfile; parentUsername: string; parentUserId: string }

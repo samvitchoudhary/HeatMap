@@ -1,3 +1,14 @@
+/**
+ * GalleryScreen.tsx
+ *
+ * Full gallery of user's posts (from Profile → View All Posts).
+ *
+ * Key responsibilities:
+ * - 3-column grid of own posts
+ * - Tap opens CardStack; long-press delete
+ * - ProfileStack screen with header "All Posts"
+ */
+
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,

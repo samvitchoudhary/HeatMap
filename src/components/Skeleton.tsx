@@ -1,3 +1,13 @@
+/**
+ * Skeleton.tsx
+ *
+ * Animated loading placeholder for content.
+ *
+ * Key responsibilities:
+ * - Renders a pulsing rectangle (opacity 0.3 ↔ 0.7)
+ * - Used in FeedScreen and ProfileScreen while data loads
+ */
+
 import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Animated, ViewStyle } from 'react-native';
 import { theme } from '../lib/theme';
@@ -9,6 +19,7 @@ type SkeletonProps = {
   style?: ViewStyle;
 };
 
+/** Animated skeleton placeholder - pulsing opacity */
 export function Skeleton({
   width = 120,
   height = 16,
@@ -17,6 +28,7 @@ export function Skeleton({
 }: SkeletonProps) {
   const opacity = useRef(new Animated.Value(0.3)).current;
 
+  /** Runs a looping opacity animation for the shimmer effect */
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([

@@ -1,3 +1,15 @@
+/**
+ * app.config.js
+ *
+ * Expo configuration for HeatMap.
+ *
+ * Key settings:
+ * - name, slug, version, orientation (portrait)
+ * - iOS/Android: googleMapsApiKey from env (for MapView, Places API)
+ * - iOS: bundleIdentifier; Android: adaptive icon, edgeToEdgeEnabled
+ * - newArchEnabled: React Native new architecture
+ */
+
 require('dotenv/config');
 
 module.exports = {

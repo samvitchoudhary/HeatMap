@@ -1,3 +1,14 @@
+/**
+ * StyledTextInput.tsx
+ *
+ * Themed TextInput with multiple visual variants.
+ *
+ * Key responsibilities:
+ * - Standard bordered input, embedded (borderless), and auth (focus underline) styles
+ * - Focus state styling (border color, auth bottom border)
+ * - Consistent placeholder and height
+ */
+
 import React, { useState, forwardRef } from 'react';
 import { TextInput, StyleSheet, type TextInputProps } from 'react-native';
 import { theme } from '../lib/theme';
@@ -10,8 +21,10 @@ type StyledTextInputProps = TextInputProps & {
   auth?: boolean;
 };
 
+/** Themed TextInput - supports embedded (no border) and auth (underline on focus) variants */
 export const StyledTextInput = forwardRef<TextInput, StyledTextInputProps>(
   function StyledTextInput({ style, embedded, auth, onFocus, onBlur, ...props }, ref) {
+    /** Tracks focus for conditional border/underline styling */
     const [focused, setFocused] = useState(false);
 
     const baseStyle = auth

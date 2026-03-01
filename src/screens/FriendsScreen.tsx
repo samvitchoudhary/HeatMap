@@ -1,3 +1,14 @@
+/**
+ * FriendsScreen.tsx
+ *
+ * Friends list and user search.
+ *
+ * Key responsibilities:
+ * - Lists accepted friends with avatars; tap navigates to FriendProfileScreen
+ * - Search by username (debounced); Add / Pending / Friends / Accept buttons
+ * - Fetches friendships and profiles; handles friend request flow
+ */
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -38,6 +49,7 @@ type SearchResultWithStatus = Profile & {
   friendshipId?: string;
 };
 
+/** Debounce search input before querying profiles */
 const DEBOUNCE_MS = 500;
 
 type FriendsScreenNav = NativeStackNavigationProp<ProfileStackParamList, 'Friends'>;

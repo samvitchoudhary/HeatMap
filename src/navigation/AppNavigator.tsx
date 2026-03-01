@@ -1,3 +1,16 @@
+/**
+ * AppNavigator.tsx
+ *
+ * Root navigation structure for HeatMap.
+ *
+ * Key responsibilities:
+ * - Auth flow: Login, SignUp, ProfileSetup
+ * - MainTabs (Material Top Tabs): Map, Feed, Notifications, Profile
+ * - Map tab = MapStack (Map + Upload); Profile tab = ProfileStack (Profile, Friends, Gallery)
+ * - Custom tab bar with icons; TabSwipeOverlay for edge-swipe between tabs
+ * - Wraps app in Auth, Notification, FeedBadge, CardStack, Toast providers
+ */
+
 import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NotificationProvider, useNotifications } from '../lib/NotificationContext';
@@ -14,6 +27,7 @@ import { theme } from '../lib/theme';
 
 const TAB_ICON_SIZE = 24;
 
+/** Tab bar icon - Feather icon with active/inactive color */
 function TabIcon({
   name,
   focused,
@@ -57,6 +71,7 @@ const headerScreenOptions = {
   headerShadowVisible: false,
 };
 
+/** Map tab stack: Map (HomeScreen) and Upload */
 function MapStackNavigator({
   profile,
   initialMapParams,
@@ -89,6 +104,7 @@ function MapStackNavigator({
   );
 }
 
+/** Profile tab stack: Profile, Friends, Gallery */
 function ProfileStackNavigator() {
   return (
     <ProfileStack.Navigator
@@ -118,6 +134,7 @@ function ProfileStackNavigator() {
   );
 }
 
+/** Custom tab bar with icons, badge dots (Feed, Notifications), sliding indicator */
 function CustomTabBar(props: {
   state: { index: number; routes: { key: string; name: string }[] };
   navigation: any;
@@ -206,6 +223,7 @@ function CustomTabBar(props: {
   );
 }
 
+/** Main tab navigator - Map, Feed, Notifications, Profile */
 function MainTabs({ profile }: { profile: Profile }) {
   const insets = useSafeAreaInsets();
 

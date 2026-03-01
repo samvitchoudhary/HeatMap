@@ -1,3 +1,14 @@
+/**
+ * FeedCommentModal.tsx
+ *
+ * Modal for viewing and posting comments on a feed post.
+ *
+ * Key responsibilities:
+ * - Full-screen modal with threaded comments list
+ * - Post new comments, reply to existing (with @mention)
+ * - Used when user taps comment count from FeedCard (Feed screen)
+ */
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
@@ -19,6 +30,7 @@ import { theme } from '../lib/theme';
 import { Avatar } from './Avatar';
 import { StyledTextInput } from './StyledTextInput';
 
+/** Formats timestamp as relative time */
 function timeAgo(dateString: string): string {
   const now = new Date();
   const date = new Date(dateString);
@@ -50,6 +62,7 @@ type CommentWithProfile = {
 
 type ReplyTarget = { id: string; username: string; parentUserId: string };
 
+/** Groups comments into top-level + replies */
 function buildThreadedComments(comments: CommentWithProfile[]): Array<
   | { type: 'top'; comment: CommentWithProfile }
   | { type: 'reply'; comment: CommentWithProfile; parentUsername: string; parentUserId: string }

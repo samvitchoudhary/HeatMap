@@ -1,5 +1,17 @@
+/**
+ * MainTabsContext.tsx
+ *
+ * Tab navigation and cross-tab navigation helpers.
+ *
+ * Key responsibilities:
+ * - Tracks current tab page (Map, Feed, Notifications, Profile)
+ * - navigateToMap with params lets Feed/other screens open map at a location or post
+ * - navigateToFriendProfile lets CardStack open a friend's profile without tight coupling
+ */
+
 import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 
+/** Params passed when navigating to Map tab (e.g. from Feed venue tap) */
 export type MapParams = {
   postId?: string;
   latitude?: number;
@@ -17,6 +29,7 @@ type MainTabsContextValue = {
 
 const MainTabsContext = createContext<MainTabsContextValue | null>(null);
 
+/** Provider for tab state and navigation helpers */
 export function MainTabsProvider({
   children,
   onNavigateToFriendProfile,
@@ -24,7 +37,9 @@ export function MainTabsProvider({
   children: React.ReactNode;
   onNavigateToFriendProfile: (userId: string) => void;
 }) {
+  /** Active tab index: 0=Map, 1=Feed, 2=Notifications, 3=Profile */
   const [currentPage, setCurrentPage] = useState(0);
+  /** Stores params for next Map navigation - MapStack reads this on mount/focus */
   const setMapParamsRef = useRef<MapParams | null>(null);
 
   const setPage = useCallback((index: number) => {

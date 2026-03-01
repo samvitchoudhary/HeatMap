@@ -1,8 +1,20 @@
+/**
+ * FeedBadgeContext.tsx
+ *
+ * "New posts" badge for the Feed tab.
+ *
+ * Key responsibilities:
+ * - Persists last-seen timestamp when user views the feed (AsyncStorage)
+ * - Polls for posts from friends created after lastSeenAt
+ * - Exposes hasNewPosts for tab badge, markFeedSeen to clear on feed view
+ */
+
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 import { supabase } from './supabase';
 
+/** AsyncStorage key for feed last-seen ISO timestamp */
 const FEED_LAST_SEEN_KEY = 'feed_last_seen';
 
 type FeedBadgeContextValue = {
@@ -13,11 +25,15 @@ type FeedBadgeContextValue = {
 
 const FeedBadgeContext = createContext<FeedBadgeContextValue | null>(null);
 
+/** Provider that manages feed badge state */
 export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
+  /** ISO timestamp of when user last viewed the feed */
   const [lastSeenAt, setLastSeenAt] = useState<string | null>(null);
+  /** True if friends have posted since lastSeenAt */
   const [hasNewPosts, setHasNewPosts] = useState(false);
 
+  /** Loads lastSeenAt from AsyncStorage */
   const loadLastSeen = useCallback(async () => {
     try {
       const stored = await AsyncStorage.getItem(FEED_LAST_SEEN_KEY);
@@ -28,6 +44,7 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /** Saves current time as lastSeenAt and clears the badge */
   const markFeedSeen = useCallback(async () => {
     const now = new Date().toISOString();
     try {
@@ -40,6 +57,10 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /**
+   * Counts posts from friends created after lastSeen.
+   * Uses friendships to get friend IDs, then counts posts in that set.
+   */
   const checkForNewPosts = useCallback(async () => {
     if (!profile?.id) return;
     const lastSeen = lastSeenAt ?? (await loadLastSeen());
@@ -85,6 +106,7 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
     loadLastSeen();
   }, [loadLastSeen]);
 
+  /** Poll for new posts on mount and every 60 seconds */
   useEffect(() => {
     checkForNewPosts();
     const interval = setInterval(checkForNewPosts, 60000);

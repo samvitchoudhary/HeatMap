@@ -1,3 +1,14 @@
+/**
+ * TabSwipeOverlay.tsx
+ *
+ * Invisible edge zones for swipe-between-tabs navigation.
+ *
+ * Key responsibilities:
+ * - Left edge: swipe right to go to previous tab
+ * - Right edge: swipe left to go to next tab
+ * - Disabled when CardStack is open (no accidental tab switch during post view)
+ */
+
 import React, { useRef } from 'react';
 import { View, PanResponder, StyleSheet } from 'react-native';
 import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -6,7 +17,9 @@ import type { MainTabParamList } from '../navigation/types';
 import { useCardStack } from '../lib/CardStackContext';
 
 const TAB_ORDER: (keyof MainTabParamList)[] = ['Map', 'Feed', 'Notifications', 'Profile'];
+/** Width of each swipe-sensitive edge in pixels */
 const EDGE_WIDTH = 20;
+/** Horizontal swipe distance required to trigger tab change */
 const SWIPE_THRESHOLD = 60;
 
 type TabSwipeOverlayProps = {
@@ -14,9 +27,11 @@ type TabSwipeOverlayProps = {
   state: { index: number; routes: { name: string }[] };
 };
 
+/** Overlay with left/right edge pan responders for tab swiping */
 export function TabSwipeOverlay({ navigation, state }: TabSwipeOverlayProps) {
   const { cardStackOpen } = useCardStack();
   const currentIndex = state?.index ?? 0;
+  /** Refs used in PanResponder callbacks to avoid stale closures */
   const indexRef = useRef(currentIndex);
   const canSwipeRef = useRef(!cardStackOpen);
 

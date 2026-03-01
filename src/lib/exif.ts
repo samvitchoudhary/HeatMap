@@ -1,4 +1,21 @@
-/** Parse EXIF GPS to decimal degrees. Handles both signed decimals and DMS format. */
+/**
+ * exif.ts
+ *
+ * EXIF GPS parsing utilities for photo uploads.
+ *
+ * Key responsibilities:
+ * - Extracts latitude/longitude from image EXIF metadata
+ * - Handles decimal degrees and DMS (degrees/minutes/seconds) formats
+ * - Returns null on invalid or missing data
+ */
+
+/**
+ * Parses EXIF GPS fields into decimal degrees.
+ * Handles both signed decimals and DMS (degrees, minutes, seconds) format.
+ *
+ * @param exif - EXIF metadata object from image (e.g. ImagePicker result)
+ * @returns { latitude, longitude } or null if GPS data missing/invalid
+ */
 export function parseExifGps(
   exif: Record<string, unknown> | undefined
 ): { latitude: number; longitude: number } | null {
@@ -7,6 +24,7 @@ export function parseExifGps(
   const lng = exif.GPSLongitude;
   if (lat == null || lng == null) return null;
 
+  /** Converts a single coordinate from number or [d,m,s] array to decimal degrees */
   const toDecimal = (val: unknown, ref: string | undefined): number | null => {
     if (typeof val === 'number' && !Number.isNaN(val)) {
       return ref === 'S' || ref === 'W' ? -Math.abs(val) : val;

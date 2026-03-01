@@ -1,3 +1,11 @@
+/**
+ * navigation/types.ts
+ *
+ * TypeScript param lists for all navigators.
+ *
+ * Used by useNavigation, route.params, and navigate() for type-safe params.
+ */
+
 export type AuthStackParamList = {
   Login: undefined;
   SignUp: undefined;

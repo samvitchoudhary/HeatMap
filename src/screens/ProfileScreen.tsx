@@ -1,3 +1,15 @@
+/**
+ * ProfileScreen.tsx
+ *
+ * User's own profile - avatar, stats, recent posts grid, edit, logout.
+ *
+ * Key responsibilities:
+ * - Avatar (tap to change), display name, username, posts/friends count
+ * - 3x3 post grid with FlatList; tap opens CardStack, long-press delete
+ * - Edit profile modal (display name, username); logout
+ * - Fetches own posts + posts where user is tagged (from friends)
+ */
+
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
@@ -39,6 +51,7 @@ import { StyledTextInput } from '../components/StyledTextInput';
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
 const GRID_GAP = 2;
 
+/** Username must be lowercase, alphanumeric + underscores */
 function validateUsername(value: string): boolean {
   const normalized = value.toLowerCase().trim();
   return normalized.length > 0 && USERNAME_REGEX.test(normalized) && !/\s/.test(value);
@@ -47,6 +60,7 @@ function validateUsername(value: string): boolean {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_CELL_SIZE = (SCREEN_WIDTH - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
 
+/** Memoized thumbnail for profile grid - tap to open, long-press to delete */
 const GalleryThumbnail = React.memo(function GalleryThumbnail({
   post,
   userId,

@@ -1,3 +1,15 @@
+/**
+ * UploadScreen.tsx
+ *
+ * Photo upload flow - venue, caption, friend tagging.
+ *
+ * Key responsibilities:
+ * - Receives imageUri and optional exifLocation from Map (FAB) or route params
+ * - EXIF GPS or current location for venue; reverse geocode for venue name
+ * - Caption input, friend tag picker (from accepted friendships)
+ * - Uploads to Supabase storage, inserts post + post_tags, sends notifications
+ */
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,

@@ -1,3 +1,16 @@
+/**
+ * HomeScreen.tsx
+ *
+ * Map tab - heatmap, clusters, search, FAB for camera/gallery.
+ *
+ * Key responsibilities:
+ * - Renders MapView with Heatmap (post density) and cluster Markers
+ * - Tap map to show nearby posts in dropdown; tap cluster/pin to open CardStack
+ * - Search bar with Google Places autocomplete
+ * - FAB: camera or gallery picker → UploadScreen with location from EXIF or search
+ * - Fetches posts from friends; 30s throttle on refetch
+ */
+
 import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
@@ -42,8 +55,10 @@ const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
   quality: 0.7,
 };
 
+/** Max distance (m) for "nearby" posts when tapping map */
 const NEARBY_RADIUS_METERS = 100;
 
+/** Default map center - San Francisco area */
 const INITIAL_MAP_REGION = {
   latitude: 37.78825,
   longitude: -122.4324,
@@ -91,6 +106,7 @@ type PlacePrediction = {
   description: string;
 };
 
+/** Haversine distance in meters between two lat/lon points */
 function getDistanceMeters(
   lat1: number,
   lon1: number,

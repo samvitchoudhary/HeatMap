@@ -1,3 +1,14 @@
+/**
+ * NotificationsScreen.tsx
+ *
+ * Notification center - reactions, comments, friend requests, tags.
+ *
+ * Key responsibilities:
+ * - FlatList of notifications with avatars, action text, post thumbnails
+ * - Tap navigates to post (Map or CardStack) or friend profile
+ * - Mark as read on focus; refreshUnreadCount from context
+ */
+
 import React, { useState, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {

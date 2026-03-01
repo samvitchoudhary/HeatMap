@@ -1,3 +1,15 @@
+/**
+ * FriendProfileScreen.tsx
+ *
+ * View another user's profile - avatar, stats, posts, add friend.
+ *
+ * Key responsibilities:
+ * - Fetches profile and posts for target userId (from route params)
+ * - Add friend / Pending / Friends button; Accept if request received
+ * - 3-column post grid; tap opens CardStack; long-press delete (own posts only)
+ * - Accessed from Feed (tap author) or CardStack (onProfilePress)
+ */
+
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,

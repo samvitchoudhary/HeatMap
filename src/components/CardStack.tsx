@@ -1,3 +1,15 @@
+/**
+ * CardStack.tsx
+ *
+ * Swipeable card stack overlay for viewing posts (from map clusters or profile gallery).
+ *
+ * Key responsibilities:
+ * - Renders posts as full-screen cards with pan gesture (swipe left/right to navigate)
+ * - Each card shows photo, caption, venue, reactions, and flip-to-comments (CommentSheet)
+ * - Double-tap heart animation, expand photo, delete (own posts)
+ * - Entry animation (slide up + fade), dot indicator for position
+ */
+
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
@@ -25,6 +37,7 @@ import { theme } from '../lib/theme';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 import { PhotoViewer } from './PhotoViewer';
+/** Props for CardStack - posts to show, callbacks, optional initial state */
 type CardStackProps = {
   posts: PostWithProfile[];
   onClose: () => void;
@@ -36,6 +49,7 @@ type CardStackProps = {
   onProfilePress?: (userId: string) => void;
 };
 
+/** Dot pagination indicator - shows up to 7 dots, animates active position */
 function DotIndicator({
   total,
   current,
@@ -82,6 +96,7 @@ function DotIndicator({
   );
 }
 
+/** Renders "with @user1, @user2 +N others" - tappable when onProfilePress provided */
 function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onProfilePress?: (userId: string) => void }) {
   if (!tags || tags.length === 0) return null;
   const maxShow = 2;
@@ -109,6 +124,7 @@ function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onP
   );
 }
 
+/** Formats timestamp as "just now", "5m ago", "2h ago", etc. */
 function timeAgo(dateString: string): string {
   const now = new Date();
   const date = new Date(dateString);
@@ -124,6 +140,7 @@ function timeAgo(dateString: string): string {
   return `${months}mo ago`;
 }
 
+/** Horizontal swipe distance (px) to trigger next/prev card */
 const SWIPE_THRESHOLD = 80;
 const BOTTOM_BAR_HEIGHT = 50;
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -310,6 +327,18 @@ const CardImage = React.memo(function CardImage({
   );
 }, (prev, next) => prev.post.id === next.post.id && prev.imageError[prev.post.id] === next.imageError[next.post.id]);
 
+/**
+ * CardStack
+ *
+ * Swipeable overlay for viewing posts. Opened from map clusters or profile gallery.
+ *
+ * @param posts - Posts to display
+ * @param onClose - Called when user closes the stack
+ * @param initialIndex - Starting card index
+ * @param initialFlippedPostId - If set, that card starts flipped to comments
+ * @param onPostDeleted - Called when user deletes a post
+ * @param onProfilePress - Called when user taps a tagged profile
+ */
 export function CardStack({
   posts,
   onClose,

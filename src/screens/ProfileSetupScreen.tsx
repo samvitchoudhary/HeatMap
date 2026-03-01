@@ -1,3 +1,14 @@
+/**
+ * ProfileSetupScreen.tsx
+ *
+ * Post-signup profile completion - username and display name.
+ *
+ * Key responsibilities:
+ * - Shown after signup when profile doesn't exist; required before using app
+ * - Inserts into profiles table (username lowercase, letters/numbers/underscores only)
+ * - Handles 23505 (username taken) error
+ */
+
 import React, { useState } from 'react';
 import {
   View,
@@ -18,8 +29,10 @@ import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/ToastContext';
 import { theme } from '../lib/theme';
 
+/** Username must be lowercase, alphanumeric + underscores */
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
 
+/** Profile setup - username + display name, shown after signup */
 export function ProfileSetupScreen() {
   const insets = useSafeAreaInsets();
   const { refreshProfile } = useAuth();

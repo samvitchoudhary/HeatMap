@@ -1,3 +1,14 @@
+/**
+ * FeedCard.tsx
+ *
+ * Individual post card in the Feed tab.
+ *
+ * Key responsibilities:
+ * - Displays photo, author, venue, caption, reactions, comment preview
+ * - Double-tap heart, reaction bar, flip-to-comments (CommentSheet)
+ * - Fade-out animation on delete, expand photo, navigate to venue/profile
+ */
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
@@ -22,12 +33,14 @@ import { CommentSheet } from './CommentSheet';
 
 const CARD_MARGIN_H = 20;
 const CARD_MARGIN_V = 10;
+/** Photo height = width * 5/4 for portrait-ish cards */
 const PHOTO_ASPECT_RATIO = 4 / 5;
 const BOTTOM_BAR_HEIGHT = 50;
 const CARD_BORDER_RADIUS = 16;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_WIDTH = SCREEN_WIDTH - CARD_MARGIN_H * 2;
 
+/** Renders "with @user1, @user2 +N others" for tagged users */
 function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onProfilePress?: (userId: string) => void }) {
   if (!tags || tags.length === 0) return null;
   const maxShow = 2;
@@ -55,6 +68,7 @@ function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onP
   );
 }
 
+/** Formats timestamp as relative time string */
 function timeAgo(dateString: string): string {
   const now = new Date();
   const date = new Date(dateString);
@@ -70,6 +84,7 @@ function timeAgo(dateString: string): string {
   return `${months}mo ago`;
 }
 
+/** Latest comment preview - used for "View N comments" preview text */
 export type FeedLatestComment = {
   id: string;
   content: string;
