@@ -140,38 +140,53 @@ const ClusterBadge = React.memo(({ count }: { count: number }) => (
   </View>
 ));
 
-function clusterPosts(posts: PostWithProfile[], radiusMeters: number = 100): Cluster[] {
-  const clusters: Cluster[] = [];
+/**
+ * Grid-based spatial clustering algorithm — O(n) complexity.
+ *
+ * Divides the map into a grid based on the cluster radius.
+ * Each post is placed into a grid cell. Posts in the same cell
+ * are grouped into a single cluster. This avoids comparing
+ * every post against every cluster.
+ *
+ * @param posts - Array of posts with latitude/longitude
+ * @param clusterRadius - Radius in degrees for grouping (default 0.0009 ≈ 100m)
+ * @returns Array of clusters, each with coordinate, count, and posts
+ */
+function clusterPosts(posts: PostWithProfile[], clusterRadius: number = 0.0009): Cluster[] {
+  if (posts.length === 0) return [];
+
+  const cellSize = clusterRadius;
+  const grid: Record<
+    string,
+    { latSum: number; lngSum: number; count: number; posts: PostWithProfile[] }
+  > = {};
 
   for (const post of posts) {
-    let added = false;
-    for (const cluster of clusters) {
-      const dist = getDistanceMeters(
-        post.latitude,
-        post.longitude,
-        cluster.latitude,
-        cluster.longitude
-      );
-      if (dist < radiusMeters) {
-        cluster.posts.push(post);
-        cluster.count++;
-        cluster.latitude =
-          cluster.posts.reduce((sum, p) => sum + p.latitude, 0) / cluster.count;
-        cluster.longitude =
-          cluster.posts.reduce((sum, p) => sum + p.longitude, 0) / cluster.count;
-        added = true;
-        break;
-      }
+    const cellX = Math.floor(post.latitude / cellSize);
+    const cellY = Math.floor(post.longitude / cellSize);
+    const key = `${cellX}_${cellY}`;
+
+    if (!grid[key]) {
+      grid[key] = { latSum: 0, lngSum: 0, count: 0, posts: [] };
     }
-    if (!added) {
-      clusters.push({
-        latitude: post.latitude,
-        longitude: post.longitude,
-        count: 1,
-        posts: [post],
-      });
-    }
+
+    grid[key].latSum += post.latitude;
+    grid[key].lngSum += post.longitude;
+    grid[key].count += 1;
+    grid[key].posts.push(post);
   }
+
+  const clusters: Cluster[] = [];
+  for (const key in grid) {
+    const cell = grid[key];
+    clusters.push({
+      latitude: cell.latSum / cell.count,
+      longitude: cell.lngSum / cell.count,
+      count: cell.count,
+      posts: cell.posts,
+    });
+  }
+
   return clusters;
 }
 
@@ -424,7 +439,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     [posts]
   );
 
-  const clusters = useMemo(() => clusterPosts(posts, 100), [posts]);
+  const clusters = useMemo(() => clusterPosts(posts), [posts]);
   const showBadges = (currentRegionRef.current?.latitudeDelta ?? 0.05) <= 0.5;
 
   const onRegionChangeComplete = useCallback((region: typeof INITIAL_MAP_REGION) => {
