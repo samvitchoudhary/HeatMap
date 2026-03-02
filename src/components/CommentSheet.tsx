@@ -33,6 +33,8 @@ import { Avatar } from './Avatar';
 import { SmoothImage } from './SmoothImage';
 import { StyledTextInput } from './StyledTextInput';
 
+const COMMENTS_PAGE_SIZE = 30;
+
 /** Formats timestamp as relative time string */
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -162,7 +164,8 @@ export function CommentSheet({
       flipAnimation.setValue(180);
       setFlipped(true);
       onFlippedChange?.(postId, true);
-      fetchComments(postId);
+      setHasMore(true);
+      fetchComments(postId, false);
     }
   }, []);
 
@@ -190,11 +193,15 @@ export function CommentSheet({
   }, [flipAnimation, postId, onFlippedChange]);
   const [comments, setComments] = useState<CommentWithProfile[]>([]);
   const [commentCount, setCommentCount] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [posting, setPosting] = useState(false);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const commentsCountRef = useRef(0);
+  commentsCountRef.current = comments.length;
 
   const fetchCommentCount = useCallback(async (pid: string) => {
     try {
@@ -208,23 +215,38 @@ export function CommentSheet({
     }
   }, []);
 
-  const fetchComments = useCallback(async (pid: string) => {
-    setLoading(true);
+  const fetchComments = useCallback(async (pid: string, isLoadMore = false) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
+
+    const from = isLoadMore ? commentsCountRef.current : 0;
+    const to = from + COMMENTS_PAGE_SIZE - 1;
+
     try {
       const { data, error } = await supabase
         .from('comments')
         .select('id, post_id, user_id, content, created_at, parent_id, profiles:user_id(display_name, username, avatar_url)')
         .eq('post_id', pid)
-        .order('created_at', { ascending: true })
-        .limit(30);
+        .order('created_at', { ascending: false })
+        .range(from, to);
       if (error) throw error;
       const list = (data ?? []) as CommentWithProfile[];
-      setComments(list);
-      setCommentCount(list.length);
+      const reversed = [...list].reverse();
+
+      if (isLoadMore) {
+        setComments((prev) => [...reversed, ...prev]);
+      } else {
+        setComments(reversed);
+      }
+      setHasMore(list.length === COMMENTS_PAGE_SIZE);
     } catch (err) {
       if (__DEV__) console.error('Failed to fetch comments:', err);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
 
@@ -233,7 +255,8 @@ export function CommentSheet({
   }, [postId, fetchCommentCount]);
 
   const handleCommentPress = useCallback(() => {
-    fetchComments(postId);
+    setHasMore(true);
+    fetchComments(postId, false);
     flipToBack();
   }, [postId, fetchComments, flipToBack]);
 
@@ -251,7 +274,7 @@ export function CommentSheet({
           content,
           parent_id: replyTarget?.id ?? null,
         })
-        .select('id')
+        .select('*, profiles:user_id(display_name, username, avatar_url)')
         .single();
       if (error) throw error;
       const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
@@ -270,7 +293,8 @@ export function CommentSheet({
       }
       setInputText('');
       setReplyTarget(null);
-      await fetchComments(postId);
+      setComments((prev) => [...prev, newComment as CommentWithProfile]);
+      setCommentCount((c) => c + 1);
       onCommentPosted?.();
     } catch (err) {
       if (__DEV__) console.error('Error posting comment:', err);
@@ -278,7 +302,7 @@ export function CommentSheet({
     } finally {
       setPosting(false);
     }
-  }, [inputText, userId, postId, postUserId, posting, replyTarget, fetchComments, onCommentPosted]);
+  }, [inputText, userId, postId, postUserId, posting, replyTarget, onCommentPosted]);
 
   useEffect(() => {
     if (replyTarget && flipped) {
@@ -416,6 +440,22 @@ export function CommentSheet({
                 data={threadedComments}
                 keyExtractor={(item) => item.type === 'top' ? item.comment.id : `reply-${item.comment.id}`}
                 renderItem={renderCommentItem}
+                ListHeaderComponent={
+                  hasMore ? (
+                    <TouchableOpacity
+                      onPress={() => fetchComments(postId, true)}
+                      disabled={loadingMore}
+                      style={styles.loadMoreButton}
+                      activeOpacity={0.7}
+                    >
+                      {loadingMore ? (
+                        <ActivityIndicator size="small" color={theme.colors.primary} />
+                      ) : (
+                        <Text style={styles.loadMoreText}>Load earlier comments</Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : null
+                }
                 style={styles.cardBackFlatList}
                 contentContainerStyle={styles.cardBackListContent}
                 keyboardShouldPersistTaps="handled"
@@ -548,6 +588,15 @@ const styles = StyleSheet.create({
   cardBackListContent: {
     paddingVertical: 12,
     paddingHorizontal: 16,
+  },
+  loadMoreButton: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  loadMoreText: {
+    color: theme.colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   cardBackCommentsArea: {
     flex: 1,

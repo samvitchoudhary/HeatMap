@@ -31,6 +31,8 @@ import { theme } from '../lib/theme';
 import { Avatar } from './Avatar';
 import { StyledTextInput } from './StyledTextInput';
 
+const COMMENTS_PAGE_SIZE = 30;
+
 /** Formats timestamp as relative time */
 function timeAgo(dateString: string): string {
   const now = new Date();
@@ -119,33 +121,59 @@ export function FeedCommentModal({
   onCommentPosted,
 }: FeedCommentModalProps) {
   const [comments, setComments] = useState<CommentWithProfile[]>([]);
-  const [inputText, setInputText] = useState('');
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [inputText, setInputText] = useState('');
   const [posting, setPosting] = useState(false);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const inputRef = useRef<TextInput>(null);
+  const commentsCountRef = useRef(0);
+  commentsCountRef.current = comments.length;
 
-  const fetchComments = useCallback(async (pid: string) => {
-    setLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('comments')
-        .select('*, profiles:user_id(display_name, username, avatar_url)')
-        .eq('post_id', pid)
-        .order('created_at', { ascending: true })
-        .limit(50);
-      if (error) throw error;
-      setComments((data ?? []) as CommentWithProfile[]);
-    } catch (err) {
-      if (__DEV__) console.error('Failed to fetch comments:', err);
-    } finally {
-      setLoading(false);
+  const fetchComments = useCallback(async (pid: string, isLoadMore = false) => {
+    if (isLoadMore) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
     }
-  }, []);
+
+    const from = isLoadMore ? commentsCountRef.current : 0;
+      const to = from + COMMENTS_PAGE_SIZE - 1;
+
+      try {
+        const { data, error } = await supabase
+          .from('comments')
+          .select('*, profiles:user_id(display_name, username, avatar_url)')
+          .eq('post_id', pid)
+          .order('created_at', { ascending: false })
+          .range(from, to);
+
+        if (error) throw error;
+
+        const list = (data ?? []) as CommentWithProfile[];
+        const reversed = [...list].reverse();
+
+        if (isLoadMore) {
+          setComments((prev) => [...reversed, ...prev]);
+        } else {
+          setComments(reversed);
+        }
+
+        setHasMore(list.length === COMMENTS_PAGE_SIZE);
+      } catch (err) {
+        if (__DEV__) console.error('Failed to fetch comments:', err);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    }, []);
 
   useEffect(() => {
     if (visible && postId) {
-      fetchComments(postId);
+      setComments([]);
+      setHasMore(true);
+      fetchComments(postId, false);
     } else if (!visible) {
       setReplyTarget(null);
     }
@@ -165,7 +193,7 @@ export function FeedCommentModal({
           content,
           parent_id: replyTarget?.id ?? null,
         })
-        .select('id')
+        .select('*, profiles:user_id(display_name, username, avatar_url)')
         .single();
       if (error) throw error;
       const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
@@ -184,7 +212,7 @@ export function FeedCommentModal({
       }
       setInputText('');
       setReplyTarget(null);
-      await fetchComments(postId);
+      setComments((prev) => [...prev, newComment as CommentWithProfile]);
       onCommentPosted?.();
     } catch (err) {
       if (__DEV__) console.error('Error posting comment:', err);
@@ -192,7 +220,7 @@ export function FeedCommentModal({
     } finally {
       setPosting(false);
     }
-  }, [inputText, userId, postId, postUserId, posting, replyTarget, fetchComments, onCommentPosted]);
+  }, [inputText, userId, postId, postUserId, posting, replyTarget, onCommentPosted]);
 
   useEffect(() => {
     if (replyTarget && visible) {
@@ -243,7 +271,22 @@ export function FeedCommentModal({
               ) : comments.length === 0 ? (
                 <Text style={styles.emptyText}>No comments yet.</Text>
               ) : (
-                buildThreadedComments(comments).map((item) =>
+                <>
+                  {hasMore && (
+                    <TouchableOpacity
+                      onPress={() => fetchComments(postId, true)}
+                      disabled={loadingMore}
+                      style={styles.loadMoreButton}
+                      activeOpacity={0.7}
+                    >
+                      {loadingMore ? (
+                        <ActivityIndicator size="small" color={theme.colors.primary} />
+                      ) : (
+                        <Text style={styles.loadMoreText}>Load earlier comments</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  {buildThreadedComments(comments).map((item) =>
                   item.type === 'top' ? (
                     <View key={item.comment.id} style={styles.commentRow}>
                       <View style={styles.commentAvatarWrap}>
@@ -287,7 +330,8 @@ export function FeedCommentModal({
                       </View>
                     </View>
                   )
-                )
+                )}
+                </>
               )}
             </ScrollView>
 
@@ -377,6 +421,15 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: theme.spacing.md,
+  },
+  loadMoreButton: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  loadMoreText: {
+    color: theme.colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   emptyText: {
     fontSize: theme.fontSize.sm,
