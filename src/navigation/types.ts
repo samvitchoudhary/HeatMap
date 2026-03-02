@@ -49,6 +49,20 @@ export type MapStackParamList = {
     | {
         imageUri?: string;
         exifLocation?: { latitude: number; longitude: number } | null;
+        editMode?: boolean;
+        editPost?: {
+          id: string;
+          image_url: string;
+          caption: string | null;
+          venue_name: string | null;
+          category: string | null;
+          latitude: number;
+          longitude: number;
+          post_tags?: Array<{
+            tagged_user_id: string;
+            profiles?: { display_name: string; username: string } | null;
+          }>;
+        };
       }
     | undefined;
 };

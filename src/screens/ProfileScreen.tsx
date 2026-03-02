@@ -27,6 +27,7 @@ import {
   Dimensions,
   ActivityIndicator,
   FlatList,
+  ActionSheetIOS,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
@@ -38,7 +39,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
-import { useFriends } from '../hooks';
+import { useFriends, usePosts } from '../hooks';
 import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
@@ -61,7 +62,7 @@ function validateUsername(value: string): boolean {
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_CELL_SIZE = (SCREEN_WIDTH - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
 
-/** Memoized thumbnail for profile grid - tap to open, long-press to delete */
+/** Memoized thumbnail for profile grid - tap to open, long-press for action menu (own posts only) */
 const GalleryThumbnail = React.memo(function GalleryThumbnail({
   post,
   userId,
@@ -73,7 +74,7 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
   post: PostWithProfile;
   userId: string | undefined;
   onPress: () => void;
-  onLongPress: () => void;
+  onLongPress?: () => void;
   hasError: boolean;
   onError: () => void;
 }) {
@@ -82,6 +83,7 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
       style={styles.gridCell}
       onPress={onPress}
       onLongPress={onLongPress}
+      delayLongPress={400}
       activeOpacity={0.7}
     >
       {hasError ? (
@@ -115,6 +117,7 @@ export function ProfileScreen() {
   const { profile, session, refreshProfile } = useAuth();
   const { setCardStackOpen } = useCardStack();
   const { showToast } = useToast();
+  const { removePost } = usePosts();
   const userId = profile?.id ?? session?.user?.id;
   const { friendIds, refresh: refreshFriends } = useFriends();
 
@@ -349,7 +352,54 @@ export function ProfileScreen() {
     setSelectedPosts(posts);
   }
 
-  function handleLongPressDelete(post: PostWithProfile) {
+  function showPostActionMenu(post: PostWithProfile) {
+    if (post.user_id !== userId) return;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Edit Post', 'Delete Post', 'Cancel'],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 2,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) {
+            navigateToEditPost(post);
+          } else if (buttonIndex === 1) {
+            confirmDeletePost(post);
+          }
+        }
+      );
+    } else {
+      Alert.alert('Post Options', '', [
+        { text: 'Edit Post', onPress: () => navigateToEditPost(post) },
+        { text: 'Delete Post', style: 'destructive', onPress: () => confirmDeletePost(post) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }
+
+  function navigateToEditPost(post: PostWithProfile) {
+    // Upload is inside Map tab's stack; get Tab navigator (parent of ProfileStack) and navigate to Map > Upload
+    const tabNav = navigation.getParent() as { navigate: (name: string, params?: object) => void } | undefined;
+    tabNav?.navigate('Map', {
+      screen: 'Upload',
+      params: {
+        editMode: true,
+        editPost: {
+          id: post.id,
+          image_url: post.image_url,
+          caption: post.caption,
+          venue_name: post.venue_name,
+          category: post.category,
+          latitude: post.latitude,
+          longitude: post.longitude,
+          post_tags: post.post_tags ?? [],
+        },
+      },
+    });
+  }
+
+  function confirmDeletePost(post: PostWithProfile) {
     Alert.alert('Delete Post', "Are you sure? This can't be undone.", [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -365,6 +415,7 @@ export function ProfileScreen() {
             const { error } = await supabase.from('posts').delete().eq('id', post.id);
             if (error) throw error;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            removePost(post.id);
             setPosts((prev) => prev.filter((p) => p.id !== post.id));
             setPostsCount((prev) => Math.max(0, prev - 1));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
@@ -496,7 +547,7 @@ export function ProfileScreen() {
                     post={post}
                     userId={userId}
                     onPress={() => handlePhotoPress(post)}
-                    onLongPress={() => handleLongPressDelete(post)}
+                    onLongPress={post.user_id === userId ? () => showPostActionMenu(post) : undefined}
                     hasError={!!gridImageErrors[post.id]}
                     onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
                   />
@@ -539,6 +590,7 @@ export function ProfileScreen() {
           onClose={() => setSelectedPosts(null)}
           initialIndex={selectedInitialIndex}
           onPostDeleted={(postId) => {
+            removePost(postId);
             setPosts((prev) => prev.filter((p) => p.id !== postId));
             setPostsCount((prev) => Math.max(0, prev - 1));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));

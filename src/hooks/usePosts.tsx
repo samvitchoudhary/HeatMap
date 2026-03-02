@@ -20,6 +20,8 @@ type PostsContextType = {
   fetchAllPosts: (friendIds: string[], userId: string) => Promise<void>;
   /** Add a newly created post to the cache */
   addPost: (post: PostWithProfile) => void;
+  /** Update an existing post in the cache */
+  updatePost: (postId: string, updates: Partial<PostWithProfile>) => void;
   /** Remove a post from the cache */
   removePost: (postId: string) => void;
   /** Force refresh */
@@ -31,6 +33,7 @@ const PostsContext = createContext<PostsContextType>({
   loading: true,
   fetchAllPosts: async () => {},
   addPost: () => {},
+  updatePost: () => {},
   removePost: () => {},
   refresh: async () => {},
 });
@@ -81,6 +84,12 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPosts((prev) => [post, ...prev]);
   }, []);
 
+  const updatePost = useCallback((postId: string, updates: Partial<PostWithProfile>) => {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, ...updates } : p))
+    );
+  }, []);
+
   const removePost = useCallback((postId: string) => {
     setPosts((prev) => prev.filter((p) => p.id !== postId));
   }, []);
@@ -92,7 +101,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [fetchAllPosts]);
 
   return (
-    <PostsContext.Provider value={{ posts, loading, fetchAllPosts, addPost, removePost, refresh }}>
+    <PostsContext.Provider value={{ posts, loading, fetchAllPosts, addPost, updatePost, removePost, refresh }}>
       {children}
     </PostsContext.Provider>
   );

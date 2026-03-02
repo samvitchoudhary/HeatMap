@@ -107,9 +107,11 @@ export function UploadScreen() {
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
   const { friends: pickerFriends, loading: pickerLoading, refresh: refreshFriends } = useFriends();
-  const { addPost } = usePosts();
+  const { addPost, updatePost } = usePosts();
 
   const appliedParamsRef = React.useRef<string | null>(null);
+  const editMode = route.params?.editMode ?? false;
+  const editPost = route.params?.editPost ?? null;
 
   useEffect(() => {
     if (showTagPicker) {
@@ -120,6 +122,32 @@ export function UploadScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
+      if (editMode && editPost) {
+        if (appliedParamsRef.current === `edit-${editPost.id}`) return;
+        appliedParamsRef.current = `edit-${editPost.id}`;
+        setCaption(editPost.caption ?? '');
+        setVenueName(editPost.venue_name ?? '');
+        setSelectedCategory((editPost.category as CategoryKey) ?? DEFAULT_CATEGORY);
+        setSelectedImageUri(editPost.image_url);
+        setLocationCoords({ latitude: editPost.latitude, longitude: editPost.longitude });
+        setLocationSource('exif');
+        if (editPost.post_tags && editPost.post_tags.length > 0) {
+          const tagged = editPost.post_tags.map((tag: { tagged_user_id: string; profiles?: { display_name: string; username: string } | null }) => ({
+            id: tag.tagged_user_id,
+            display_name: tag.profiles?.display_name ?? '',
+            username: tag.profiles?.username ?? '',
+          }));
+          setTaggedFriends(tagged);
+        } else {
+          setTaggedFriends([]);
+        }
+        setOriginalPhotoDate(null);
+        previewOpacity.setValue(0);
+        Animated.timing(previewOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+        return () => {
+          appliedParamsRef.current = null;
+        };
+      }
       const imageUri = route.params?.imageUri;
       const exifLocation = route.params?.exifLocation ?? null;
       if (!imageUri) return;
@@ -143,7 +171,7 @@ export function UploadScreen() {
       return () => {
         appliedParamsRef.current = null;
       };
-    }, [route.params?.imageUri, route.params?.exifLocation])
+    }, [route.params?.imageUri, route.params?.exifLocation, editMode, editPost])
   );
 
   async function requestCameraPermission(): Promise<boolean> {
@@ -300,6 +328,96 @@ export function UploadScreen() {
     setPostSuccess(false);
     setShowTagPicker(false);
     navigation.goBack();
+  }
+
+  useFocusEffect(
+    React.useCallback(() => {
+      return () => {
+        if (editMode) {
+          setCaption('');
+          setVenueName('');
+          setSelectedCategory(DEFAULT_CATEGORY);
+          setSelectedImageUri(null);
+          setTaggedFriends([]);
+          setLocationCoords(null);
+          setLocationSource(null);
+        }
+      };
+    }, [editMode])
+  );
+
+  async function handleUpdatePost() {
+    if (!editPost || !session?.user?.id) return;
+
+    setIsPosting(true);
+    try {
+      const { error: updateError } = await supabase
+        .from('posts')
+        .update({
+          caption: caption.trim() || null,
+          venue_name: venueName.trim() || null,
+          category: selectedCategory,
+          latitude: locationCoords?.latitude ?? editPost.latitude,
+          longitude: locationCoords?.longitude ?? editPost.longitude,
+        })
+        .eq('id', editPost.id);
+
+      if (updateError) throw updateError;
+
+      const { error: deleteTagsError } = await supabase
+        .from('post_tags')
+        .delete()
+        .eq('post_id', editPost.id);
+
+      if (deleteTagsError) __DEV__ && console.error('Failed to delete old tags:', deleteTagsError);
+
+      if (taggedFriends.length > 0) {
+        const tagInserts = taggedFriends.map((friend) => ({
+          post_id: editPost.id,
+          tagged_user_id: friend.id,
+        }));
+
+        const { error: tagError } = await supabase.from('post_tags').insert(tagInserts);
+        if (tagError) __DEV__ && console.error('Failed to insert tags:', tagError);
+
+        const originalTagIds = (editPost.post_tags ?? []).map((t: { tagged_user_id: string }) => t.tagged_user_id);
+        const newlyTagged = taggedFriends.filter((f) => !originalTagIds.includes(f.id));
+
+        if (newlyTagged.length > 0) {
+          const notifInserts = newlyTagged.map((friend) => ({
+            user_id: friend.id,
+            type: 'tag',
+            from_user_id: session.user.id,
+            post_id: editPost.id,
+          }));
+          await supabase.from('notifications').insert(notifInserts);
+        }
+      }
+
+      updatePost(editPost.id, {
+        caption: caption.trim() || null,
+        venue_name: venueName.trim() || null,
+        category: selectedCategory,
+        latitude: locationCoords?.latitude ?? editPost.latitude,
+        longitude: locationCoords?.longitude ?? editPost.longitude,
+        post_tags:
+          taggedFriends.length > 0
+            ? taggedFriends.map((f) => ({
+                tagged_user_id: f.id,
+                profiles: { display_name: f.display_name, username: f.username },
+              }))
+            : undefined,
+      });
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success', 'Post updated!');
+      navigation.goBack();
+    } catch (err) {
+      if (__DEV__) console.error('Failed to update post:', err);
+      Alert.alert('Error', 'Failed to update post. Please try again.');
+    } finally {
+      setIsPosting(false);
+    }
   }
 
   async function handlePost() {
@@ -486,8 +604,29 @@ export function UploadScreen() {
           keyboardDismissMode="on-drag"
         >
           <>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: theme.colors.text, marginBottom: 16 }}>
+            {editMode ? 'Edit Post' : 'New Post'}
+          </Text>
           <Animated.View style={[styles.previewWrap, { opacity: previewOpacity }]}>
             <Image source={{ uri: selectedImageUri }} style={styles.preview} resizeMode="cover" />
+            {editMode && (
+              <View
+                style={{
+                  position: 'absolute',
+                  top: 8,
+                  right: 8,
+                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  borderRadius: 12,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <Feather name="lock" size={12} color="#FFF" />
+                <Text style={{ color: '#FFF', fontSize: 10, marginLeft: 4 }}>Photo locked</Text>
+              </View>
+            )}
           </Animated.View>
 
           <StyledTextInput
@@ -597,7 +736,7 @@ export function UploadScreen() {
 
           <TouchableOpacity
             style={[styles.primaryButton, (isPosting || postSuccess) && styles.buttonDisabled]}
-            onPress={handlePost}
+            onPress={editMode ? handleUpdatePost : handlePost}
             disabled={isPosting}
             activeOpacity={0.8}
           >
@@ -606,7 +745,7 @@ export function UploadScreen() {
             ) : postSuccess ? (
               <Feather name="check" size={24} color={theme.colors.textOnPrimary} />
             ) : (
-              <Text style={styles.postButtonText}>Post</Text>
+              <Text style={styles.postButtonText}>{editMode ? 'Save Changes' : 'Post'}</Text>
             )}
           </TouchableOpacity>
 

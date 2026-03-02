@@ -17,6 +17,8 @@ import {
   ScrollView,
   Dimensions,
   Alert,
+  ActionSheetIOS,
+  Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
@@ -25,6 +27,7 @@ import type { ProfileStackParamList } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
+import { usePosts } from '../hooks';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
@@ -41,6 +44,7 @@ type Props = NativeStackScreenProps<ProfileStackParamList, 'Gallery'>;
 
 export function GalleryScreen({ navigation }: Props) {
   const { profile, session } = useAuth();
+  const { removePost } = usePosts();
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const { setCardStackOpen } = useCardStack();
   const userId = profile?.id ?? session?.user?.id;
@@ -53,7 +57,7 @@ export function GalleryScreen({ navigation }: Props) {
     if (!userId) return;
     const { data, error } = await supabase
       .from('posts')
-      .select('*, profiles:user_id(username, display_name, avatar_url)')
+      .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(200);
@@ -81,7 +85,53 @@ export function GalleryScreen({ navigation }: Props) {
     setSelectedPosts(posts);
   }
 
-  async function handleLongPressDelete(post: PostWithProfile) {
+  function showPostActionMenu(post: PostWithProfile) {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Edit Post', 'Delete Post', 'Cancel'],
+          destructiveButtonIndex: 1,
+          cancelButtonIndex: 2,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) {
+            navigateToEditPost(post);
+          } else if (buttonIndex === 1) {
+            confirmDeletePost(post);
+          }
+        }
+      );
+    } else {
+      Alert.alert('Post Options', '', [
+        { text: 'Edit Post', onPress: () => navigateToEditPost(post) },
+        { text: 'Delete Post', style: 'destructive', onPress: () => confirmDeletePost(post) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  }
+
+  function navigateToEditPost(post: PostWithProfile) {
+    // Upload is inside Map tab's stack; get Tab navigator (parent of ProfileStack) and navigate to Map > Upload
+    const tabNav = navigation.getParent() as { navigate: (name: string, params?: object) => void } | undefined;
+    tabNav?.navigate('Map', {
+      screen: 'Upload',
+      params: {
+        editMode: true,
+        editPost: {
+          id: post.id,
+          image_url: post.image_url,
+          caption: post.caption,
+          venue_name: post.venue_name,
+          category: post.category,
+          latitude: post.latitude,
+          longitude: post.longitude,
+          post_tags: post.post_tags ?? [],
+        },
+      },
+    });
+  }
+
+  function confirmDeletePost(post: PostWithProfile) {
     Alert.alert('Delete Post', "Are you sure? This can't be undone.", [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -97,6 +147,7 @@ export function GalleryScreen({ navigation }: Props) {
             const { error } = await supabase.from('posts').delete().eq('id', post.id);
             if (error) throw error;
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            removePost(post.id);
             setPosts((prev) => prev.filter((p) => p.id !== post.id));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
           } catch (err) {
@@ -123,7 +174,8 @@ export function GalleryScreen({ navigation }: Props) {
               key={post.id}
               style={styles.gridCell}
               onPress={() => handlePhotoPress(post)}
-              onLongPress={() => handleLongPressDelete(post)}
+              onLongPress={() => showPostActionMenu(post)}
+              delayLongPress={400}
               activeOpacity={0.7}
             >
               {imageErrors[post.id] ? (
@@ -149,6 +201,7 @@ export function GalleryScreen({ navigation }: Props) {
           onClose={() => setSelectedPosts(null)}
           initialIndex={selectedInitialIndex}
           onPostDeleted={(postId) => {
+            removePost(postId);
             setPosts((prev) => prev.filter((p) => p.id !== postId));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
           }}
