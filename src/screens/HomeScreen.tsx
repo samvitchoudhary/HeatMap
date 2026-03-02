@@ -59,6 +59,9 @@ const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
 /** Max distance (m) for "nearby" posts when tapping map */
 const NEARBY_RADIUS_METERS = 100;
 
+/** Only show cluster badges when zoomed out very far (city/state/country level) */
+const CLUSTER_MIN_ZOOM = 0.5;
+
 /** Default map center - San Francisco area */
 const INITIAL_MAP_REGION = {
   latitude: 37.78825,
@@ -128,66 +131,54 @@ function getDistanceMeters(
 }
 
 type Cluster = {
-  latitude: number;
-  longitude: number;
+  coordinate: { latitude: number; longitude: number };
   count: number;
+  postIds: string[];
   posts: PostWithProfile[];
 };
 
-const ClusterBadge = React.memo(({ count }: { count: number }) => (
-  <View style={[styles.clusterBadge, count >= 10 && styles.clusterBadgeLarge]}>
-    <Text style={styles.clusterBadgeText}>{count}</Text>
-  </View>
-));
-
 /**
- * Grid-based spatial clustering algorithm — O(n) complexity.
- *
- * Divides the map into a grid based on the cluster radius.
- * Each post is placed into a grid cell. Posts in the same cell
- * are grouped into a single cluster. This avoids comparing
- * every post against every cluster.
- *
- * @param posts - Array of posts with latitude/longitude
- * @param clusterRadius - Radius in degrees for grouping (default 0.0009 ≈ 100m)
- * @returns Array of clusters, each with coordinate, count, and posts
+ * Grid-based spatial clustering — each post counted exactly once.
  */
-function clusterPosts(posts: PostWithProfile[], clusterRadius: number = 0.0009): Cluster[] {
+function clusterPosts(posts: PostWithProfile[], clusterRadius: number): Cluster[] {
   if (posts.length === 0) return [];
 
   const cellSize = clusterRadius;
   const grid: Record<
     string,
-    { latSum: number; lngSum: number; count: number; posts: PostWithProfile[] }
+    { latSum: number; lngSum: number; posts: PostWithProfile[] }
   > = {};
 
   for (const post of posts) {
     const cellX = Math.floor(post.latitude / cellSize);
     const cellY = Math.floor(post.longitude / cellSize);
-    const key = `${cellX}_${cellY}`;
+    const key = `${cellX},${cellY}`;
 
     if (!grid[key]) {
-      grid[key] = { latSum: 0, lngSum: 0, count: 0, posts: [] };
+      grid[key] = { latSum: 0, lngSum: 0, posts: [] };
     }
 
     grid[key].latSum += post.latitude;
     grid[key].lngSum += post.longitude;
-    grid[key].count += 1;
     grid[key].posts.push(post);
   }
 
-  const clusters: Cluster[] = [];
-  for (const key in grid) {
-    const cell = grid[key];
-    clusters.push({
-      latitude: cell.latSum / cell.count,
-      longitude: cell.lngSum / cell.count,
-      count: cell.count,
-      posts: cell.posts,
-    });
-  }
+  return Object.values(grid).map((cell) => ({
+    coordinate: {
+      latitude: cell.latSum / cell.posts.length,
+      longitude: cell.lngSum / cell.posts.length,
+    },
+    count: cell.posts.length,
+    postIds: cell.posts.map((p) => p.id),
+    posts: cell.posts,
+  }));
+}
 
-  return clusters;
+function getClusterSize(count: number): number {
+  if (count <= 5) return 36;
+  if (count <= 20) return 44;
+  if (count <= 50) return 52;
+  return 60;
 }
 
 export function HomeScreen({ profile, route }: HomeScreenProps) {
@@ -200,6 +191,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [openWithCommentsPostId, setOpenWithCommentsPostId] = useState<string | null>(null);
   const currentRegionRef = useRef(INITIAL_MAP_REGION);
+  const [currentZoom, setCurrentZoom] = useState(INITIAL_MAP_REGION.latitudeDelta);
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -439,21 +431,50 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     [posts]
   );
 
-  const clusters = useMemo(() => clusterPosts(posts), [posts]);
-  const showBadges = (currentRegionRef.current?.latitudeDelta ?? 0.05) <= 0.5;
+  const clusters = useMemo(() => {
+    if (currentZoom < CLUSTER_MIN_ZOOM) return [];
+    const radius = currentZoom * 0.2;
+    return clusterPosts(posts, radius);
+  }, [posts, currentZoom]);
+
+  useEffect(() => {
+    if (__DEV__ && clusters.length > 0) {
+      console.log(
+        'Clusters:',
+        clusters.map((c) => ({
+          lat: c.coordinate.latitude.toFixed(3),
+          lng: c.coordinate.longitude.toFixed(3),
+          count: c.count,
+        }))
+      );
+    }
+  }, [clusters]);
 
   const onRegionChangeComplete = useCallback((region: typeof INITIAL_MAP_REGION) => {
     currentRegionRef.current = region;
+    setCurrentZoom(region.latitudeDelta);
   }, []);
 
   const handleClusterPress = useCallback((cluster: Cluster) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const sorted = [...cluster.posts].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-    setSelectedInitialIndex(0);
-    setSelectedPosts(sorted);
-  }, []);
+    if (currentZoom > 0.1) {
+      mapRef.current?.animateToRegion(
+        {
+          latitude: cluster.coordinate.latitude,
+          longitude: cluster.coordinate.longitude,
+          latitudeDelta: currentZoom * 0.3,
+          longitudeDelta: currentZoom * 0.3,
+        },
+        300
+      );
+    } else {
+      const sorted = [...cluster.posts].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setSelectedInitialIndex(0);
+      setSelectedPosts(sorted);
+    }
+  }, [currentZoom]);
 
   async function searchPlaces(query: string): Promise<PlacePrediction[]> {
     if (!query.trim() || !GOOGLE_MAPS_API_KEY) return [];
@@ -734,7 +755,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         onRegionChangeComplete={onRegionChangeComplete}
         initialRegion={INITIAL_MAP_REGION}
       >
-        {heatmapPoints.length > 0 && (
+        {currentZoom < CLUSTER_MIN_ZOOM && heatmapPoints.length > 0 && (
           <Heatmap
             points={heatmapPoints}
             radius={HEATMAP_RADIUS}
@@ -742,17 +763,34 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
             gradient={HEATMAP_GRADIENT}
           />
         )}
-        {showBadges &&
-          clusters.map((cluster, i) => (
-            <Marker
-              key={`cluster-${i}`}
-              coordinate={{ latitude: cluster.latitude, longitude: cluster.longitude }}
-              onPress={() => handleClusterPress(cluster)}
-              anchor={{ x: 0.5, y: 0.5 }}
-            >
-              <ClusterBadge count={cluster.count} />
-            </Marker>
-          ))}
+        {currentZoom >= CLUSTER_MIN_ZOOM &&
+          clusters.map((cluster, i) => {
+            const size = getClusterSize(cluster.count);
+            return (
+              <Marker
+                key={`cluster-${i}`}
+                coordinate={cluster.coordinate}
+                onPress={() => handleClusterPress(cluster)}
+                anchor={{ x: 0.5, y: 0.5 }}
+                tracksViewChanges={false}
+              >
+                <View
+                  style={[
+                    styles.clusterBadge,
+                    {
+                      width: size,
+                      height: size,
+                      borderRadius: size / 2,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.clusterBadgeText, { fontSize: cluster.count > 99 ? 12 : 14 }]}>
+                    {cluster.count > 99 ? '99+' : cluster.count}
+                  </Text>
+                </View>
+              </Marker>
+            );
+          })}
       </MapView>
 
       {showSearchBar && (
@@ -1021,11 +1059,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
-  },
-  clusterBadgeLarge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
   },
   clusterBadgeText: {
     color: '#FFF',
