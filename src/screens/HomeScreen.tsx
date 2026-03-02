@@ -36,7 +36,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCardStack } from '../lib/CardStackContext';
 import type { MapStackParamList, RootStackNavigationProp } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
-import { HEATMAP_GRADIENT, HEATMAP_RADIUS, HEATMAP_OPACITY } from '../lib/mapConfig';
+import { HEATMAP_RADIUS, HEATMAP_OPACITY } from '../lib/mapConfig';
+import { getCategoryByKey } from '../lib/categories';
 import MapView, { Heatmap, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
@@ -421,15 +422,22 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
   }, [navigation, resetFabToClosed]);
 
-  const heatmapPoints = useMemo(
-    () =>
-      posts.map((post) => ({
-        latitude: post.latitude,
-        longitude: post.longitude,
-        weight: 1,
-      })),
-    [posts]
-  );
+  const heatmapsByCategory = useMemo(() => {
+    const groups: Record<string, { points: { latitude: number; longitude: number; weight: number }[]; color: string }> = {};
+
+    for (const post of posts) {
+      const point = { latitude: post.latitude, longitude: post.longitude, weight: 1 };
+      const cat = getCategoryByKey(post.category ?? 'misc');
+      const key = cat?.key ?? 'misc';
+      const heatmapColor = cat?.heatmapColor ?? 'rgba(255,45,85,0.8)';
+      if (!groups[key]) {
+        groups[key] = { points: [], color: heatmapColor };
+      }
+      groups[key].points.push(point);
+    }
+
+    return groups;
+  }, [posts]);
 
   const clusters = useMemo(() => {
     if (currentZoom < CLUSTER_MIN_ZOOM) return [];
@@ -755,14 +763,26 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         onRegionChangeComplete={onRegionChangeComplete}
         initialRegion={INITIAL_MAP_REGION}
       >
-        {currentZoom < CLUSTER_MIN_ZOOM && heatmapPoints.length > 0 && (
-          <Heatmap
-            points={heatmapPoints}
-            radius={HEATMAP_RADIUS}
-            opacity={HEATMAP_OPACITY}
-            gradient={HEATMAP_GRADIENT}
-          />
-        )}
+        {currentZoom < CLUSTER_MIN_ZOOM &&
+          Object.entries(heatmapsByCategory).map(([key, group]) => {
+            if (group.points.length === 0) return null;
+            const baseColor = group.color;
+            const lightColor = baseColor.replace(/[\d.]+\)$/, '0.3)');
+            const medColor = baseColor.replace(/[\d.]+\)$/, '0.5)');
+            return (
+              <Heatmap
+                key={key}
+                points={group.points}
+                radius={HEATMAP_RADIUS}
+                opacity={HEATMAP_OPACITY}
+                gradient={{
+                  colors: ['transparent', lightColor, medColor, baseColor, baseColor],
+                  startPoints: [0.01, 0.05, 0.1, 0.3, 0.5],
+                  colorMapSize: 256,
+                }}
+              />
+            );
+          })}
         {currentZoom >= CLUSTER_MIN_ZOOM &&
           clusters.map((cluster, i) => {
             const size = getClusterSize(cluster.count);

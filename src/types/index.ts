@@ -27,6 +27,7 @@ export type Post = {
   latitude: number;
   longitude: number;
   created_at: string;
+  category: string | null;
 };
 
 /** Tag on a post - links a tagged user to their profile for display */

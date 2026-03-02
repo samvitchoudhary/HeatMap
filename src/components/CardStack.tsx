@@ -38,6 +38,7 @@ import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 import { PhotoViewer } from './PhotoViewer';
 import { timeAgo } from '../lib/timeAgo';
+import { getCategoryByKey } from '../lib/categories';
 /** Props for CardStack - posts to show, callbacks, optional initial state */
 type CardStackProps = {
   posts: PostWithProfile[];
@@ -878,6 +879,35 @@ export function CardStack({
                 {post.caption}
               </Text>
             ) : null}
+            {(() => {
+              const cat = getCategoryByKey(post.category ?? 'misc');
+              if (!cat) return null;
+              return (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: cat.color + '15',
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 10,
+                    alignSelf: 'flex-start',
+                    marginTop: 4,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: cat.color,
+                      marginRight: 4,
+                    }}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: cat.color }}>{cat.label}</Text>
+                </View>
+              );
+            })()}
             <Text style={styles.infoTimestamp}>{timeAgo(post.created_at)}</Text>
           </View>
           {isCurrent && <DotIndicator total={len} current={currentIndex} activeDotAnimated={activeDotAnimated} />}

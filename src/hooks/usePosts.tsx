@@ -53,7 +53,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const { data, error } = await withRetry(async () => {
         const result = await supabase
           .from('posts')
-          .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+          .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
           .in('user_id', allUserIds)
           .order('created_at', { ascending: false })
           .limit(200);

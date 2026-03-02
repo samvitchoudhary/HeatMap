@@ -31,6 +31,7 @@ import { SmoothImage } from './SmoothImage';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 import { timeAgo } from '../lib/timeAgo';
+import { getCategoryByKey } from '../lib/categories';
 
 const CARD_MARGIN_H = 20;
 const CARD_MARGIN_V = 10;
@@ -486,6 +487,35 @@ const FeedCardInner = function FeedCard({
                   {post.caption}
                 </Text>
               ) : null}
+              {(() => {
+                const cat = getCategoryByKey(post.category ?? 'misc');
+                if (!cat) return null;
+                return (
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: cat.color + '15',
+                      paddingHorizontal: 8,
+                      paddingVertical: 3,
+                      borderRadius: 10,
+                      alignSelf: 'flex-start',
+                      marginTop: 4,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: cat.color,
+                        marginRight: 4,
+                      }}
+                    />
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: cat.color }}>{cat.label}</Text>
+                  </View>
+                );
+              })()}
               <Text style={styles.infoTimestamp}>{timeAgo(post.created_at)}</Text>
             </View>
             <View style={styles.bottomBar}>

@@ -49,6 +49,7 @@ import type { MapStackParamList } from '../navigation/types';
 import type { PostWithProfile } from '../types';
 import { parseExifGps } from '../lib/exif';
 import { withRetry } from '../lib/retry';
+import { CATEGORIES, DEFAULT_CATEGORY, type CategoryKey } from '../lib/categories';
 
 const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
   allowsEditing: true,
@@ -101,6 +102,7 @@ export function UploadScreen() {
   } | null>(null);
   const [locationSource, setLocationSource] = useState<'exif' | 'current' | null>(null);
   const [originalPhotoDate, setOriginalPhotoDate] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryKey>(DEFAULT_CATEGORY);
   const [taggedFriends, setTaggedFriends] = useState<{ id: string; display_name: string; username: string }[]>([]);
   const [showTagPicker, setShowTagPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
@@ -126,6 +128,7 @@ export function UploadScreen() {
       setSelectedImageUri(imageUri);
       setVenueName('');
       setCaption('');
+      setSelectedCategory(DEFAULT_CATEGORY);
       setTaggedFriends([]);
       setLocationCoords(exifLocation);
       setLocationSource(exifLocation ? 'exif' : null);
@@ -234,6 +237,7 @@ export function UploadScreen() {
       setSelectedImageUri(result.assets[0].uri);
       setVenueName('');
       setCaption('');
+      setSelectedCategory(DEFAULT_CATEGORY);
       setTaggedFriends([]);
       setLocationCoords(null);
       setLocationSource(null);
@@ -257,6 +261,7 @@ export function UploadScreen() {
       setSelectedImageUri(result.assets[0].uri);
       setVenueName('');
       setCaption('');
+      setSelectedCategory(DEFAULT_CATEGORY);
       setTaggedFriends([]);
       setLocationCoords(null);
       setLocationSource(null);
@@ -287,6 +292,7 @@ export function UploadScreen() {
     setSelectedImageUri(null);
     setVenueName('');
     setCaption('');
+    setSelectedCategory(DEFAULT_CATEGORY);
     setTaggedFriends([]);
     setLocationCoords(null);
     setLocationSource(null);
@@ -353,6 +359,7 @@ export function UploadScreen() {
         venue_name: venueName.trim() || null,
         latitude: locationCoords.latitude,
         longitude: locationCoords.longitude,
+        category: selectedCategory,
         ...(originalPhotoDate ? { created_at: originalPhotoDate } : {}),
       };
       const { data: insertedPost, error: insertError } = await withRetry(async () => {
@@ -378,6 +385,7 @@ export function UploadScreen() {
           venue_name: venueName.trim() || null,
           latitude: locationCoords.latitude,
           longitude: locationCoords.longitude,
+          category: selectedCategory,
           created_at: originalPhotoDate ?? new Date().toISOString(),
           profiles: {
             username: profile.username,
@@ -417,6 +425,7 @@ export function UploadScreen() {
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setPostSuccess(true);
+      setSelectedCategory(DEFAULT_CATEGORY);
       setShowSuccessToast(true);
     } catch (error: unknown) {
       if (__DEV__) console.error('Post failed:', error);
@@ -504,6 +513,57 @@ export function UploadScreen() {
             value={caption}
             onChangeText={setCaption}
           />
+
+          <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.text, marginBottom: 8, marginTop: 16 }}>
+            Category
+          </Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 12 }}
+          >
+            {CATEGORIES.map((cat) => {
+              const isSelected = selectedCategory === cat.key;
+              return (
+                <TouchableOpacity
+                  key={cat.key}
+                  onPress={() => setSelectedCategory(cat.key)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: 14,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                    marginRight: 8,
+                    backgroundColor: theme.colors.surface,
+                    borderWidth: 1,
+                    borderColor: isSelected ? cat.color : theme.colors.border,
+                  }}
+                >
+                  {isSelected && (
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: cat.color,
+                        marginRight: 6,
+                      }}
+                    />
+                  )}
+                  <Text
+                    style={{
+                      fontSize: 13,
+                      fontWeight: isSelected ? '700' : '500',
+                      color: isSelected ? cat.color : theme.colors.textSecondary,
+                    }}
+                  >
+                    {cat.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
           <TouchableOpacity
             style={styles.tagFriendsRow}
