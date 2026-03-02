@@ -21,7 +21,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
 import { CardStackProvider } from '../lib/CardStackContext';
-import type { RootStackParamList, MainTabParamList, MapStackParamList, ProfileStackParamList } from './types';
+import type {
+  RootStackParamList,
+  MainTabParamList,
+  MapStackParamList,
+  ProfileStackParamList,
+} from './types';
+import type { RouteProp } from '@react-navigation/native';
 import type { Profile } from '../types';
 import { theme } from '../lib/theme';
 
@@ -93,7 +99,12 @@ function MapStackNavigator({
         name="Map"
         options={{ animation: 'none' }}
       >
-        {() => <HomeScreen profile={profile} route={{ params: initialMapParams } as any} />}
+        {() => (
+          <HomeScreen
+            profile={profile}
+            route={{ params: initialMapParams } as RouteProp<MapStackParamList, 'Map'>}
+          />
+        )}
       </MapStack.Screen>
       <MapStack.Screen
         name="Upload"
@@ -137,8 +148,10 @@ function ProfileStackNavigator() {
 /** Custom tab bar with icons, badge dots (Feed, Notifications), sliding indicator */
 function CustomTabBar(props: {
   state: { index: number; routes: { key: string; name: string }[] };
-  navigation: any;
-  descriptors: any;
+  /** Material top tab bar passes navigation; library type not exported - use structural type for emit/navigate */
+  navigation: { emit: (e: object) => { defaultPrevented: boolean }; navigate: (name: string, params?: object) => void };
+  /** Tab descriptors; full MaterialTopTabDescriptorMap not exported */
+  descriptors: Record<string, unknown>;
   position?: Animated.AnimatedNode;
 }) {
   const { state, navigation, position } = props;
@@ -230,7 +243,14 @@ function MainTabs({ profile }: { profile: Profile }) {
   return (
     <CardStackProvider>
       <Tab.Navigator
-        tabBar={(props) => <CustomTabBar {...props} />}
+        tabBar={(props) => (
+          <CustomTabBar
+            state={props.state}
+            navigation={props.navigation as React.ComponentProps<typeof CustomTabBar>['navigation']}
+            descriptors={props.descriptors as React.ComponentProps<typeof CustomTabBar>['descriptors']}
+            position={props.position}
+          />
+        )}
         tabBarPosition="bottom"
         screenOptions={{
           tabBarShowLabel: false,

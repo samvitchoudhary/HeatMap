@@ -132,8 +132,9 @@ export function ProfileScreen() {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [gridImageErrors, setGridImageErrors] = useState<Record<string, boolean>>({});
   const hasInitiallyFetched = useRef(false);
+  const profileFetchIdRef = useRef(0);
 
-  const fetchMyPosts = useCallback(async () => {
+  const fetchMyPosts = useCallback(async (fetchId: number) => {
     if (!userId) return;
 
     const { data: ownData, error: ownError } = await supabase
@@ -166,15 +167,17 @@ export function ProfileScreen() {
       }
     }
     merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    if (fetchId !== profileFetchIdRef.current) return;
     setPosts(merged);
   }, [userId, friendIds]);
 
-  const fetchPostsCount = useCallback(async () => {
+  const fetchPostsCount = useCallback(async (fetchId: number) => {
     if (!userId) return;
     const { count, error } = await supabase
       .from('posts')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId);
+    if (fetchId !== profileFetchIdRef.current) return;
     if (!error) setPostsCount(count ?? 0);
   }, [userId]);
 
@@ -182,12 +185,13 @@ export function ProfileScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      const fetchId = ++profileFetchIdRef.current;
       const isInitial = !hasInitiallyFetched.current;
       hasInitiallyFetched.current = true;
       let mounted = true;
       if (isInitial) setProfileDataReady(false);
-      Promise.all([fetchMyPosts(), fetchPostsCount()]).then(() => {
-        if (mounted) setProfileDataReady(true);
+      Promise.all([fetchMyPosts(fetchId), fetchPostsCount(fetchId)]).then(() => {
+        if (mounted && fetchId === profileFetchIdRef.current) setProfileDataReady(true);
       });
       return () => { mounted = false; };
     }, [fetchMyPosts, fetchPostsCount])
@@ -195,7 +199,8 @@ export function ProfileScreen() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await Promise.all([fetchMyPosts(), fetchPostsCount(), refreshFriends()]);
+    const fetchId = ++profileFetchIdRef.current;
+    await Promise.all([fetchMyPosts(fetchId), fetchPostsCount(fetchId), refreshFriends()]);
     await refreshProfile();
     setRefreshing(false);
   }

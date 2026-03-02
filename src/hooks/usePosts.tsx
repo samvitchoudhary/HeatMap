@@ -40,8 +40,10 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [loading, setLoading] = useState(true);
   const lastFetchRef = useRef(0);
   const hasFetchedRef = useRef(false);
+  const postsFetchIdRef = useRef(0);
 
   const fetchAllPosts = useCallback(async (friendIds: string[], userId: string) => {
+    const fetchId = ++postsFetchIdRef.current;
     const now = Date.now();
     if (now - lastFetchRef.current < 15000 && hasFetchedRef.current) return;
     lastFetchRef.current = now;
@@ -64,10 +66,14 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         return;
       }
 
+      if (fetchId !== postsFetchIdRef.current) return;
+
       hasFetchedRef.current = true;
       setPosts((data ?? []) as unknown as PostWithProfile[]);
     } finally {
-      setLoading(false);
+      if (fetchId === postsFetchIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 

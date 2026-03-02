@@ -46,6 +46,7 @@ import { StyledTextInput } from '../components/StyledTextInput';
 import { SuccessToast } from '../components/SuccessToast';
 import { Avatar } from '../components/Avatar';
 import type { MapStackParamList } from '../navigation/types';
+import type { PostWithProfile } from '../types';
 import { parseExifGps } from '../lib/exif';
 import { withRetry } from '../lib/retry';
 
@@ -389,7 +390,7 @@ export function UploadScreen() {
                 profiles: { display_name: f.display_name, username: f.username },
               }))
             : undefined,
-        } as any);
+        } as PostWithProfile);
       }
 
       if (newPostId && taggedFriends.length > 0) {

@@ -38,7 +38,7 @@ export const SmoothImage: React.FC<SmoothImageProps> = ({
   /** Used to detect cached loads (instant) vs network fetches */
   const mountTime = useRef(Date.now()).current;
 
-  const handleLoad = (e: any) => {
+  const handleLoad = (e: Parameters<NonNullable<ImageProps['onLoad']>>[0]) => {
     const loadTime = Date.now() - mountTime;
     const likelyCached = loadTime < CACHED_LOAD_THRESHOLD_MS;
     // Cached images load almost instantly - skip fade for snappier UX
@@ -54,7 +54,7 @@ export const SmoothImage: React.FC<SmoothImageProps> = ({
     onLoad?.(e);
   };
 
-  const handleError = (e: any) => {
+  const handleError = (e: Parameters<NonNullable<ImageProps['onError']>>[0]) => {
     onError?.(e);
   };
 

@@ -117,11 +117,16 @@ async function searchPlaces(query: string): Promise<PlacePrediction[]> {
       if (__DEV__) console.error('Places API error:', data.status);
       return [];
     }
-    return (data.predictions || []).map((prediction: any) => ({
-      placeId: prediction.place_id,
-      name: prediction.structured_formatting?.main_text || prediction.description,
+    type PlacesPrediction = {
+      place_id?: string;
+      description?: string;
+      structured_formatting?: { main_text?: string; secondary_text?: string };
+    };
+    return ((data.predictions as PlacesPrediction[]) || []).map((prediction) => ({
+      placeId: prediction.place_id ?? '',
+      name: prediction.structured_formatting?.main_text ?? prediction.description ?? '',
       description:
-        prediction.structured_formatting?.secondary_text || prediction.description,
+        prediction.structured_formatting?.secondary_text ?? prediction.description ?? '',
     }));
   } catch (error) {
     if (__DEV__) console.error('Places API fetch error:', error);
@@ -153,7 +158,7 @@ async function getPlaceDetails(
 
 export function useMapLogic(
   posts: PostWithProfile[],
-  mapRef: React.RefObject<any>,
+  mapRef: React.RefObject<{ animateToRegion: (region: object, duration?: number) => void } | null>,
     options: {
     friendIds: string[];
     profileId: string | undefined;

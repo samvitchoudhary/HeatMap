@@ -6,17 +6,12 @@
  * Used by useNavigation, route.params, and navigate() for type-safe params.
  */
 
+import type { NavigatorScreenParams } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
 export type AuthStackParamList = {
   Login: undefined;
   SignUp: undefined;
-};
-
-export type RootStackParamList = {
-  Login: undefined;
-  SignUp: undefined;
-  ProfileSetup: undefined;
-  MainTabs: undefined;
-  FriendProfile: { userId: string };
 };
 
 export type MainTabParamList = {
@@ -31,6 +26,14 @@ export type MainTabParamList = {
   Feed: undefined;
   Notifications: undefined;
   Profile: undefined;
+};
+
+export type RootStackParamList = {
+  Login: undefined;
+  SignUp: undefined;
+  ProfileSetup: undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList>;
+  FriendProfile: { userId: string };
 };
 
 export type MapStackParamList = {
@@ -55,3 +58,6 @@ export type ProfileStackParamList = {
   Friends: undefined;
   Gallery: undefined;
 };
+
+/** Root stack navigator - used for navigating to FriendProfile from nested screens */
+export type RootStackNavigationProp = NativeStackNavigationProp<RootStackParamList>;

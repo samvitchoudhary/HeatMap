@@ -12,7 +12,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ProfileStackParamList } from '../navigation/types';
+import type { ProfileStackParamList, RootStackNavigationProp } from '../navigation/types';
 import {
   View,
   Text,
@@ -294,7 +294,9 @@ export function FriendsScreen() {
                   pressed && { backgroundColor: theme.colors.surfaceLight },
                 ]}
                 onPress={() => {
-                  (navigation.getParent() as any)?.getParent()?.getParent()?.navigate('FriendProfile', {
+                  (
+                    navigation.getParent()?.getParent?.()?.getParent?.() as RootStackNavigationProp | undefined
+                  )?.navigate('FriendProfile', {
                     userId: item.other_user?.id ?? '',
                   });
                 }}
@@ -343,7 +345,9 @@ export function FriendsScreen() {
                   <TouchableOpacity
                     style={styles.searchRowTouchable}
                     onPress={() => {
-                      (navigation.getParent() as any)?.getParent()?.getParent()?.navigate('FriendProfile', {
+                      (
+                        navigation.getParent()?.getParent?.()?.getParent?.() as RootStackNavigationProp | undefined
+                      )?.navigate('FriendProfile', {
                         userId: item.id,
                       });
                     }}

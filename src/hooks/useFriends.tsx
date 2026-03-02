@@ -41,8 +41,10 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
   const [loading, setLoading] = useState(true);
   const lastFetchRef = useRef(0);
   const hasDataRef = useRef(false);
+  const friendsFetchIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const fetchId = ++friendsFetchIdRef.current;
     if (!userId) return;
 
     const now = Date.now();
@@ -66,6 +68,8 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
         return;
       }
 
+      if (fetchId !== friendsFetchIdRef.current) return;
+
       const friendProfiles: FriendProfile[] = [];
       const ids: string[] = [];
 
@@ -84,7 +88,7 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
       setFriendIds(ids);
       hasDataRef.current = ids.length > 0;
     } finally {
-      setLoading(false);
+      if (fetchId === friendsFetchIdRef.current) setLoading(false);
     }
   }, [userId]);
 

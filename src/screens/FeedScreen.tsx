@@ -23,8 +23,8 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { RootStackParamList } from '../navigation/types';
+import type { MaterialTopTabNavigationProp } from '@react-navigation/material-top-tabs';
+import type { MainTabParamList, RootStackNavigationProp } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
@@ -41,7 +41,33 @@ export type FeedReactionCounts = Record<string, Record<string, number>>;
 export type FeedUserReactions = Record<string, string | null>;
 export type FeedCommentCounts = Record<string, number>;
 
-type FeedScreenNav = NativeStackNavigationProp<RootStackParamList>;
+type FeedScreenNav = MaterialTopTabNavigationProp<MainTabParamList>;
+
+/**
+ * Scores a post for feed ranking.
+ * Combines recency with engagement (reactions + comments).
+ * Recent posts with more engagement appear higher.
+ *
+ * Score = recencyScore + engagementBonus
+ * - recencyScore: 1.0 for posts from last hour, decays over 48 hours
+ * - engagementBonus: 0.1 per reaction/comment, capped at 0.5
+ */
+function scoreFeedPost(
+  post: PostWithProfile,
+  reactionCount: number,
+  commentCount: number
+): number {
+  const ageMs = Date.now() - new Date(post.created_at).getTime();
+  const ageHours = ageMs / (1000 * 60 * 60);
+
+  // Recency: 1.0 for brand new, approaches 0 after 48 hours
+  const recencyScore = Math.max(0, 1 - ageHours / 48);
+
+  // Engagement: small bonus for reactions and comments
+  const engagementBonus = Math.min(0.5, (reactionCount + commentCount) * 0.1);
+
+  return recencyScore + engagementBonus;
+}
 
 export function FeedScreen() {
   const insets = useSafeAreaInsets();
@@ -62,6 +88,7 @@ export function FeedScreen() {
   const [fadingOutId, setFadingOutId] = useState<string | null>(null);
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
   const hasInitiallyFetched = useRef(false);
+  const feedFetchIdRef = useRef(0);
 
   const PAGE_SIZE = 20;
 
@@ -103,6 +130,7 @@ export function FeedScreen() {
 
   const fetchPage = useCallback(
     async (offset: number, append: boolean, silent = false) => {
+      const fetchId = ++feedFetchIdRef.current;
       const userId = profile?.id;
       if (!userId) {
         setLoading(false);
@@ -118,6 +146,7 @@ export function FeedScreen() {
       }
 
       if (friendIds.length === 0) {
+        if (fetchId !== feedFetchIdRef.current) return;
         setPosts([]);
         setHasMore(false);
         setReactionsByPostId({});
@@ -140,6 +169,8 @@ export function FeedScreen() {
 
       if (error) throw error;
 
+      if (fetchId !== feedFetchIdRef.current) return;
+
       const postsList = (postsData ?? []) as PostWithProfile[];
       setHasMore(postsList.length === PAGE_SIZE);
 
@@ -151,6 +182,7 @@ export function FeedScreen() {
 
       const postIds = postsList.map((p) => p.id);
       if (postIds.length === 0) {
+        if (fetchId !== feedFetchIdRef.current) return;
         if (!append) {
           setReactionsByPostId({});
           setUserReactionsByPostId({});
@@ -203,6 +235,8 @@ export function FeedScreen() {
         }
       }
 
+      if (fetchId !== feedFetchIdRef.current) return;
+
       if (append) {
         setReactionsByPostId((prev) => ({ ...prev, ...countsByPost }));
         setUserReactionsByPostId((prev) => ({ ...prev, ...userReactionsByPost }));
@@ -218,8 +252,10 @@ export function FeedScreen() {
       } catch (err) {
         if (__DEV__) console.error('Failed to fetch feed:', err);
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
+        if (fetchId === feedFetchIdRef.current) {
+          setLoading(false);
+          setLoadingMore(false);
+        }
       }
     },
     [profile?.id, friendIds]
@@ -302,7 +338,10 @@ export function FeedScreen() {
 
   const handleProfilePress = useCallback(
     (userId: string) => {
-      (navigation.getParent() as any)?.navigate('FriendProfile', { userId });
+      (navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined)?.navigate(
+        'FriendProfile',
+        { userId }
+      );
     },
     [navigation]
   );
@@ -311,6 +350,19 @@ export function FeedScreen() {
     if (loadingMore || !hasMore || loading || posts.length === 0) return;
     fetchPage(posts.length, true);
   }
+
+  const sortedPosts = useMemo(() => {
+    return [...posts].sort((a, b) => {
+      const reactionCountA = Object.values(reactionsByPostId[a.id] ?? {}).reduce((s, c) => s + c, 0);
+      const commentCountA = commentCountByPostId[a.id] ?? 0;
+      const reactionCountB = Object.values(reactionsByPostId[b.id] ?? {}).reduce((s, c) => s + c, 0);
+      const commentCountB = commentCountByPostId[b.id] ?? 0;
+      return (
+        scoreFeedPost(b, reactionCountB, commentCountB) -
+        scoreFeedPost(a, reactionCountA, commentCountA)
+      );
+    });
+  }, [posts, reactionsByPostId, commentCountByPostId]);
 
   const emptyComponent =
     posts.length === 0 && !loading ? (
@@ -343,7 +395,7 @@ export function FeedScreen() {
         </View>
       ) : (
         <FlatList
-          data={posts}
+          data={sortedPosts}
           keyExtractor={(item) => item.id}
           getItemLayout={(_, index) => ({
             length: FEED_CARD_HEIGHT,

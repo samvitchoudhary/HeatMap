@@ -358,6 +358,7 @@ export function CardStack({
   const postsRef = useRef<PostWithProfile[]>([]);
   const flippedByPostIdRef = useRef<Record<string, boolean>>({});
   const reactionsCache = useRef<Record<string, { counts: Record<string, number>; userReaction: string | null }>>({});
+  const endMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   currentIndexRef.current = currentIndex;
   postsLengthRef.current = posts.length;
   postsRef.current = posts;
@@ -401,6 +402,15 @@ export function CardStack({
       ]),
     ]).start();
   }, [overlayOpacity, cardTranslateY, cardScale, cardOpacity]);
+
+  useEffect(() => {
+    return () => {
+      if (endMessageTimerRef.current) {
+        clearTimeout(endMessageTimerRef.current);
+        endMessageTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleDeletePost = useCallback(
     async (post: PostWithProfile) => {
@@ -752,14 +762,16 @@ export function CardStack({
         } else if ((swipedLeft && isLast) || (swipedRight && isFirst)) {
           triggerShake();
           if (swipedLeft && isLast) {
+            if (endMessageTimerRef.current) clearTimeout(endMessageTimerRef.current);
             setShowEndMessage(true);
             endMessageOpacity.setValue(1);
-            setTimeout(() => {
+            endMessageTimerRef.current = setTimeout(() => {
               Animated.timing(endMessageOpacity, {
                 toValue: 0,
                 duration: 300,
                 useNativeDriver: true,
               }).start(() => setShowEndMessage(false));
+              endMessageTimerRef.current = null;
             }, 1500);
           }
           Animated.spring(pan, {

@@ -17,7 +17,7 @@ export function useCardSwipe(
   currentIndex: number,
   options: {
     isFlipped: (postId: string) => boolean;
-    postsRef: React.MutableRefObject<any[]>;
+    postsRef: React.MutableRefObject<{ id: string }[]>;
     onIndexChange: (updater: (prev: number) => number) => void;
   }
 ) {

@@ -10,7 +10,7 @@
  * - Accessed from Feed (tap author) or CardStack (onProfilePress)
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -75,8 +75,9 @@ export function FriendProfileScreen() {
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [gridImageErrors, setGridImageErrors] = useState<Record<string, boolean>>({});
   const [actionLoading, setActionLoading] = useState(false);
+  const friendFetchIdRef = useRef(0);
 
-  const fetchProfile = useCallback(async () => {
+  const fetchProfile = useCallback(async (fetchId: number) => {
     if (!targetUserId) return;
     const { data, error } = await supabase
       .from('profiles')
@@ -87,10 +88,11 @@ export function FriendProfileScreen() {
       showToast('Could not load profile');
       return;
     }
+    if (fetchId !== friendFetchIdRef.current) return;
     setProfile(data);
   }, [targetUserId, showToast]);
 
-  const fetchPosts = useCallback(async () => {
+  const fetchPosts = useCallback(async (fetchId: number) => {
     if (!targetUserId || !myUserId) return;
 
     const { data: ownData, error: ownError } = await supabase
@@ -123,29 +125,32 @@ export function FriendProfileScreen() {
       }
     }
     merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    if (fetchId !== friendFetchIdRef.current) return;
     setPosts(merged);
   }, [targetUserId, myUserId, friendIds]);
 
-  const fetchPostsCount = useCallback(async () => {
+  const fetchPostsCount = useCallback(async (fetchId: number) => {
     if (!targetUserId) return;
     const { count, error } = await supabase
       .from('posts')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', targetUserId);
+    if (fetchId !== friendFetchIdRef.current) return;
     if (!error) setPostsCount(count ?? 0);
   }, [targetUserId]);
 
-  const fetchFriendsCount = useCallback(async () => {
+  const fetchFriendsCount = useCallback(async (fetchId: number) => {
     if (!targetUserId) return;
     const { count, error } = await supabase
       .from('friendships')
       .select('id', { count: 'exact', head: true })
       .eq('status', 'accepted')
       .or(`requester_id.eq.${targetUserId},addressee_id.eq.${targetUserId}`);
+    if (fetchId !== friendFetchIdRef.current) return;
     if (!error) setFriendsCount(count ?? 0);
   }, [targetUserId]);
 
-  const fetchFriendshipStatus = useCallback(async (): Promise<FriendshipStatus> => {
+  const fetchFriendshipStatus = useCallback(async (fetchId: number): Promise<FriendshipStatus> => {
     if (!myUserId || !targetUserId || myUserId === targetUserId) return 'none';
     const { data: rows, error } = await supabase
       .from('friendships')
@@ -158,6 +163,7 @@ export function FriendProfileScreen() {
         (r.requester_id === myUserId && r.addressee_id === targetUserId) ||
         (r.requester_id === targetUserId && r.addressee_id === myUserId)
     );
+    if (fetchId !== friendFetchIdRef.current) return 'none';
     if (!match) {
       setFriendshipStatus('none');
       setFriendshipId(null);
@@ -174,12 +180,13 @@ export function FriendProfileScreen() {
     return status;
   }, [myUserId, targetUserId]);
 
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (fetchId?: number) => {
+    const id = fetchId ?? ++friendFetchIdRef.current;
     await Promise.all([
-      fetchProfile(),
-      fetchFriendshipStatus(),
-      fetchPostsCount(),
-      fetchFriendsCount(),
+      fetchProfile(id),
+      fetchFriendshipStatus(id),
+      fetchPostsCount(id),
+      fetchFriendsCount(id),
     ]);
   }, [fetchProfile, fetchFriendshipStatus, fetchPostsCount, fetchFriendsCount]);
 
@@ -192,7 +199,8 @@ export function FriendProfileScreen() {
 
   useEffect(() => {
     if (friendshipStatus === 'friends') {
-      fetchPosts();
+      const fetchId = ++friendFetchIdRef.current;
+      fetchPosts(fetchId);
     } else {
       setPosts([]);
     }
@@ -205,9 +213,10 @@ export function FriendProfileScreen() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    await loadAll();
-    const status = await fetchFriendshipStatus();
-    if (status === 'friends') await fetchPosts();
+    const fetchId = ++friendFetchIdRef.current;
+    await loadAll(fetchId);
+    const status = await fetchFriendshipStatus(fetchId);
+    if (status === 'friends') await fetchPosts(fetchId);
     setRefreshing(false);
   }
 
@@ -251,7 +260,7 @@ export function FriendProfileScreen() {
         .eq('id', friendshipId);
       if (error) throw error;
       setFriendshipStatus('friends');
-      await fetchPosts();
+      await fetchPosts(++friendFetchIdRef.current);
     } catch (err) {
       if (__DEV__) console.error('Accept friend request failed:', err);
       Alert.alert('Error', 'Could not accept friend request. Please try again.');

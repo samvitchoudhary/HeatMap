@@ -33,6 +33,7 @@ import { Avatar } from '../components/Avatar';
 import { SmoothImage } from '../components/SmoothImage';
 import { Skeleton } from '../components/Skeleton';
 import { timeAgo } from '../lib/timeAgo';
+import type { RootStackNavigationProp } from '../navigation/types';
 
 const NOTIFICATIONS_PAGE_SIZE = 30;
 
@@ -84,11 +85,13 @@ export function NotificationsScreen() {
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const notificationsCountRef = useRef(0);
   const notificationsRef = useRef(notifications);
+  const notifFetchIdRef = useRef(0);
   notificationsCountRef.current = notifications?.length ?? 0;
   notificationsRef.current = notifications;
 
   const fetchNotifications = useCallback(
     async (isLoadMore = false) => {
+      const fetchId = ++notifFetchIdRef.current;
       if (!userId) return;
       if (isLoadMore) {
         setLoadingMore(true);
@@ -109,6 +112,8 @@ export function NotificationsScreen() {
           .order('created_at', { ascending: false })
           .range(from, to);
         if (error) throw error;
+        if (fetchId !== notifFetchIdRef.current) return;
+
         const list = (data ?? []) as NotificationWithRelations[];
 
         if (isLoadMore) {
@@ -121,9 +126,11 @@ export function NotificationsScreen() {
       } catch (err) {
         if (__DEV__) console.error('Failed to fetch notifications:', err);
       } finally {
-        setLoading(false);
-        setLoadingMore(false);
-        setRefreshing(false);
+        if (fetchId === notifFetchIdRef.current) {
+          setLoading(false);
+          setLoadingMore(false);
+          setRefreshing(false);
+        }
       }
     },
     [userId, refreshUnreadCount]
@@ -176,7 +183,7 @@ export function NotificationsScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await markAsRead(n.id);
 
-      const rootNav = navigation.getParent() as any;
+      const rootNav = navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined;
 
       if (n.type === 'reaction' || n.type === 'comment' || n.type === 'tag') {
         const postInfo = normPost(n);

@@ -34,7 +34,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCardStack } from '../lib/CardStackContext';
-import type { MapStackParamList } from '../navigation/types';
+import type { MapStackParamList, RootStackNavigationProp } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
 import { HEATMAP_GRADIENT, HEATMAP_RADIUS, HEATMAP_OPACITY } from '../lib/mapConfig';
 import MapView, { Heatmap, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -465,10 +465,15 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         if (__DEV__) console.error('Places API error:', data.status);
         return [];
       }
-      return (data.predictions || []).map((prediction: any) => ({
-        placeId: prediction.place_id,
-        name: prediction.structured_formatting?.main_text || prediction.description,
-        description: prediction.structured_formatting?.secondary_text || prediction.description,
+      type PlacesPrediction = {
+        place_id?: string;
+        description?: string;
+        structured_formatting?: { main_text?: string; secondary_text?: string };
+      };
+      return ((data.predictions as PlacesPrediction[]) || []).map((prediction) => ({
+        placeId: prediction.place_id ?? '',
+        name: prediction.structured_formatting?.main_text ?? prediction.description ?? '',
+        description: prediction.structured_formatting?.secondary_text ?? prediction.description ?? '',
       }));
     } catch (error) {
       if (__DEV__) console.error('Places API fetch error:', error);
@@ -495,6 +500,15 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       return null;
     }
   }
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -975,7 +989,9 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
           }}
           onProfilePress={(userId) => {
-            (navigation.getParent() as any)?.getParent?.()?.navigate('FriendProfile', { userId });
+            (
+              navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined
+            )?.navigate('FriendProfile', { userId });
           }}
         />
       )}
