@@ -491,7 +491,7 @@ export function FriendProfileScreen() {
                         {post.user_id !== targetUserId && (
                           <View style={styles.tagBanner}>
                             <Text style={styles.tagBannerText} numberOfLines={1}>
-                              tagged by @{post.profiles?.username ?? 'user'}
+                              tagged by @{post.profiles?.username ?? 'deleted'}
                             </Text>
                           </View>
                         )}

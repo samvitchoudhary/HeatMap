@@ -32,24 +32,9 @@ import { theme } from '../lib/theme';
 import { Avatar } from './Avatar';
 import { SmoothImage } from './SmoothImage';
 import { StyledTextInput } from './StyledTextInput';
+import { timeAgo } from '../lib/timeAgo';
 
 const COMMENTS_PAGE_SIZE = 30;
-
-/** Formats timestamp as relative time string */
-function timeAgo(dateString: string): string {
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
 
 type CommentWithProfile = {
   id: string;
@@ -80,7 +65,7 @@ function buildThreadedComments(comments: CommentWithProfile[]): Array<
   for (const c of comments) {
     if (c.parent_id) {
       const parent = comments.find((p) => p.id === c.parent_id);
-      const parentUsername = parent?.profiles?.username ?? 'unknown';
+      const parentUsername = parent?.profiles?.username ?? 'deleted';
       const parentUserId = parent?.user_id ?? '';
       if (!repliesByParent[c.parent_id]) repliesByParent[c.parent_id] = [];
       repliesByParent[c.parent_id].push({ comment: c, parentUsername, parentUserId });
@@ -321,7 +306,7 @@ export function CommentSheet({
         <View style={styles.cardBackCommentContent}>
           <View style={styles.cardBackCommentHeader}>
             <Text style={styles.cardBackCommenterName}>
-              {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Unknown')}
+              {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
             </Text>
             <Text style={styles.cardBackCommentTime}>{timeAgo(item.comment.created_at)}</Text>
           </View>
@@ -330,7 +315,7 @@ export function CommentSheet({
             onPress={() =>
               setReplyTarget({
                 id: item.comment.id,
-                username: item.comment.profiles?.username ?? 'unknown',
+                username: item.comment.profiles?.username ?? 'deleted',
                 parentUserId: item.comment.user_id,
               })
             }
@@ -352,7 +337,7 @@ export function CommentSheet({
           </Text>
           <View style={styles.cardBackCommentHeader}>
             <Text style={styles.cardBackCommenterName}>
-              {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Unknown')}
+              {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
             </Text>
             <Text style={styles.cardBackCommentTime}>{timeAgo(item.comment.created_at)}</Text>
           </View>

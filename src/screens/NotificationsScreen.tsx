@@ -9,7 +9,7 @@
  * - Mark as read on focus; refreshUnreadCount from context
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -32,21 +32,9 @@ import { theme } from '../lib/theme';
 import { Avatar } from '../components/Avatar';
 import { SmoothImage } from '../components/SmoothImage';
 import { Skeleton } from '../components/Skeleton';
+import { timeAgo } from '../lib/timeAgo';
 
-function timeAgo(dateString: string): string {
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
-}
+const NOTIFICATIONS_PAGE_SIZE = 30;
 
 type FromUser = { display_name: string; username?: string; avatar_url: string | null } | null;
 type PostInfo = { id: string; image_url: string; latitude: number; longitude: number } | null;
@@ -91,12 +79,26 @@ export function NotificationsScreen() {
   const [notifications, setNotifications] = useState<NotificationWithRelations[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const notificationsCountRef = useRef(0);
+  const notificationsRef = useRef(notifications);
+  notificationsCountRef.current = notifications?.length ?? 0;
+  notificationsRef.current = notifications;
 
   const fetchNotifications = useCallback(
-    async (showLoading = false) => {
+    async (isLoadMore = false) => {
       if (!userId) return;
-      if (showLoading) setLoading(true);
+      if (isLoadMore) {
+        setLoadingMore(true);
+      } else {
+        setLoading(notificationsRef.current === null);
+      }
+
+      const from = isLoadMore ? notificationsCountRef.current : 0;
+      const to = from + NOTIFICATIONS_PAGE_SIZE - 1;
+
       try {
         const { data, error } = await supabase
           .from('notifications')
@@ -105,15 +107,22 @@ export function NotificationsScreen() {
           )
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
-          .limit(50);
+          .range(from, to);
         if (error) throw error;
         const list = (data ?? []) as NotificationWithRelations[];
-        setNotifications(list);
+
+        if (isLoadMore) {
+          setNotifications((prev) => [...(prev ?? []), ...list]);
+        } else {
+          setNotifications(list);
+        }
+        setHasMore(list.length === NOTIFICATIONS_PAGE_SIZE);
         await refreshUnreadCount();
       } catch (err) {
         if (__DEV__) console.error('Failed to fetch notifications:', err);
       } finally {
         setLoading(false);
+        setLoadingMore(false);
         setRefreshing(false);
       }
     },
@@ -122,9 +131,8 @@ export function NotificationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      const isFirstLoad = notifications === null;
-      fetchNotifications(isFirstLoad);
-    }, [fetchNotifications, notifications])
+      fetchNotifications(false);
+    }, [fetchNotifications])
   );
 
   useFocusEffect(
@@ -251,7 +259,7 @@ export function NotificationsScreen() {
 
   const getNotificationText = (n: NotificationWithRelations) => {
     const from = normFromUser(n);
-    const name = from?.display_name ?? 'Someone';
+    const name = from?.display_name ?? 'Deleted User';
     if (n.type === 'reaction') {
       return { bold: name, rest: ` reacted ${n.emoji ?? '👍'} to your post` };
     }
@@ -363,6 +371,15 @@ export function NotificationsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          onEndReached={() => {
+            if (hasMore && !loadingMore) fetchNotifications(true);
+          }}
+          onEndReachedThreshold={0.3}
+          ListFooterComponent={
+            loadingMore ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} style={{ padding: 16 }} />
+            ) : null
+          }
           refreshControl={
             <RefreshControl
               refreshing={refreshing}

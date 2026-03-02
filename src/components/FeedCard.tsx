@@ -30,6 +30,7 @@ import { theme } from '../lib/theme';
 import { SmoothImage } from './SmoothImage';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
+import { timeAgo } from '../lib/timeAgo';
 
 const CARD_MARGIN_H = 20;
 const CARD_MARGIN_V = 10;
@@ -50,7 +51,7 @@ function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onP
     <Text style={styles.infoTaggedLine} numberOfLines={1}>
       {' with '}
       {shown.map((t, i) => {
-        const username = t.profiles?.username ?? 'user';
+        const username = t.profiles?.username ?? 'deleted';
         const content = `@${username}`;
         return onProfilePress ? (
           <Text key={t.tagged_user_id}>
@@ -66,22 +67,6 @@ function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onP
       {rest > 0 ? ` +${rest} others` : ''}
     </Text>
   );
-}
-
-/** Formats timestamp as relative time string */
-function timeAgo(dateString: string): string {
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
 }
 
 /** Latest comment preview - used for "View N comments" preview text */
@@ -359,7 +344,7 @@ const FeedCardInner = function FeedCard({
     onCommentPosted?.(post.id, newCount, newLatest);
   }, [post.id, commentCount, onCommentPosted]);
 
-  const displayName = post.user_id === userId ? 'You' : (post.profiles?.display_name ?? 'Unknown');
+  const displayName = post.user_id === userId ? 'You' : (post.profiles?.display_name ?? 'Deleted User');
   const venueName = post.venue_name ?? 'Unknown location';
 
   const handleDeletePress = useCallback(() => {

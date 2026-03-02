@@ -99,7 +99,7 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
           {post.user_id !== userId && (
             <View style={styles.tagBanner}>
               <Text style={styles.tagBannerText} numberOfLines={1}>
-                tagged by @{post.profiles?.username ?? 'user'}
+                tagged by @{post.profiles?.username ?? 'deleted'}
               </Text>
             </View>
           )}

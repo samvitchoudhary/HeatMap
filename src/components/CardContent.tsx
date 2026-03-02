@@ -20,6 +20,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import type { PostWithProfile, PostTag } from '../types';
 import { theme } from '../lib/theme';
+import { timeAgo } from '../lib/timeAgo';
 import { ReactionBar } from './ReactionBar';
 
 const BOTTOM_BAR_HEIGHT = 50;
@@ -40,7 +41,7 @@ function TaggedLine({
     <Text style={styles.infoTaggedLine} numberOfLines={1}>
       {' with '}
       {shown.map((t, i) => {
-        const username = t.profiles?.username ?? 'user';
+        const username = t.profiles?.username ?? 'deleted';
         const content = `@${username}`;
         return onProfilePress ? (
           <Text key={t.tagged_user_id}>
@@ -59,22 +60,6 @@ function TaggedLine({
       {rest > 0 ? ` +${rest} others` : ''}
     </Text>
   );
-}
-
-/** Formats timestamp as "just now", "5m ago", "2h ago", etc. */
-function timeAgo(dateString: string): string {
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
 }
 
 type CardImageStyles = {
@@ -376,14 +361,14 @@ export const CardContent = memo(function CardContent({
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
           >
             <Text style={styles.infoDisplayName} numberOfLines={1}>
-              {post.profiles?.display_name ?? 'Unknown'}
+              {post.profiles?.display_name ?? 'Deleted User'}
             </Text>
           </TouchableOpacity>
         ) : (
           <Text style={styles.infoDisplayName} numberOfLines={1}>
             {post.user_id === currentUserId
               ? 'You'
-              : (post.profiles?.display_name ?? 'Unknown')}
+              : (post.profiles?.display_name ?? 'Deleted User')}
           </Text>
         )}
         <TaggedLine tags={post.post_tags} onProfilePress={onProfilePress} />

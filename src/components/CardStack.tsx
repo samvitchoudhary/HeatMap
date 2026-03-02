@@ -37,6 +37,7 @@ import { theme } from '../lib/theme';
 import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 import { PhotoViewer } from './PhotoViewer';
+import { timeAgo } from '../lib/timeAgo';
 /** Props for CardStack - posts to show, callbacks, optional initial state */
 type CardStackProps = {
   posts: PostWithProfile[];
@@ -106,7 +107,7 @@ function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onP
     <Text style={styles.infoTaggedLine} numberOfLines={1}>
       {' with '}
       {shown.map((t, i) => {
-        const username = t.profiles?.username ?? 'user';
+        const username = t.profiles?.username ?? 'deleted';
         const content = `@${username}`;
         return onProfilePress ? (
           <Text key={t.tagged_user_id}>
@@ -122,22 +123,6 @@ function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onP
       {rest > 0 ? ` +${rest} others` : ''}
     </Text>
   );
-}
-
-/** Formats timestamp as "just now", "5m ago", "2h ago", etc. */
-function timeAgo(dateString: string): string {
-  const now = new Date();
-  const date = new Date(dateString);
-  const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
 }
 
 /** Horizontal swipe distance (px) to trigger next/prev card */
@@ -373,7 +358,6 @@ export function CardStack({
   const postsRef = useRef<PostWithProfile[]>([]);
   const flippedByPostIdRef = useRef<Record<string, boolean>>({});
   const reactionsCache = useRef<Record<string, { counts: Record<string, number>; userReaction: string | null }>>({});
-  const prefetchedRef = useRef(false);
   currentIndexRef.current = currentIndex;
   postsLengthRef.current = posts.length;
   postsRef.current = posts;
@@ -518,16 +502,20 @@ export function CardStack({
     }
   }, [initialFlippedPostId, onInitialFlippedConsumed]);
 
+  /**
+   * Prefetch images for nearby cards only (current ± 3).
+   * Avoids loading 50+ images into memory for large stacks.
+   * Re-runs when currentIndex changes to prefetch ahead.
+   */
   useEffect(() => {
-    if (!prefetchedRef.current && posts.length > 0) {
-      prefetchedRef.current = true;
-      posts.forEach((post) => {
-        if (post?.image_url) {
-          Image.prefetch(post.image_url).catch(() => {});
-        }
-      });
+    const start = Math.max(0, currentIndex - 1);
+    const end = Math.min(posts.length - 1, currentIndex + 3);
+
+    for (let i = start; i <= end; i++) {
+      const url = posts[i]?.image_url;
+      if (url) Image.prefetch(url).catch(() => {});
     }
-  }, [posts]);
+  }, [currentIndex, posts]);
 
   useEffect(() => {
     const len = posts.length;
@@ -858,12 +846,12 @@ export function CardStack({
                 hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
               >
                 <Text style={styles.infoDisplayName} numberOfLines={1}>
-                  {post.profiles?.display_name ?? 'Unknown'}
+                  {post.profiles?.display_name ?? 'Deleted User'}
                 </Text>
               </TouchableOpacity>
             ) : (
               <Text style={styles.infoDisplayName} numberOfLines={1}>
-                {post.user_id === currentUserId ? 'You' : (post.profiles?.display_name ?? 'Unknown')}
+                {post.user_id === currentUserId ? 'You' : (post.profiles?.display_name ?? 'Deleted User')}
               </Text>
             )}
             <TaggedLine tags={post.post_tags} onProfilePress={onProfilePress} />
