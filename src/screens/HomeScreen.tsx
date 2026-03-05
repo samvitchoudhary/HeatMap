@@ -4,7 +4,7 @@
  * Map tab - heatmap, clusters, search, FAB for camera/gallery.
  *
  * Key responsibilities:
- * - Renders MapView with Heatmap (post density) and cluster Markers
+ * - Renders MapView with colored post dots (zoomed in) and cluster badges (zoomed out)
  * - Tap map to show nearby posts in dropdown; tap cluster/pin to open CardStack
  * - Search bar with Google Places autocomplete
  * - FAB: camera or gallery picker → UploadScreen with location from EXIF or search
@@ -36,9 +36,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCardStack } from '../lib/CardStackContext';
 import type { MapStackParamList, RootStackNavigationProp } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
-import { HEATMAP_RADIUS, HEATMAP_OPACITY } from '../lib/mapConfig';
 import { getCategoryByKey } from '../lib/categories';
-import MapView, { Heatmap, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
@@ -104,6 +103,26 @@ const LIGHT_MAP_STYLE = [
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#7ebbe6' }] },
   { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#4a90b8' }] },
 ];
+
+const PostDot = React.memo(({ color }: { color: string }) => (
+  <View
+    style={{
+      width: 14,
+      height: 14,
+      borderRadius: 7,
+      backgroundColor: color,
+      borderWidth: 2,
+      borderColor: '#FFFFFF',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.3,
+      shadowRadius: 2,
+      elevation: 3,
+    }}
+  />
+));
+
+PostDot.displayName = 'PostDot';
 
 type PlacePrediction = {
   placeId: string;
@@ -192,6 +211,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [openWithCommentsPostId, setOpenWithCommentsPostId] = useState<string | null>(null);
   const currentRegionRef = useRef(INITIAL_MAP_REGION);
+  const [currentRegion, setCurrentRegion] = useState(INITIAL_MAP_REGION);
   const [currentZoom, setCurrentZoom] = useState(INITIAL_MAP_REGION.latitudeDelta);
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
@@ -422,22 +442,56 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
   }, [navigation, resetFabToClosed]);
 
-  const heatmapsByCategory = useMemo(() => {
-    const groups: Record<string, { points: { latitude: number; longitude: number; weight: number }[]; color: string }> = {};
+  const visiblePosts = useMemo(() => {
+    const region = currentRegion;
+    if (!region) return posts;
+    const latBuffer = region.latitudeDelta * 0.1;
+    const lngBuffer = region.longitudeDelta * 0.1;
+    return posts.filter(
+      (p) =>
+        p.latitude >= region.latitude - region.latitudeDelta / 2 - latBuffer &&
+        p.latitude <= region.latitude + region.latitudeDelta / 2 + latBuffer &&
+        p.longitude >= region.longitude - region.longitudeDelta / 2 - lngBuffer &&
+        p.longitude <= region.longitude + region.longitudeDelta / 2 + lngBuffer
+    );
+  }, [posts, currentZoom, currentRegion]);
 
-    for (const post of posts) {
-      const point = { latitude: post.latitude, longitude: post.longitude, weight: 1 };
-      const cat = getCategoryByKey(post.category ?? 'misc');
-      const key = cat?.key ?? 'misc';
-      const heatmapColor = cat?.heatmapColor ?? 'rgba(255,45,85,0.8)';
-      if (!groups[key]) {
-        groups[key] = { points: [], color: heatmapColor };
-      }
-      groups[key].points.push(point);
+  const offsetPosts = useMemo(() => {
+    const groups: Record<string, PostWithProfile[]> = {};
+
+    for (const post of visiblePosts) {
+      const key = `${post.latitude.toFixed(4)},${post.longitude.toFixed(4)}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(post);
     }
 
-    return groups;
-  }, [posts]);
+    const result: { post: PostWithProfile; latitude: number; longitude: number }[] = [];
+
+    for (const key in groups) {
+      const group = groups[key];
+      if (group.length === 1) {
+        result.push({ post: group[0], latitude: group[0].latitude, longitude: group[0].longitude });
+      } else {
+        const baseOffset = currentZoom * 0.008;
+        group.forEach((post, i) => {
+          if (i === 0) {
+            result.push({ post, latitude: post.latitude, longitude: post.longitude });
+          } else {
+            const angle = (i * 137.5 * Math.PI) / 180;
+            const radius = baseOffset * Math.sqrt(i);
+            const latOffset = radius * Math.cos(angle);
+            const lngOffset = radius * Math.sin(angle);
+            result.push({
+              post,
+              latitude: post.latitude + latOffset,
+              longitude: post.longitude + lngOffset,
+            });
+          }
+        });
+      }
+    }
+    return result;
+  }, [visiblePosts, currentZoom]);
 
   const clusters = useMemo(() => {
     if (currentZoom < CLUSTER_MIN_ZOOM) return [];
@@ -460,6 +514,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
   const onRegionChangeComplete = useCallback((region: typeof INITIAL_MAP_REGION) => {
     currentRegionRef.current = region;
+    setCurrentRegion(region);
     setCurrentZoom(region.latitudeDelta);
   }, []);
 
@@ -483,6 +538,24 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       setSelectedPosts(sorted);
     }
   }, [currentZoom]);
+
+  const handlePostDotPress = useCallback(
+    (tappedPost: PostWithProfile) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const nearbyPosts = posts.filter((p) => {
+        const latDiff = Math.abs(p.latitude - tappedPost.latitude);
+        const lngDiff = Math.abs(p.longitude - tappedPost.longitude);
+        return latDiff < 0.0005 && lngDiff < 0.0005;
+      });
+      const sorted = [
+        tappedPost,
+        ...nearbyPosts.filter((p) => p.id !== tappedPost.id),
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setSelectedInitialIndex(0);
+      setSelectedPosts(sorted);
+    },
+    [posts]
+  );
 
   async function searchPlaces(query: string): Promise<PlacePrediction[]> {
     if (!query.trim() || !GOOGLE_MAPS_API_KEY) return [];
@@ -764,23 +837,19 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         initialRegion={INITIAL_MAP_REGION}
       >
         {currentZoom < CLUSTER_MIN_ZOOM &&
-          Object.entries(heatmapsByCategory).map(([key, group]) => {
-            if (group.points.length === 0) return null;
-            const baseColor = group.color;
-            const lightColor = baseColor.replace(/[\d.]+\)$/, '0.3)');
-            const medColor = baseColor.replace(/[\d.]+\)$/, '0.5)');
+          offsetPosts.map(({ post, latitude, longitude }) => {
+            const cat = getCategoryByKey(post.category ?? 'misc');
+            const dotColor = cat?.color ?? '#FF2D55';
             return (
-              <Heatmap
-                key={key}
-                points={group.points}
-                radius={HEATMAP_RADIUS}
-                opacity={HEATMAP_OPACITY}
-                gradient={{
-                  colors: ['transparent', lightColor, medColor, baseColor, baseColor],
-                  startPoints: [0.01, 0.05, 0.1, 0.3, 0.5],
-                  colorMapSize: 256,
-                }}
-              />
+              <Marker
+                key={post.id}
+                coordinate={{ latitude, longitude }}
+                onPress={() => handlePostDotPress(post)}
+                tracksViewChanges={false}
+                anchor={{ x: 0.5, y: 0.5 }}
+              >
+                <PostDot color={dotColor} />
+              </Marker>
             );
           })}
         {currentZoom >= CLUSTER_MIN_ZOOM &&
