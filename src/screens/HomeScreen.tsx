@@ -59,15 +59,17 @@ const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
 /** Max distance (m) for "nearby" posts when tapping map */
 const NEARBY_RADIUS_METERS = 100;
 
-/** Only show cluster badges when zoomed out very far (city/state/country level) */
-const CLUSTER_MIN_ZOOM = 0.5;
+/** Zoom level used when centering on user location (initial, recenter button, search) */
+const USER_ZOOM_LEVEL = {
+  latitudeDelta: 0.01,
+  longitudeDelta: 0.01,
+};
 
-/** Default map center - San Francisco area */
+/** Default map center - UMD campus */
 const INITIAL_MAP_REGION = {
-  latitude: 37.78825,
-  longitude: -122.4324,
-  latitudeDelta: 0.05,
-  longitudeDelta: 0.05,
+  latitude: 38.9869,
+  longitude: -76.9426,
+  ...USER_ZOOM_LEVEL,
 };
 
 const GOOGLE_MAPS_API_KEY =
@@ -150,69 +152,17 @@ function getDistanceMeters(
   return R * c;
 }
 
-type Cluster = {
-  coordinate: { latitude: number; longitude: number };
-  count: number;
-  postIds: string[];
-  posts: PostWithProfile[];
-};
-
-/**
- * Grid-based spatial clustering — each post counted exactly once.
- */
-function clusterPosts(posts: PostWithProfile[], clusterRadius: number): Cluster[] {
-  if (posts.length === 0) return [];
-
-  const cellSize = clusterRadius;
-  const grid: Record<
-    string,
-    { latSum: number; lngSum: number; posts: PostWithProfile[] }
-  > = {};
-
-  for (const post of posts) {
-    const cellX = Math.floor(post.latitude / cellSize);
-    const cellY = Math.floor(post.longitude / cellSize);
-    const key = `${cellX},${cellY}`;
-
-    if (!grid[key]) {
-      grid[key] = { latSum: 0, lngSum: 0, posts: [] };
-    }
-
-    grid[key].latSum += post.latitude;
-    grid[key].lngSum += post.longitude;
-    grid[key].posts.push(post);
-  }
-
-  return Object.values(grid).map((cell) => ({
-    coordinate: {
-      latitude: cell.latSum / cell.posts.length,
-      longitude: cell.lngSum / cell.posts.length,
-    },
-    count: cell.posts.length,
-    postIds: cell.posts.map((p) => p.id),
-    posts: cell.posts,
-  }));
-}
-
-function getClusterSize(count: number): number {
-  if (count <= 5) return 36;
-  if (count <= 20) return 44;
-  if (count <= 50) return 52;
-  return 60;
-}
-
 export function HomeScreen({ profile, route }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<MapStackParamList, 'Map'>>();
   const { cardStackOpen, setCardStackOpen } = useCardStack();
   const { friendIds, loading: friendsLoading } = useFriends();
-  const { posts, loading: postsLoading, fetchAllPosts, removePost } = usePosts();
+  const { posts, loading: postsLoading, fetchOwnPosts, fetchAllPosts, removePost } = usePosts();
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [openWithCommentsPostId, setOpenWithCommentsPostId] = useState<string | null>(null);
   const currentRegionRef = useRef(INITIAL_MAP_REGION);
   const [currentRegion, setCurrentRegion] = useState(INITIAL_MAP_REGION);
-  const [currentZoom, setCurrentZoom] = useState(INITIAL_MAP_REGION.latitudeDelta);
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -226,6 +176,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasInitiallyFetched = useRef(false);
+  const [hasCompletedInitialLoad, setHasCompletedInitialLoad] = useState(false);
+  const [friendPostsFetched, setFriendPostsFetched] = useState(false);
 
   const [fabExpanded, setFabExpanded] = useState(false);
   const fabIconRotate = useRef(new Animated.Value(0)).current;
@@ -236,6 +188,10 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const fabGalleryTranslateY = useRef(new Animated.Value(0)).current;
   const fabGalleryOpacity = useRef(new Animated.Value(0)).current;
   const fabGalleryScale = useRef(new Animated.Value(0.5)).current;
+
+  useEffect(() => {
+    if (postsLoading === false) setHasCompletedInitialLoad(true);
+  }, [postsLoading]);
 
   useEffect(() => {
     const loading = friendsLoading || postsLoading;
@@ -454,7 +410,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         p.longitude >= region.longitude - region.longitudeDelta / 2 - lngBuffer &&
         p.longitude <= region.longitude + region.longitudeDelta / 2 + lngBuffer
     );
-  }, [posts, currentZoom, currentRegion]);
+  }, [posts, currentRegion]);
 
   const offsetPosts = useMemo(() => {
     const groups: Record<string, PostWithProfile[]> = {};
@@ -466,13 +422,13 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
 
     const result: { post: PostWithProfile; latitude: number; longitude: number }[] = [];
+    const baseOffset = currentRegion.latitudeDelta * 0.008;
 
     for (const key in groups) {
       const group = groups[key];
       if (group.length === 1) {
         result.push({ post: group[0], latitude: group[0].latitude, longitude: group[0].longitude });
       } else {
-        const baseOffset = currentZoom * 0.008;
         group.forEach((post, i) => {
           if (i === 0) {
             result.push({ post, latitude: post.latitude, longitude: post.longitude });
@@ -491,53 +447,12 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       }
     }
     return result;
-  }, [visiblePosts, currentZoom]);
-
-  const clusters = useMemo(() => {
-    if (currentZoom < CLUSTER_MIN_ZOOM) return [];
-    const radius = currentZoom * 0.2;
-    return clusterPosts(posts, radius);
-  }, [posts, currentZoom]);
-
-  useEffect(() => {
-    if (__DEV__ && clusters.length > 0) {
-      console.log(
-        'Clusters:',
-        clusters.map((c) => ({
-          lat: c.coordinate.latitude.toFixed(3),
-          lng: c.coordinate.longitude.toFixed(3),
-          count: c.count,
-        }))
-      );
-    }
-  }, [clusters]);
+  }, [visiblePosts, currentRegion]);
 
   const onRegionChangeComplete = useCallback((region: typeof INITIAL_MAP_REGION) => {
     currentRegionRef.current = region;
     setCurrentRegion(region);
-    setCurrentZoom(region.latitudeDelta);
   }, []);
-
-  const handleClusterPress = useCallback((cluster: Cluster) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (currentZoom > 0.1) {
-      mapRef.current?.animateToRegion(
-        {
-          latitude: cluster.coordinate.latitude,
-          longitude: cluster.coordinate.longitude,
-          latitudeDelta: currentZoom * 0.3,
-          longitudeDelta: currentZoom * 0.3,
-        },
-        300
-      );
-    } else {
-      const sorted = [...cluster.posts].sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      setSelectedInitialIndex(0);
-      setSelectedPosts(sorted);
-    }
-  }, [currentZoom]);
 
   const handlePostDotPress = useCallback(
     (tappedPost: PostWithProfile) => {
@@ -683,20 +598,37 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     [posts, showDropdown]
   );
 
+  const hasRunFocusFetch = useRef(false);
+
+  // Fetch user's own posts immediately (no wait for friends)
+  useEffect(() => {
+    if (profile?.id) {
+      fetchOwnPosts(profile.id);
+      hasInitiallyFetched.current = true;
+    }
+  }, [profile?.id, fetchOwnPosts]);
+
+  // When friends load, fetch full set (force bypasses throttle)
+  useEffect(() => {
+    if (!profile?.id) return;
+    if (friendIds.length > 0) {
+      fetchAllPosts(friendIds, profile.id, true).finally(() => setFriendPostsFetched(true));
+    } else if (!friendsLoading) {
+      setFriendPostsFetched(true);
+    }
+  }, [profile?.id, friendIds, friendsLoading, fetchAllPosts]);
+
+  // On subsequent focuses, refresh (skip first focus — already fetched above)
   useFocusEffect(
     useCallback(() => {
-      const currentUserId = profile?.id;
-      if (!currentUserId) return;
-      hasInitiallyFetched.current = true;
-      fetchAllPosts(friendIds, currentUserId);
+      if (!profile?.id) return;
+      if (!hasRunFocusFetch.current) {
+        hasRunFocusFetch.current = true;
+        return;
+      }
+      fetchAllPosts(friendIds, profile.id);
     }, [profile?.id, friendIds, fetchAllPosts])
   );
-
-  useEffect(() => {
-    if (profile?.id && friendIds.length > 0) {
-      fetchAllPosts(friendIds, profile.id);
-    }
-  }, [profile?.id, friendIds, fetchAllPosts]);
 
   useFocusEffect(
     useCallback(() => {
@@ -720,8 +652,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       const userRegion = {
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+        ...USER_ZOOM_LEVEL,
       };
       if (mapRef.current) {
         mapRef.current.animateToRegion(userRegion, 1000);
@@ -807,8 +738,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         const userRegion = {
           latitude: location.coords.latitude,
           longitude: location.coords.longitude,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
+          ...USER_ZOOM_LEVEL,
         };
         if (mapRef.current && !hasCenteredOnUser.current) {
           hasCenteredOnUser.current = true;
@@ -821,7 +751,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   }, []);
 
 
-  const showEmptyState = !postsLoading && posts.length === 0;
+  const showEmptyState =
+    hasCompletedInitialLoad && friendPostsFetched && !postsLoading && posts.length === 0;
   const showSearchBar = selectedPosts === null;
 
   return (
@@ -836,8 +767,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         onRegionChangeComplete={onRegionChangeComplete}
         initialRegion={INITIAL_MAP_REGION}
       >
-        {currentZoom < CLUSTER_MIN_ZOOM &&
-          offsetPosts.map(({ post, latitude, longitude }) => {
+        {offsetPosts.map(({ post, latitude, longitude }) => {
             const cat = getCategoryByKey(post.category ?? 'misc');
             const dotColor = cat?.color ?? '#FF2D55';
             return (
@@ -849,34 +779,6 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
                 anchor={{ x: 0.5, y: 0.5 }}
               >
                 <PostDot color={dotColor} />
-              </Marker>
-            );
-          })}
-        {currentZoom >= CLUSTER_MIN_ZOOM &&
-          clusters.map((cluster, i) => {
-            const size = getClusterSize(cluster.count);
-            return (
-              <Marker
-                key={`cluster-${i}`}
-                coordinate={cluster.coordinate}
-                onPress={() => handleClusterPress(cluster)}
-                anchor={{ x: 0.5, y: 0.5 }}
-                tracksViewChanges={false}
-              >
-                <View
-                  style={[
-                    styles.clusterBadge,
-                    {
-                      width: size,
-                      height: size,
-                      borderRadius: size / 2,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.clusterBadgeText, { fontSize: cluster.count > 99 ? 12 : 14 }]}>
-                    {cluster.count > 99 ? '99+' : cluster.count}
-                  </Text>
-                </View>
               </Marker>
             );
           })}
@@ -1093,11 +995,13 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
       {showEmptyState && (
         <View style={styles.emptyOverlay} pointerEvents="none">
-          <Feather name="map-pin" size={40} color={theme.colors.primary} />
-          <Text style={styles.emptyTitle}>No posts yet</Text>
-          <Text style={styles.emptySubtitle}>
-            Upload your first photo or add friends to see their activity
-          </Text>
+          <View style={styles.emptyCard}>
+            <Feather name="map-pin" size={40} color={theme.colors.primary} />
+            <Text style={styles.emptyTitle}>No posts yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Upload your first photo or add friends to see their activity
+            </Text>
+          </View>
         </View>
       )}
 
@@ -1133,26 +1037,6 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
     width: '100%',
-  },
-  clusterBadge: {
-    backgroundColor: theme.colors.primary,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  clusterBadgeText: {
-    color: '#FFF',
-    fontSize: 12,
-    fontWeight: '700',
   },
   searchBarContainer: {
     position: 'absolute',
@@ -1257,17 +1141,25 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   emptyOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    justifyContent: 'center',
+    position: 'absolute',
+    top: '40%',
+    left: 0,
+    right: 0,
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.xl,
+  },
+  emptyCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    borderRadius: 16,
     padding: theme.spacing.xl,
+    alignItems: 'center',
   },
   emptyTitle: {
     fontSize: theme.fontSize.lg,
     fontWeight: '700',
     color: theme.colors.text,
-    marginTop: theme.spacing.md,
+    marginTop: theme.spacing.sm,
   },
   emptySubtitle: {
     fontSize: theme.fontSize.sm,

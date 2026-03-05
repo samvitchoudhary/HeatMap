@@ -43,6 +43,7 @@ import { useFriends, usePosts } from '../hooks';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { StyledTextInput } from '../components/StyledTextInput';
+import { LocationSearchModal, type PlaceResult } from '../components/LocationSearchModal';
 import { SuccessToast } from '../components/SuccessToast';
 import { Avatar } from '../components/Avatar';
 import type { MapStackParamList } from '../navigation/types';
@@ -100,7 +101,8 @@ export function UploadScreen() {
     latitude: number;
     longitude: number;
   } | null>(null);
-  const [locationSource, setLocationSource] = useState<'exif' | 'current' | null>(null);
+  const [locationSource, setLocationSource] = useState<'auto' | 'search' | null>(null);
+  const [showLocationSearch, setShowLocationSearch] = useState(false);
   const [originalPhotoDate, setOriginalPhotoDate] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<CategoryKey>(DEFAULT_CATEGORY);
   const [taggedFriends, setTaggedFriends] = useState<{ id: string; display_name: string; username: string }[]>([]);
@@ -130,7 +132,7 @@ export function UploadScreen() {
         setSelectedCategory((editPost.category as CategoryKey) ?? DEFAULT_CATEGORY);
         setSelectedImageUri(editPost.image_url);
         setLocationCoords({ latitude: editPost.latitude, longitude: editPost.longitude });
-        setLocationSource('exif');
+        setLocationSource('auto');
         if (editPost.post_tags && editPost.post_tags.length > 0) {
           const tagged = editPost.post_tags.map((tag: { tagged_user_id: string; profiles?: { display_name: string; username: string } | null }) => ({
             id: tag.tagged_user_id,
@@ -159,7 +161,7 @@ export function UploadScreen() {
       setSelectedCategory(DEFAULT_CATEGORY);
       setTaggedFriends([]);
       setLocationCoords(exifLocation);
-      setLocationSource(exifLocation ? 'exif' : null);
+      setLocationSource(exifLocation ? 'auto' : null);
       setOriginalPhotoDate(null);
       previewOpacity.setValue(0);
       Animated.timing(previewOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
@@ -245,7 +247,7 @@ export function UploadScreen() {
         longitude: location.coords.longitude,
       };
       setLocationCoords(coords);
-      setLocationSource('current');
+      setLocationSource('auto');
       await reverseGeocodeAndSetVenue(coords.latitude, coords.longitude);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get location.';
@@ -305,7 +307,7 @@ export function UploadScreen() {
       try {
         if (exifCoords) {
           setLocationCoords(exifCoords);
-          setLocationSource('exif');
+          setLocationSource('auto');
           await reverseGeocodeAndSetVenue(exifCoords.latitude, exifCoords.longitude);
         } else {
           await detectVenue();
@@ -629,21 +631,33 @@ export function UploadScreen() {
             )}
           </Animated.View>
 
-          <StyledTextInput
-            auth
-            style={styles.input}
-            placeholder={isDetectingLocation ? 'Detecting location...' : 'Venue'}
-            value={venueName}
-            onChangeText={setVenueName}
-            editable={!isDetectingLocation}
-          />
-          {locationSource && (
-            <Text style={styles.locationSourceNote}>
-              {locationSource === 'exif'
-                ? "📍 Using photo's original location"
-                : '📍 Using current location'}
-            </Text>
-          )}
+          <TouchableOpacity
+            onPress={() => !isDetectingLocation && setShowLocationSearch(true)}
+            style={styles.venueField}
+            activeOpacity={0.7}
+            disabled={isDetectingLocation}
+          >
+            <Feather name="map-pin" size={16} color={theme.colors.textSecondary} style={styles.venueIcon} />
+            <View style={styles.venueTextWrap}>
+              <Text
+                style={[
+                  styles.venueMainText,
+                  { color: venueName ? theme.colors.text : theme.colors.textTertiary },
+                ]}
+              >
+                {isDetectingLocation ? 'Detecting location...' : venueName || 'Add location...'}
+              </Text>
+              {venueName && locationSource === 'auto' && (
+                <Text style={styles.venueSubText}>From photo location</Text>
+              )}
+              {venueName && locationSource === 'search' && (
+                <Text style={styles.venueSubText}>Custom location</Text>
+              )}
+            </View>
+            {!isDetectingLocation && (
+              <Feather name="chevron-right" size={16} color={theme.colors.textTertiary} />
+            )}
+          </TouchableOpacity>
 
           <StyledTextInput
             auth
@@ -852,6 +866,16 @@ export function UploadScreen() {
         </View>
       </Modal>
 
+      <LocationSearchModal
+        visible={showLocationSearch}
+        onClose={() => setShowLocationSearch(false)}
+        onSelectLocation={(place: PlaceResult) => {
+          setVenueName(place.name);
+          setLocationCoords({ latitude: place.latitude, longitude: place.longitude });
+          setLocationSource('search');
+        }}
+      />
+
       <SuccessToast
         message="Posted!"
         visible={showSuccessToast}
@@ -914,12 +938,21 @@ const styles = StyleSheet.create({
   input: {
     marginBottom: theme.spacing.md,
   },
-  locationSourceNote: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    marginTop: -theme.spacing.sm,
-    marginBottom: theme.spacing.md,
+  venueField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
+  venueIcon: { marginRight: 8 },
+  venueTextWrap: { flex: 1 },
+  venueMainText: { fontSize: 14 },
+  venueSubText: { fontSize: 11, color: theme.colors.textTertiary, marginTop: 2 },
   primaryButton: {
     backgroundColor: theme.colors.primary,
     height: 52,

@@ -8,7 +8,6 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { withRetry } from '../lib/retry';
 import type { PostWithProfile } from '../types';
 
 type PostsContextType = {
@@ -16,8 +15,10 @@ type PostsContextType = {
   posts: PostWithProfile[];
   /** Whether the initial fetch is in progress */
   loading: boolean;
-  /** Fetch all posts (for map — all friends' posts) */
-  fetchAllPosts: (friendIds: string[], userId: string) => Promise<void>;
+  /** Fetch user's own posts immediately (no friend dependency) */
+  fetchOwnPosts: (userId: string) => Promise<void>;
+  /** Fetch all posts (user + friends). Use force=true when friendIds just loaded to bypass throttle. */
+  fetchAllPosts: (friendIds: string[], userId: string, force?: boolean) => Promise<void>;
   /** Add a newly created post to the cache */
   addPost: (post: PostWithProfile) => void;
   /** Update an existing post in the cache */
@@ -31,6 +32,7 @@ type PostsContextType = {
 const PostsContext = createContext<PostsContextType>({
   posts: [],
   loading: true,
+  fetchOwnPosts: async () => {},
   fetchAllPosts: async () => {},
   addPost: () => {},
   updatePost: () => {},
@@ -45,24 +47,41 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const hasFetchedRef = useRef(false);
   const postsFetchIdRef = useRef(0);
 
-  const fetchAllPosts = useCallback(async (friendIds: string[], userId: string) => {
+  const fetchOwnPosts = useCallback(async (userId: string) => {
+    const fetchId = ++postsFetchIdRef.current;
+    try {
+      const { data, error } = await supabase
+        .from('posts')
+        .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      if (error) {
+        if (__DEV__) console.error('Failed to fetch own posts:', error);
+        return;
+      }
+      if (fetchId !== postsFetchIdRef.current) return;
+      hasFetchedRef.current = true;
+      setPosts((data ?? []) as unknown as PostWithProfile[]);
+    } finally {
+      if (fetchId === postsFetchIdRef.current) setLoading(false);
+    }
+  }, []);
+
+  const fetchAllPosts = useCallback(async (friendIds: string[], userId: string, force?: boolean) => {
     const fetchId = ++postsFetchIdRef.current;
     const now = Date.now();
-    if (now - lastFetchRef.current < 15000 && hasFetchedRef.current) return;
+    if (!force && now - lastFetchRef.current < 15000 && hasFetchedRef.current) return;
     lastFetchRef.current = now;
 
     try {
       const allUserIds = [userId, ...friendIds];
-      const { data, error } = await withRetry(async () => {
-        const result = await supabase
-          .from('posts')
-          .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
-          .in('user_id', allUserIds)
-          .order('created_at', { ascending: false })
-          .limit(200);
-        if (result.error) throw result.error;
-        return result;
-      });
+      const { data, error } = await supabase
+        .from('posts')
+        .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+        .in('user_id', allUserIds)
+        .order('created_at', { ascending: false })
+        .limit(200);
 
       if (error) {
         if (__DEV__) console.error('Failed to fetch posts:', error);
@@ -101,7 +120,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [fetchAllPosts]);
 
   return (
-    <PostsContext.Provider value={{ posts, loading, fetchAllPosts, addPost, updatePost, removePost, refresh }}>
+    <PostsContext.Provider value={{ posts, loading, fetchOwnPosts, fetchAllPosts, addPost, updatePost, removePost, refresh }}>
       {children}
     </PostsContext.Provider>
   );
