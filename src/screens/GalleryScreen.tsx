@@ -12,13 +12,12 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
+  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Dimensions,
   Alert,
-  ActionSheetIOS,
-  Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
@@ -52,6 +51,8 @@ export function GalleryScreen({ navigation }: Props) {
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedPostIds, setSelectedPostIds] = useState<Set<string>>(new Set());
 
   const fetchPosts = useCallback(async () => {
     if (!userId) return;
@@ -71,6 +72,10 @@ export function GalleryScreen({ navigation }: Props) {
   useFocusEffect(
     useCallback(() => {
       fetchPosts();
+      return () => {
+        setSelectMode(false);
+        setSelectedPostIds(new Set());
+      };
     }, [fetchPosts])
   );
 
@@ -79,34 +84,31 @@ export function GalleryScreen({ navigation }: Props) {
     return () => setCardStackOpen(false);
   }, [selectedPosts, setCardStackOpen]);
 
-  function handlePhotoPress(post: PostWithProfile) {
-    const idx = posts.findIndex((p) => p.id === post.id);
-    setSelectedInitialIndex(idx >= 0 ? idx : 0);
-    setSelectedPosts(posts);
+  function handleLongPress(post: PostWithProfile) {
+    if (post.user_id !== userId) return;
+    setSelectMode(true);
+    setSelectedPostIds(new Set([post.id]));
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
   }
 
-  function showPostActionMenu(post: PostWithProfile) {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Edit Post', 'Delete Post', 'Cancel'],
-          destructiveButtonIndex: 1,
-          cancelButtonIndex: 2,
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 0) {
-            navigateToEditPost(post);
-          } else if (buttonIndex === 1) {
-            confirmDeletePost(post);
-          }
+  function handleThumbnailPress(post: PostWithProfile, index: number) {
+    if (selectMode) {
+      if (post.user_id !== userId) return;
+      setSelectedPostIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(post.id)) {
+          next.delete(post.id);
+          if (next.size === 0) setSelectMode(false);
+        } else {
+          next.add(post.id);
         }
-      );
+        return next;
+      });
     } else {
-      Alert.alert('Post Options', '', [
-        { text: 'Edit Post', onPress: () => navigateToEditPost(post) },
-        { text: 'Delete Post', style: 'destructive', onPress: () => confirmDeletePost(post) },
-        { text: 'Cancel', style: 'cancel' },
-      ]);
+      setSelectedInitialIndex(index);
+      setSelectedPosts(posts);
     }
   }
 
@@ -131,36 +133,93 @@ export function GalleryScreen({ navigation }: Props) {
     });
   }
 
-  function confirmDeletePost(post: PostWithProfile) {
-    Alert.alert('Delete Post', "Are you sure? This can't be undone.", [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
-            if (imagePath) {
-              const { error: storageErr } = await supabase.storage.from('posts').remove([imagePath]);
-              if (storageErr) throw storageErr;
+  function handleBulkDelete() {
+    const count = selectedPostIds.size;
+    if (count === 0) return;
+    Alert.alert(
+      'Delete Posts',
+      `Are you sure you want to delete ${count} ${count === 1 ? 'post' : 'posts'}? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const ids = Array.from(selectedPostIds);
+              const { error } = await supabase.from('posts').delete().in('id', ids);
+              if (error) throw error;
+
+              for (const id of ids) {
+                const p = posts.find((x) => x.id === id);
+                if (p?.image_url) {
+                  try {
+                    const pathParts = p.image_url.split('/posts/');
+                    if (pathParts[1]) {
+                      const imagePath = pathParts[1].split('?')[0];
+                      await supabase.storage.from('posts').remove([imagePath]);
+                    }
+                  } catch {}
+                }
+              }
+
+              ids.forEach((id) => removePost(id));
+              setSelectMode(false);
+              setSelectedPostIds(new Set());
+              setPosts((prev) => prev.filter((p) => !ids.includes(p.id)));
+              setSelectedPosts((prev) => (prev ? prev.filter((p) => !ids.includes(p.id)) : null));
+
+              fetchPosts();
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            } catch (err) {
+              if (__DEV__) console.error('Bulk delete failed:', err);
+              Alert.alert('Error', 'Failed to delete posts. Please try again.');
             }
-            const { error } = await supabase.from('posts').delete().eq('id', post.id);
-            if (error) throw error;
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            removePost(post.id);
-            setPosts((prev) => prev.filter((p) => p.id !== post.id));
-            setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== post.id) : null));
-          } catch (err) {
-            if (__DEV__) console.error('Error deleting post:', err);
-            Alert.alert('Error', 'Could not delete post. Please try again.');
-          }
+          },
         },
-      },
-    ]);
+      ]
+    );
   }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      {selectMode ? (
+        <View style={[styles.selectModeBar, { borderBottomColor: theme.colors.border }]}>
+          <TouchableOpacity
+            onPress={() => {
+              setSelectMode(false);
+              setSelectedPostIds(new Set());
+            }}
+          >
+            <Text style={[styles.selectModeCancel, { color: theme.colors.primary }]}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.selectModeCount, { color: theme.colors.text }]}>
+            {selectedPostIds.size} selected
+          </Text>
+          <View style={styles.selectModeActions}>
+            {selectedPostIds.size === 1 && (
+              <TouchableOpacity
+                onPress={() => {
+                  const postId = Array.from(selectedPostIds)[0];
+                  const post = posts.find((p) => p.id === postId);
+                  if (post) {
+                    setSelectMode(false);
+                    setSelectedPostIds(new Set());
+                    navigateToEditPost(post);
+                  }
+                }}
+              >
+                <Text style={[styles.selectModeEdit, { color: theme.colors.primary }]}>Edit</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={handleBulkDelete}>
+              <Text style={styles.selectModeDelete}>
+                Delete{selectedPostIds.size > 0 ? ` (${selectedPostIds.size})` : ''}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : null}
       <ScrollView
         style={styles.scroll}
         scrollEnabled={selectedPosts === null}
@@ -169,12 +228,12 @@ export function GalleryScreen({ navigation }: Props) {
         overScrollMode="never"
       >
         <View style={styles.grid}>
-          {posts.map((post) => (
+          {posts.map((post, index) => (
             <TouchableOpacity
               key={post.id}
               style={styles.gridCell}
-              onPress={() => handlePhotoPress(post)}
-              onLongPress={() => showPostActionMenu(post)}
+              onPress={() => handleThumbnailPress(post, index)}
+              onLongPress={() => handleLongPress(post)}
               delayLongPress={400}
               activeOpacity={0.7}
             >
@@ -183,12 +242,46 @@ export function GalleryScreen({ navigation }: Props) {
                   <Feather name="image" size={24} color={theme.colors.textTertiary} />
                 </View>
               ) : (
-                <SmoothImage
-                  source={{ uri: post.image_url }}
-                  style={styles.gridImage}
-                  resizeMode="cover"
-                  onError={() => setImageErrors((prev) => ({ ...prev, [post.id]: true }))}
-                />
+                <>
+                  <SmoothImage
+                    source={{ uri: post.image_url }}
+                    style={styles.gridImage}
+                    resizeMode="cover"
+                    onError={() => setImageErrors((prev) => ({ ...prev, [post.id]: true }))}
+                  />
+                  {selectMode && post.user_id === userId && (
+                    <View
+                      style={[
+                        StyleSheet.absoluteFillObject,
+                        {
+                          backgroundColor: selectedPostIds.has(post.id)
+                            ? 'rgba(255,45,85,0.3)'
+                            : 'rgba(0,0,0,0.1)',
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.selectCheck,
+                          {
+                            backgroundColor: selectedPostIds.has(post.id)
+                              ? theme.colors.primary
+                              : 'rgba(0,0,0,0.3)',
+                          },
+                        ]}
+                      >
+                        {selectedPostIds.has(post.id) && (
+                          <Feather name="check" size={14} color="#FFFFFF" />
+                        )}
+                      </View>
+                    </View>
+                  )}
+                  {selectMode && post.user_id !== userId && (
+                    <View
+                      style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.6)' }]}
+                    />
+                  )}
+                </>
               )}
             </TouchableOpacity>
           ))}
@@ -232,6 +325,32 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     backgroundColor: theme.colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  selectModeBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: theme.colors.background,
+    borderBottomWidth: 1,
+  },
+  selectModeCancel: { fontSize: 16, fontWeight: '600' },
+  selectModeCount: { fontSize: 16, fontWeight: '700' },
+  selectModeActions: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  selectModeEdit: { fontSize: 16, fontWeight: '600' },
+  selectModeDelete: { fontSize: 16, color: '#FF3B30', fontWeight: '600' },
+  selectCheck: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
   },
