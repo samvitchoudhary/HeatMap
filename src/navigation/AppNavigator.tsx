@@ -257,7 +257,7 @@ function MainTabs({ profile }: { profile: Profile }) {
           tabBarShowIcon: true,
           tabBarActiveTintColor: theme.colors.tabActive,
           tabBarInactiveTintColor: theme.colors.tabInactive,
-          lazy: false,
+          lazy: true,
         }}
       >
         <Tab.Screen
