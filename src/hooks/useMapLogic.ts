@@ -159,10 +159,8 @@ async function getPlaceDetails(
 export function useMapLogic(
   posts: PostWithProfile[],
   mapRef: React.RefObject<{ animateToRegion: (region: object, duration?: number) => void } | null>,
-    options: {
-    friendIds: string[];
+  options: {
     profileId: string | undefined;
-    fetchAllPosts: (friendIds: string[], userId: string) => Promise<void>;
     route?: { params?: { latitude?: number; longitude?: number; postId?: string; showComments?: boolean } };
     onDeepLinkResolved?: (post: PostWithProfile, showComments: boolean) => void;
   }
@@ -170,7 +168,6 @@ export function useMapLogic(
   const navigation = useNavigation<NativeStackNavigationProp<MapStackParamList, 'Map'>>();
   const currentRegionRef = useRef(INITIAL_MAP_REGION);
   const hasCenteredOnUser = useRef(false);
-  const hasInitiallyFetched = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [searchText, setSearchText] = useState('');
@@ -310,25 +307,6 @@ export function useMapLogic(
       navigation.navigate('Upload', { imageUri: asset.uri, exifLocation });
     }
   }, [navigation]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const currentUserId = options.profileId;
-      if (!currentUserId) return;
-      hasInitiallyFetched.current = true;
-      options.fetchAllPosts(options.friendIds, currentUserId);
-    }, [
-      options.profileId,
-      options.friendIds,
-      options.fetchAllPosts,
-    ])
-  );
-
-  useEffect(() => {
-    if (options.profileId && options.friendIds.length > 0) {
-      options.fetchAllPosts(options.friendIds, options.profileId);
-    }
-  }, [options.profileId, options.friendIds, options.fetchAllPosts]);
 
   useEffect(() => {
     (async () => {
