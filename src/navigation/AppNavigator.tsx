@@ -11,7 +11,7 @@
  * - Wraps app in Auth, Notification, FeedBadge, CardStack, Toast providers
  */
 
-import React from 'react';
+import React, { useMemo, useContext } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { FriendsProvider, NotificationsProvider, PostsProvider, useNotifications } from '../hooks';
 import { FeedBadgeProvider, useFeedBadge } from '../lib/FeedBadgeContext';
@@ -27,7 +27,7 @@ import type {
   MapStackParamList,
   ProfileStackParamList,
 } from './types';
-import type { RouteProp } from '@react-navigation/native';
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { Profile } from '../types';
 import { theme } from '../lib/theme';
 
@@ -77,6 +77,8 @@ const headerScreenOptions = {
   headerShadowVisible: false,
 };
 
+const MapTabContext = React.createContext<{ profile: Profile } | null>(null);
+
 /** Map tab stack: Map (HomeScreen) and Upload */
 function MapStackNavigator({
   profile,
@@ -115,6 +117,16 @@ function MapStackNavigator({
   );
 }
 
+const MemoizedMapStackNavigator = React.memo(MapStackNavigator);
+
+/** Stable component for Map tab - reads profile from context, params from route */
+function MapTabScreen() {
+  const ctx = useContext(MapTabContext);
+  const route = useRoute<RouteProp<MainTabParamList, 'Map'>>();
+  if (!ctx) return null;
+  return <MemoizedMapStackNavigator profile={ctx.profile} initialMapParams={route.params} />;
+}
+
 /** Profile tab stack: Profile, Friends, Gallery */
 function ProfileStackNavigator() {
   return (
@@ -144,6 +156,8 @@ function ProfileStackNavigator() {
     </ProfileStack.Navigator>
   );
 }
+
+const MemoizedProfileStackNavigator = React.memo(ProfileStackNavigator);
 
 /** Custom tab bar with icons, badge dots (Feed, Notifications), sliding indicator */
 function CustomTabBar(props: {
@@ -239,8 +253,14 @@ function CustomTabBar(props: {
 /** Main tab navigator - Map, Feed, Notifications, Profile */
 function MainTabs({ profile }: { profile: Profile }) {
   const insets = useSafeAreaInsets();
+  const stableProfile = useMemo(
+    () => profile,
+    [profile?.id, profile?.username, profile?.display_name, profile?.avatar_url]
+  );
+  const mapTabContextValue = useMemo(() => ({ profile: stableProfile }), [stableProfile]);
 
   return (
+    <MapTabContext.Provider value={mapTabContextValue}>
     <CardStackProvider>
       <Tab.Navigator
         tabBar={(props) => (
@@ -262,16 +282,12 @@ function MainTabs({ profile }: { profile: Profile }) {
       >
         <Tab.Screen
           name="Map"
+          component={MapTabScreen}
           options={{
             tabBarIcon: ({ focused }) => <TabIcon name="map" focused={focused} />,
-            // Disable swiping only when on Map tab (page 0); user must tap tab icons to navigate away
             swipeEnabled: false,
           }}
-        >
-          {({ route }) => (
-            <MapStackNavigator profile={profile} initialMapParams={route.params} />
-          )}
-        </Tab.Screen>
+        />
         <Tab.Screen
           name="Feed"
           component={FeedScreen}
@@ -288,13 +304,14 @@ function MainTabs({ profile }: { profile: Profile }) {
         />
         <Tab.Screen
           name="Profile"
-          component={ProfileStackNavigator}
+          component={MemoizedProfileStackNavigator}
           options={{
             tabBarIcon: ({ focused }) => <TabIcon name="user" focused={focused} />,
           }}
         />
       </Tab.Navigator>
     </CardStackProvider>
+    </MapTabContext.Provider>
   );
 }
 
