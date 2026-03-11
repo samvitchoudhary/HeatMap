@@ -81,7 +81,7 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
 
       setFriends(friendProfiles);
       setFriendIds(ids);
-      hasDataRef.current = ids.length > 0;
+      hasDataRef.current = true;
     } finally {
       if (fetchId === friendsFetchIdRef.current) setLoading(false);
     }
