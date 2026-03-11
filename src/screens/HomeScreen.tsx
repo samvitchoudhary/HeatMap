@@ -180,6 +180,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const dropdownOpacity = useRef(new Animated.Value(0)).current;
   const dropdownTranslateY = useRef(new Animated.Value(-12)).current;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchInputRef = useRef<React.ComponentRef<typeof StyledTextInput>>(null);
 
   const hasInitiallyFetched = useRef(false);
   const [hasCompletedInitialLoad, setHasCompletedInitialLoad] = useState(false);
@@ -561,6 +562,13 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   }, []);
 
   useEffect(() => {
+    if (searchExpanded) {
+      const timer = setTimeout(() => searchInputRef.current?.focus(), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [searchExpanded]);
+
+  useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!searchText.trim()) {
       setSearchResults([]);
@@ -813,12 +821,22 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       )}
 
       {showMapControls && searchExpanded && (
-        <View style={[styles.searchBarContainer, { top: insets.top + 12 }]} pointerEvents="box-none">
-          <View style={styles.searchBar}>
-            <Feather name="search" size={18} color={theme.colors.textTertiary} style={styles.searchIcon} />
+        <View
+          style={{
+            position: 'absolute',
+            top: insets.top + 12,
+            left: 16,
+            right: 68,
+            zIndex: 1000,
+          }}
+          pointerEvents="box-none"
+        >
+          <View style={styles.searchBarExpanded}>
+            <Feather name="search" size={18} color={theme.colors.textTertiary} />
             <StyledTextInput
+              ref={searchInputRef}
               embedded
-              style={styles.searchInput}
+              style={styles.searchInputExpanded}
               placeholder="Search a location..."
               value={searchText}
               onChangeText={setSearchText}
@@ -1132,11 +1150,26 @@ const styles = StyleSheet.create({
     elevation: 4,
     zIndex: 1000,
   },
-  searchBarContainer: {
-    position: 'absolute',
-    left: theme.screenPadding,
-    right: 60,
-    zIndex: 1000,
+  searchBarExpanded: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.background,
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  searchInputExpanded: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 15,
+    padding: 0,
+    height: 44,
+    minHeight: 44,
   },
   searchBar: {
     flexDirection: 'row',
