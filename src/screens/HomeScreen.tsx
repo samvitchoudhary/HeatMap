@@ -457,15 +457,25 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const handlePostDotPress = useCallback(
     (tappedPost: PostWithProfile) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      const zoom = currentRegionRef.current?.latitudeDelta ?? 0.01;
+      const tapRadius = zoom * 0.05;
+
       const nearbyPosts = posts.filter((p) => {
         const latDiff = Math.abs(p.latitude - tappedPost.latitude);
         const lngDiff = Math.abs(p.longitude - tappedPost.longitude);
-        return latDiff < 0.0005 && lngDiff < 0.0005;
+        return latDiff < tapRadius && lngDiff < tapRadius;
       });
-      const sorted = [
-        tappedPost,
-        ...nearbyPosts.filter((p) => p.id !== tappedPost.id),
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      const sorted = [...nearbyPosts].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      const tappedIndex = sorted.findIndex((p) => p.id === tappedPost.id);
+      if (tappedIndex > 0) {
+        const [tapped] = sorted.splice(tappedIndex, 1);
+        sorted.unshift(tapped);
+      }
+
       setSelectedInitialIndex(0);
       setSelectedPosts(sorted);
     },
@@ -565,38 +575,12 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
   }, []);
 
-  const handleMapPress = useCallback(
-    (event: { nativeEvent: { coordinate: { latitude: number; longitude: number } } }) => {
-      Keyboard.dismiss();
-      if (showDropdown) {
-        setShowDropdown(false);
-        return;
-      }
-      const { latitude, longitude } = event.nativeEvent.coordinate;
-      const radius = Math.max(
-        50,
-        Math.min(500, (currentRegionRef.current?.latitudeDelta ?? 0.05) * 111000 * 0.05)
-      );
-      const nearby = posts.filter((post) => {
-        const distance = getDistanceMeters(
-          latitude,
-          longitude,
-          post.latitude,
-          post.longitude
-        );
-        return distance <= radius;
-      });
-      if (nearby.length > 0) {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const sorted = [...nearby].sort(
-          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
-        setSelectedInitialIndex(0);
-        setSelectedPosts(sorted);
-      }
-    },
-    [posts, showDropdown]
-  );
+  const handleMapPress = useCallback(() => {
+    Keyboard.dismiss();
+    if (showDropdown) {
+      setShowDropdown(false);
+    }
+  }, [showDropdown]);
 
   const hasRunFocusFetch = useRef(false);
 
