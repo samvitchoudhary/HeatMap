@@ -9,7 +9,7 @@
  * - Exposes hasNewPosts for tab badge, markFeedSeen to clear on feed view
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 import { useFriends } from '../hooks';
@@ -59,49 +59,59 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const lastSeenAtRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    lastSeenAtRef.current = lastSeenAt;
+  }, [lastSeenAt]);
+
   /**
    * Counts posts from friends created after lastSeen.
    * Uses friendships to get friend IDs, then counts posts in that set.
    */
-  const checkForNewPosts = useCallback(async () => {
-    if (!profile?.id) return;
-    const lastSeen = lastSeenAt ?? (await loadLastSeen());
-    if (!lastSeen) {
-      setHasNewPosts(false);
-      return;
-    }
-
-    try {
-      if (friendIds.length === 0) {
+  const checkForNewPosts = useCallback(
+    async (seenAt?: string) => {
+      if (!profile?.id) return;
+      const lastSeen = seenAt ?? lastSeenAtRef.current ?? (await loadLastSeen());
+      if (!lastSeen) {
         setHasNewPosts(false);
         return;
       }
 
-      const { count } = await supabase
-        .from('posts')
-        .select('id', { count: 'exact', head: true })
-        .gt('created_at', lastSeen)
-        .neq('user_id', profile.id)
-        .in('user_id', friendIds)
-        .limit(50);
+      try {
+        if (friendIds.length === 0) {
+          setHasNewPosts(false);
+          return;
+        }
 
-      if (__DEV__) {
-        console.log('[FeedBadge] Friend IDs:', friendIds, 'New posts count:', count);
+        const { count } = await supabase
+          .from('posts')
+          .select('id', { count: 'exact', head: true })
+          .gt('created_at', lastSeen)
+          .neq('user_id', profile.id)
+          .in('user_id', friendIds)
+          .limit(50);
+
+        if (__DEV__) {
+          console.log('[FeedBadge] Friend IDs:', friendIds, 'New posts count:', count);
+        }
+        setHasNewPosts((count ?? 0) > 0);
+      } catch {
+        setHasNewPosts(false);
       }
-      setHasNewPosts((count ?? 0) > 0);
-    } catch {
-      setHasNewPosts(false);
-    }
-  }, [profile?.id, lastSeenAt, loadLastSeen, friendIds]);
+    },
+    [profile?.id, loadLastSeen, friendIds]
+  );
 
   useEffect(() => {
     loadLastSeen();
   }, [loadLastSeen]);
 
-  /** Poll for new posts on mount and every 60 seconds */
+  /** Poll for new posts on mount and every 60 seconds - does not restart when lastSeenAt changes */
   useEffect(() => {
-    checkForNewPosts();
-    const interval = setInterval(checkForNewPosts, 60000);
+    const checkFeed = () => checkForNewPosts(lastSeenAtRef.current ?? undefined);
+    checkFeed();
+    const interval = setInterval(checkFeed, 60000);
     return () => clearInterval(interval);
   }, [checkForNewPosts]);
 

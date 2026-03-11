@@ -39,6 +39,44 @@ import { SmoothImage } from '../components/SmoothImage';
 
 const GRID_GAP = 2;
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+const friendProfileSkeletonStyles = StyleSheet.create({
+  friendProfileSkeleton: { padding: 20, alignItems: 'center' },
+  friendProfileSkeletonStats: { flexDirection: 'row', marginTop: 20, gap: 40 },
+  friendProfileSkeletonStat: { alignItems: 'center' },
+  friendProfileSkeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 20,
+    gap: 2,
+    width: '100%',
+  },
+});
+
+const FriendProfileSkeleton = React.memo(() => (
+  <View style={friendProfileSkeletonStyles.friendProfileSkeleton}>
+    <Skeleton width={80} height={80} borderRadius={40} />
+    <Skeleton width={140} height={18} borderRadius={4} style={{ marginTop: 14 }} />
+    <Skeleton width={100} height={14} borderRadius={4} style={{ marginTop: 8 }} />
+    <View style={friendProfileSkeletonStyles.friendProfileSkeletonStats}>
+      <View style={friendProfileSkeletonStyles.friendProfileSkeletonStat}>
+        <Skeleton width={30} height={18} borderRadius={4} />
+        <Skeleton width={40} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+      </View>
+      <View style={friendProfileSkeletonStyles.friendProfileSkeletonStat}>
+        <Skeleton width={30} height={18} borderRadius={4} />
+        <Skeleton width={50} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+      </View>
+    </View>
+    <Skeleton width="90%" height={40} borderRadius={12} style={{ marginTop: 20 }} />
+    <View style={friendProfileSkeletonStyles.friendProfileSkeletonGrid}>
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <Skeleton key={i} width="32.5%" height={120} borderRadius={4} />
+      ))}
+    </View>
+  </View>
+));
+FriendProfileSkeleton.displayName = 'FriendProfileSkeleton';
 const GRID_CELL_SIZE = (SCREEN_WIDTH - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
 
 type FriendshipStatus = 'friends' | 'pending_sent' | 'pending_received' | 'none';
@@ -330,30 +368,6 @@ export function FriendProfileScreen() {
   const gridSlots = Array.from({ length: GRID_SLOTS }, (_, i) => gridPosts[i] ?? null);
   const showFriendProfileSkeleton = loading && profile === null;
 
-  const FriendProfileSkeleton = () => (
-    <View style={styles.friendProfileSkeleton}>
-      <Skeleton width={80} height={80} borderRadius={40} />
-      <Skeleton width={140} height={18} borderRadius={4} style={{ marginTop: 14 }} />
-      <Skeleton width={100} height={14} borderRadius={4} style={{ marginTop: 8 }} />
-      <View style={styles.friendProfileSkeletonStats}>
-        <View style={styles.friendProfileSkeletonStat}>
-          <Skeleton width={30} height={18} borderRadius={4} />
-          <Skeleton width={40} height={12} borderRadius={4} style={{ marginTop: 4 }} />
-        </View>
-        <View style={styles.friendProfileSkeletonStat}>
-          <Skeleton width={30} height={18} borderRadius={4} />
-          <Skeleton width={50} height={12} borderRadius={4} style={{ marginTop: 4 }} />
-        </View>
-      </View>
-      <Skeleton width="90%" height={40} borderRadius={12} style={{ marginTop: 20 }} />
-      <View style={styles.friendProfileSkeletonGrid}>
-        {[1, 2, 3, 4, 5, 6].map((i) => (
-          <Skeleton key={i} width="32.5%" height={120} borderRadius={4} />
-        ))}
-      </View>
-    </View>
-  );
-
   useEffect(() => {
     if (targetUserId && myUserId && targetUserId === myUserId) {
       navigation.goBack();
@@ -536,25 +550,6 @@ export function FriendProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  friendProfileSkeleton: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  friendProfileSkeletonStats: {
-    flexDirection: 'row',
-    marginTop: 20,
-    gap: 40,
-  },
-  friendProfileSkeletonStat: {
-    alignItems: 'center',
-  },
-  friendProfileSkeletonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 20,
-    gap: 2,
-    width: '100%',
-  },
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',

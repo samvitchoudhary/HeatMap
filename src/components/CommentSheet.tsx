@@ -663,12 +663,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  commentList: {
-    flex: 1,
-  },
-  commentListContent: {
-    paddingVertical: theme.spacing.sm,
-  },
   loader: {
     marginTop: theme.spacing.md,
   },
@@ -676,13 +670,6 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
     marginTop: theme.spacing.sm,
-  },
-  commentRow: {
-    flexDirection: 'row',
-    marginBottom: theme.listRowGap,
-  },
-  commentAvatarWrap: {
-    marginRight: theme.spacing.sm,
   },
   commentContent: {
     flex: 1,

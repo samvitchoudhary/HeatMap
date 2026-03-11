@@ -55,6 +55,52 @@ type FeedScreenNav = MaterialTopTabNavigationProp<MainTabParamList>;
  * - recencyScore: 1.0 for posts from last hour, decays over 48 hours
  * - engagementBonus: 0.1 per reaction/comment, capped at 0.5
  */
+const FeedSkeleton = React.memo(() => (
+  <View style={feedSkeletonStyles.skeletonFeed}>
+    {[1, 2, 3].map((i) => (
+      <View key={i} style={feedSkeletonStyles.skeletonCard}>
+        <Skeleton width="100%" height={300} borderRadius={0} />
+        <View style={feedSkeletonStyles.skeletonInfo}>
+          <View style={feedSkeletonStyles.skeletonHeader}>
+            <Skeleton width={36} height={36} borderRadius={18} />
+            <View style={feedSkeletonStyles.skeletonHeaderText}>
+              <Skeleton width={120} height={14} borderRadius={4} />
+              <Skeleton width={80} height={12} borderRadius={4} style={{ marginTop: 6 }} />
+            </View>
+          </View>
+          <Skeleton width="70%" height={12} borderRadius={4} style={{ marginTop: 4 }} />
+        </View>
+        <View style={feedSkeletonStyles.skeletonReactions}>
+          {[1, 2, 3, 4, 5, 6].map((j) => (
+            <Skeleton key={j} width={28} height={28} borderRadius={14} style={{ marginRight: 12 }} />
+          ))}
+        </View>
+      </View>
+    ))}
+  </View>
+));
+FeedSkeleton.displayName = 'FeedSkeleton';
+
+const feedSkeletonStyles = StyleSheet.create({
+  skeletonFeed: { padding: 16 },
+  skeletonCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    ...theme.shadows.card,
+  },
+  skeletonInfo: { padding: 14 },
+  skeletonHeader: { flexDirection: 'row', alignItems: 'center' },
+  skeletonHeaderText: { marginLeft: 10 },
+  skeletonReactions: {
+    flexDirection: 'row',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.borderLight,
+  },
+});
+
 function scoreFeedPost(post: FeedPost): number {
   const ageMs = Date.now() - new Date(post.created_at).getTime();
   const ageHours = ageMs / (1000 * 60 * 60);
@@ -100,31 +146,6 @@ export function FeedScreen() {
     const margins = 20;
     return photoHeight + infoHeight + barHeight + margins;
   }, []);
-
-  const FeedSkeleton = () => (
-    <View style={styles.skeletonFeed}>
-      {[1, 2, 3].map((i) => (
-        <View key={i} style={styles.skeletonCard}>
-          <Skeleton width="100%" height={300} borderRadius={0} />
-          <View style={styles.skeletonInfo}>
-            <View style={styles.skeletonHeader}>
-              <Skeleton width={36} height={36} borderRadius={18} />
-              <View style={styles.skeletonHeaderText}>
-                <Skeleton width={120} height={14} borderRadius={4} />
-                <Skeleton width={80} height={12} borderRadius={4} style={{ marginTop: 6 }} />
-              </View>
-            </View>
-            <Skeleton width="70%" height={12} borderRadius={4} style={{ marginTop: 4 }} />
-          </View>
-          <View style={styles.skeletonReactions}>
-            {[1, 2, 3, 4, 5, 6].map((j) => (
-              <Skeleton key={j} width={28} height={28} borderRadius={14} style={{ marginRight: 12 }} />
-            ))}
-          </View>
-        </View>
-      ))}
-    </View>
-  );
 
   const fetchPage = useCallback(
     async (offset: number, append: boolean, silent = false) => {
@@ -421,39 +442,8 @@ const styles = StyleSheet.create({
   listContent: {
     paddingTop: theme.spacing.sm,
   },
-  loadingWrap: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   skeletonWrap: {
     flex: 1,
-  },
-  skeletonFeed: {
-    padding: 16,
-  },
-  skeletonCard: {
-    backgroundColor: '#FFF',
-    borderRadius: 16,
-    marginBottom: 16,
-    overflow: 'hidden',
-    ...theme.shadows.card,
-  },
-  skeletonInfo: {
-    padding: 14,
-  },
-  skeletonHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  skeletonHeaderText: {
-    marginLeft: 10,
-  },
-  skeletonReactions: {
-    flexDirection: 'row',
-    padding: 12,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.borderLight,
   },
   emptyState: {
     flex: 1,

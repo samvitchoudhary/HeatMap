@@ -238,15 +238,7 @@ export const MapFAB = memo(function MapFAB({
           onPress={handleFabOverlayPress}
         >
           <Animated.View
-            style={[
-              styles.fabOverlay,
-              {
-                opacity: fabOverlayOpacity.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0, 1],
-                }),
-              },
-            ]}
+            style={[styles.fabOverlay, { opacity: fabOverlayOpacity }]}
             pointerEvents="none"
           />
         </Pressable>

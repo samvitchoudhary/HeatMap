@@ -54,6 +54,44 @@ import { StyledTextInput } from '../components/StyledTextInput';
 const USERNAME_REGEX = /^[a-z0-9_]+$/;
 const GRID_GAP = 2;
 
+const profileSkeletonStyles = StyleSheet.create({
+  profileSkeleton: { padding: 20, alignItems: 'center' },
+  profileSkeletonStats: { flexDirection: 'row', marginTop: 20, gap: 40 },
+  profileSkeletonStat: { alignItems: 'center' },
+  profileSkeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 20,
+    gap: 2,
+    width: '100%',
+  },
+});
+
+const ProfileSkeleton = React.memo(() => (
+  <View style={profileSkeletonStyles.profileSkeleton}>
+    <Skeleton width={80} height={80} borderRadius={40} />
+    <Skeleton width={140} height={18} borderRadius={4} style={{ marginTop: 14 }} />
+    <Skeleton width={100} height={14} borderRadius={4} style={{ marginTop: 8 }} />
+    <View style={profileSkeletonStyles.profileSkeletonStats}>
+      <View style={profileSkeletonStyles.profileSkeletonStat}>
+        <Skeleton width={30} height={18} borderRadius={4} />
+        <Skeleton width={40} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+      </View>
+      <View style={profileSkeletonStyles.profileSkeletonStat}>
+        <Skeleton width={30} height={18} borderRadius={4} />
+        <Skeleton width={50} height={12} borderRadius={4} style={{ marginTop: 4 }} />
+      </View>
+    </View>
+    <Skeleton width="90%" height={40} borderRadius={12} style={{ marginTop: 20 }} />
+    <View style={profileSkeletonStyles.profileSkeletonGrid}>
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <Skeleton key={i} width="32.5%" height={120} borderRadius={4} />
+      ))}
+    </View>
+  </View>
+));
+ProfileSkeleton.displayName = 'ProfileSkeleton';
+
 /** Username must be lowercase, alphanumeric + underscores */
 function validateUsername(value: string): boolean {
   const normalized = value.toLowerCase().trim();
@@ -424,29 +462,6 @@ export function ProfileScreen() {
   const showProfileSkeletons = !profileDataReady && !!userId;
   const gridPosts = posts.slice(0, 9);
 
-  const ProfileSkeleton = () => (
-    <View style={styles.profileSkeleton}>
-      <Skeleton width={80} height={80} borderRadius={40} />
-      <Skeleton width={140} height={18} borderRadius={4} style={{ marginTop: 14 }} />
-      <Skeleton width={100} height={14} borderRadius={4} style={{ marginTop: 8 }} />
-      <View style={styles.profileSkeletonStats}>
-        <View style={styles.profileSkeletonStat}>
-          <Skeleton width={30} height={18} borderRadius={4} />
-          <Skeleton width={40} height={12} borderRadius={4} style={{ marginTop: 4 }} />
-        </View>
-        <View style={styles.profileSkeletonStat}>
-          <Skeleton width={30} height={18} borderRadius={4} />
-          <Skeleton width={50} height={12} borderRadius={4} style={{ marginTop: 4 }} />
-        </View>
-      </View>
-      <Skeleton width="90%" height={40} borderRadius={12} style={{ marginTop: 20 }} />
-      <View style={styles.profileSkeletonGrid}>
-        {[1, 2, 3, 4, 5, 6].map((i) => (
-          <Skeleton key={i} width="32.5%" height={120} borderRadius={4} />
-        ))}
-      </View>
-    </View>
-  );
   const hasMorePosts = posts.length > 9;
   const GRID_SLOTS = 9;
   const gridSlots = Array.from({ length: GRID_SLOTS }, (_, i) => gridPosts[i] ?? null);
@@ -742,25 +757,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.border,
     marginBottom: theme.spacing.lg,
-  },
-  profileSkeleton: {
-    padding: 20,
-    alignItems: 'center',
-  },
-  profileSkeletonStats: {
-    flexDirection: 'row',
-    marginTop: 20,
-    gap: 40,
-  },
-  profileSkeletonStat: {
-    alignItems: 'center',
-  },
-  profileSkeletonGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 20,
-    gap: 2,
-    width: '100%',
   },
   secondaryButtonText: {
     fontSize: 16,

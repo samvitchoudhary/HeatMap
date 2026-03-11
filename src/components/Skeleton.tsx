@@ -53,8 +53,8 @@ export function Skeleton({
       style={[
         styles.skeleton,
         {
-          width: typeof width === 'string' ? width : width,
-          height: typeof height === 'string' ? height : height,
+          width,
+          height,
           borderRadius,
           opacity,
         },
