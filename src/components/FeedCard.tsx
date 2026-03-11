@@ -50,13 +50,15 @@ export type FeedLatestComment = {
   profiles: { display_name: string } | null;
 };
 
+type FeedPostWithCounts = PostWithProfile & {
+  reaction_counts?: Record<string, number>;
+  user_reaction?: string | null;
+  comment_count?: number;
+};
+
 type FeedCardProps = {
-  post: PostWithProfile;
+  post: FeedPostWithCounts;
   isNew?: boolean;
-  reactionCounts: Record<string, number>;
-  userReaction: string | null;
-  commentCount: number;
-  latestComment: FeedLatestComment | null;
   onReactionChange?: (postId: string, counts: Record<string, number>, userReaction: string | null) => void;
   onCommentPosted?: (postId: string, count: number, latestComment: FeedLatestComment | null) => void;
   onVenuePress?: (latitude: number, longitude: number) => void;
@@ -70,10 +72,6 @@ type FeedCardProps = {
 const FeedCardInner = function FeedCard({
   post,
   isNew,
-  reactionCounts: initialReactionCounts,
-  userReaction: initialUserReaction,
-  commentCount,
-  latestComment,
   onReactionChange,
   onCommentPosted,
   onVenuePress,
@@ -85,6 +83,10 @@ const FeedCardInner = function FeedCard({
 }: FeedCardProps) {
   const { session } = useAuth();
   const userId = session?.user?.id;
+
+  const initialReactionCounts = post.reaction_counts ?? {};
+  const initialUserReaction = post.user_reaction ?? null;
+  const commentCount = post.comment_count ?? 0;
 
   const [imageError, setImageError] = useState(false);
   const [heartVisible, setHeartVisible] = useState(false);

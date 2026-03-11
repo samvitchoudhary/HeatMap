@@ -37,9 +37,12 @@ import { FeedCard, type FeedLatestComment } from '../components/FeedCard';
 import { PhotoViewer } from '../components/PhotoViewer';
 import { Skeleton } from '../components/Skeleton';
 
-export type FeedReactionCounts = Record<string, Record<string, number>>;
-export type FeedUserReactions = Record<string, string | null>;
-export type FeedCommentCounts = Record<string, number>;
+/** Feed post with embedded reaction/comment counts from joined query */
+export type FeedPost = PostWithProfile & {
+  reaction_counts: Record<string, number>;
+  user_reaction: string | null;
+  comment_count: number;
+};
 
 type FeedScreenNav = MaterialTopTabNavigationProp<MainTabParamList>;
 
@@ -52,16 +55,15 @@ type FeedScreenNav = MaterialTopTabNavigationProp<MainTabParamList>;
  * - recencyScore: 1.0 for posts from last hour, decays over 48 hours
  * - engagementBonus: 0.1 per reaction/comment, capped at 0.5
  */
-function scoreFeedPost(
-  post: PostWithProfile,
-  reactionCount: number,
-  commentCount: number
-): number {
+function scoreFeedPost(post: FeedPost): number {
   const ageMs = Date.now() - new Date(post.created_at).getTime();
   const ageHours = ageMs / (1000 * 60 * 60);
 
   // Recency: 1.0 for brand new, approaches 0 after 48 hours
   const recencyScore = Math.max(0, 1 - ageHours / 48);
+
+  const reactionCount = Object.values(post.reaction_counts ?? {}).reduce((s, c) => s + c, 0);
+  const commentCount = post.comment_count ?? 0;
 
   // Engagement: small bonus for reactions and comments
   const engagementBonus = Math.min(0.5, (reactionCount + commentCount) * 0.1);
@@ -76,11 +78,7 @@ export function FeedScreen() {
   const { friendIds } = useFriends();
   const { removePost } = usePosts();
   const { markFeedSeen, lastSeenAt } = useFeedBadge();
-  const [posts, setPosts] = useState<PostWithProfile[]>([]);
-  const [reactionsByPostId, setReactionsByPostId] = useState<FeedReactionCounts>({});
-  const [userReactionsByPostId, setUserReactionsByPostId] = useState<FeedUserReactions>({});
-  const [commentCountByPostId, setCommentCountByPostId] = useState<FeedCommentCounts>({});
-  const [latestCommentByPostId, setLatestCommentByPostId] = useState<Record<string, FeedLatestComment | null>>({});
+  const [posts, setPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -149,106 +147,67 @@ export function FeedScreen() {
         if (fetchId !== feedFetchIdRef.current) return;
         setPosts([]);
         setHasMore(false);
-        setReactionsByPostId({});
-        setUserReactionsByPostId({});
-        setCommentCountByPostId({});
-        setLatestCommentByPostId({});
         setLoading(false);
         setLoadingMore(false);
         return;
       }
 
       try {
-      const { data: postsData, error } = await supabase
-        .from('posts')
-        .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
-        .neq('user_id', userId)
-        .in('user_id', friendIds)
-        .order('created_at', { ascending: false })
-        .range(offset, offset + PAGE_SIZE - 1);
+        const { data: postsData, error } = await supabase
+          .from('posts')
+          .select(
+            '*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)), comments(count)'
+          )
+          .neq('user_id', userId)
+          .in('user_id', friendIds)
+          .order('created_at', { ascending: false })
+          .range(offset, offset + PAGE_SIZE - 1);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      if (fetchId !== feedFetchIdRef.current) return;
-
-      const postsList = (postsData ?? []) as PostWithProfile[];
-      setHasMore(postsList.length === PAGE_SIZE);
-
-      if (append) {
-        setPosts((prev) => [...prev, ...postsList]);
-      } else {
-        setPosts(postsList);
-      }
-
-      const postIds = postsList.map((p) => p.id);
-      if (postIds.length === 0) {
         if (fetchId !== feedFetchIdRef.current) return;
-        if (!append) {
-          setReactionsByPostId({});
-          setUserReactionsByPostId({});
-          setCommentCountByPostId({});
-          setLatestCommentByPostId({});
+
+        const rawPosts = (postsData ?? []) as (PostWithProfile & { comments?: { count: number }[] })[];
+        const postIds = rawPosts.map((p) => p.id);
+
+        const countsByPost: Record<string, Record<string, number>> = {};
+        const userReactionsByPost: Record<string, string | null> = {};
+
+        if (postIds.length > 0) {
+          const { data: reactions } = await supabase
+            .from('reactions')
+            .select('post_id, emoji, user_id')
+            .in('post_id', postIds);
+
+          for (const row of reactions ?? []) {
+            const pid = row.post_id as string;
+            const emoji = row.emoji as string;
+            if (!countsByPost[pid]) countsByPost[pid] = {};
+            countsByPost[pid][emoji] = (countsByPost[pid][emoji] ?? 0) + 1;
+            if (row.user_id === userId) {
+              userReactionsByPost[pid] = emoji;
+            }
+          }
         }
-        setLoading(false);
-        setLoadingMore(false);
-        return;
-      }
 
-      const { data: reactions } = await supabase
-        .from('reactions')
-        .select('post_id, emoji, user_id')
-        .in('post_id', postIds)
-        .limit(500);
-
-      const { data: comments } = await supabase
-        .from('comments')
-        .select('id, post_id, content, profiles:user_id(display_name, username)')
-        .in('post_id', postIds)
-        .order('created_at', { ascending: false })
-        .limit(200);
-
-      const countsByPost: Record<string, Record<string, number>> = {};
-      const userReactionsByPost: Record<string, string | null> = {};
-      for (const row of reactions ?? []) {
-        const pid = row.post_id as string;
-        const emoji = row.emoji as string;
-        if (!countsByPost[pid]) countsByPost[pid] = {};
-        countsByPost[pid][emoji] = (countsByPost[pid][emoji] ?? 0) + 1;
-        if (row.user_id === userId) {
-          userReactionsByPost[pid] = emoji;
-        }
-      }
-
-      const commentCountByPost: Record<string, number> = {};
-      const latestByPost: Record<string, FeedLatestComment | null> = {};
-      const seenPostIds = new Set<string>();
-      for (const c of comments ?? []) {
-        const pid = c.post_id as string;
-        commentCountByPost[pid] = (commentCountByPost[pid] ?? 0) + 1;
-        if (!seenPostIds.has(pid)) {
-          seenPostIds.add(pid);
-          latestByPost[pid] = {
-            id: c.id,
-            content: c.content,
-            profiles: (c as { profiles?: { display_name: string } | null }).profiles ?? null,
+        const postsList: FeedPost[] = rawPosts.map((p) => {
+          const { comments, ...rest } = p;
+          const commentCount = (comments as { count: number }[] | undefined)?.[0]?.count ?? 0;
+          return {
+            ...rest,
+            reaction_counts: countsByPost[p.id] ?? {},
+            user_reaction: userReactionsByPost[p.id] ?? null,
+            comment_count: commentCount,
           };
+        });
+
+        setHasMore(postsList.length === PAGE_SIZE);
+
+        if (append) {
+          setPosts((prev) => [...prev, ...postsList]);
+        } else {
+          setPosts(postsList);
         }
-      }
-
-      if (fetchId !== feedFetchIdRef.current) return;
-
-      if (append) {
-        setReactionsByPostId((prev) => ({ ...prev, ...countsByPost }));
-        setUserReactionsByPostId((prev) => ({ ...prev, ...userReactionsByPost }));
-        setCommentCountByPostId((prev) => ({ ...prev, ...commentCountByPost }));
-        setLatestCommentByPostId((prev) => ({ ...prev, ...latestByPost }));
-      } else {
-        setReactionsByPostId(countsByPost);
-        setUserReactionsByPostId(userReactionsByPost);
-        setCommentCountByPostId(commentCountByPost);
-        setLatestCommentByPostId(latestByPost);
-      }
-
       } catch (err) {
         if (__DEV__) console.error('Failed to fetch feed:', err);
       } finally {
@@ -313,21 +272,19 @@ export function FeedScreen() {
     setFadingOutId(null);
   }, [removePost]);
 
-  const handleReactionChange = useCallback(
-    (postId: string, counts: Record<string, number>, userReaction: string | null) => {
-      setReactionsByPostId((prev) => ({ ...prev, [postId]: counts }));
-      setUserReactionsByPostId((prev) => ({ ...prev, [postId]: userReaction }));
-    },
-    []
-  );
+  const handleReactionChange = useCallback((postId: string, counts: Record<string, number>, userReaction: string | null) => {
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId ? { ...p, reaction_counts: counts, user_reaction: userReaction } : p
+      )
+    );
+  }, []);
 
-  const handleCommentPosted = useCallback(
-    (postId: string, count: number, latestComment: FeedLatestComment | null) => {
-      setCommentCountByPostId((prev) => ({ ...prev, [postId]: count }));
-      setLatestCommentByPostId((prev) => ({ ...prev, [postId]: latestComment }));
-    },
-    []
-  );
+  const handleCommentPosted = useCallback((postId: string, count: number, _latestComment: FeedLatestComment | null) => {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, comment_count: count } : p))
+    );
+  }, []);
 
   const handleVenuePress = useCallback(
     (latitude: number, longitude: number) => {
@@ -352,17 +309,8 @@ export function FeedScreen() {
   }
 
   const sortedPosts = useMemo(() => {
-    return [...posts].sort((a, b) => {
-      const reactionCountA = Object.values(reactionsByPostId[a.id] ?? {}).reduce((s, c) => s + c, 0);
-      const commentCountA = commentCountByPostId[a.id] ?? 0;
-      const reactionCountB = Object.values(reactionsByPostId[b.id] ?? {}).reduce((s, c) => s + c, 0);
-      const commentCountB = commentCountByPostId[b.id] ?? 0;
-      return (
-        scoreFeedPost(b, reactionCountB, commentCountB) -
-        scoreFeedPost(a, reactionCountA, commentCountA)
-      );
-    });
-  }, [posts, reactionsByPostId, commentCountByPostId]);
+    return [...posts].sort((a, b) => scoreFeedPost(b) - scoreFeedPost(a));
+  }, [posts]);
 
   const emptyComponent =
     posts.length === 0 && !loading ? (
@@ -416,10 +364,6 @@ export function FeedScreen() {
                 item.user_id !== profile?.id &&
                 new Date(item.created_at) > new Date(lastSeenAt)
               }
-              reactionCounts={reactionsByPostId[item.id] ?? {}}
-              userReaction={userReactionsByPostId[item.id] ?? null}
-              commentCount={commentCountByPostId[item.id] ?? 0}
-              latestComment={latestCommentByPostId[item.id] ?? null}
               onReactionChange={handleReactionChange}
               onCommentPosted={handleCommentPosted}
               onVenuePress={handleVenuePress}
