@@ -1,10 +1,16 @@
 /**
  * imageUtils.ts
  *
- * Shared image utilities: compression, EXIF parsing.
+ * Shared image utilities: compression, picker options.
  */
 
+import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+
+export const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
+  allowsEditing: true,
+  quality: 0.7,
+};
 
 export async function compressImage(uri: string): Promise<string> {
   const result = await manipulateAsync(

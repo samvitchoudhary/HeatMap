@@ -46,3 +46,17 @@ export function parseExifGps(
   if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) return null;
   return { latitude, longitude };
 }
+
+/**
+ * Parse EXIF date (YYYY:MM:DD HH:MM:SS) to ISO string.
+ */
+export function parseExifDate(exifDate: unknown): string | null {
+  if (typeof exifDate !== 'string') return null;
+  try {
+    const cleaned = exifDate.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+    const date = new Date(cleaned);
+    return isNaN(date.getTime()) ? null : date.toISOString();
+  } catch {
+    return null;
+  }
+}

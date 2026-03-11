@@ -18,49 +18,13 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import type { PostWithProfile, PostTag } from '../types';
+import type { PostWithProfile } from '../types';
 import { theme } from '../lib/theme';
 import { timeAgo } from '../lib/timeAgo';
 import { ReactionBar } from './ReactionBar';
+import { TaggedLine } from './TaggedLine';
 
 const BOTTOM_BAR_HEIGHT = 50;
-
-/** Renders "with @user1, @user2 +N others" - tappable when onProfilePress provided */
-function TaggedLine({
-  tags,
-  onProfilePress,
-}: {
-  tags: PostTag[] | undefined;
-  onProfilePress?: (userId: string) => void;
-}) {
-  if (!tags || tags.length === 0) return null;
-  const maxShow = 2;
-  const shown = tags.slice(0, maxShow);
-  const rest = tags.length - maxShow;
-  return (
-    <Text style={styles.infoTaggedLine} numberOfLines={1}>
-      {' with '}
-      {shown.map((t, i) => {
-        const username = t.profiles?.username ?? 'deleted';
-        const content = `@${username}`;
-        return onProfilePress ? (
-          <Text key={t.tagged_user_id}>
-            {i > 0 ? ', ' : ''}
-            <Text
-              style={styles.infoTaggedLink}
-              onPress={() => onProfilePress(t.tagged_user_id)}
-            >
-              {content}
-            </Text>
-          </Text>
-        ) : (
-          <Text key={t.tagged_user_id}>{i > 0 ? `, ${content}` : content}</Text>
-        );
-      })}
-      {rest > 0 ? ` +${rest} others` : ''}
-    </Text>
-  );
-}
 
 type CardImageStyles = {
   cardImageWrap: object;
@@ -439,16 +403,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: theme.colors.text,
-  },
-  infoTaggedLine: {
-    fontSize: 12,
-    fontStyle: 'italic',
-    color: theme.colors.textSecondary,
-    marginTop: 1,
-    marginBottom: 2,
-  },
-  infoTaggedLink: {
-    color: theme.colors.primary,
   },
   infoVenueRow: {
     flexDirection: 'row',

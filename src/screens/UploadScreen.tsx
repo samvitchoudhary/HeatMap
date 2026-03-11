@@ -34,7 +34,6 @@ import type { RouteProp } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
@@ -48,40 +47,11 @@ import { SuccessToast } from '../components/SuccessToast';
 import { Avatar } from '../components/Avatar';
 import type { MapStackParamList } from '../navigation/types';
 import type { PostWithProfile } from '../types';
-import { parseExifGps } from '../lib/exif';
+import { parseExifGps, parseExifDate } from '../lib/exif';
 import { withRetry } from '../lib/retry';
+import { compressImage, IMAGE_OPTIONS } from '../lib/imageUtils';
+import { requestCameraPermission, requestMediaLibraryPermission } from '../lib/permissions';
 import { CATEGORIES, DEFAULT_CATEGORY, type CategoryKey } from '../lib/categories';
-
-const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
-  allowsEditing: true,
-  quality: 0.7,
-};
-
-/**
- * Compresses and resizes an image to a max width of 1080px (Instagram-quality).
- * Keeps aspect ratio. Compresses to JPEG at 0.7 quality.
- * This dramatically reduces file size (typically 10-20MB → 200-500KB).
- */
-const compressImage = async (uri: string): Promise<string> => {
-  const result = await manipulateAsync(
-    uri,
-    [{ resize: { width: 1080 } }],
-    { compress: 0.7, format: SaveFormat.JPEG }
-  );
-  return result.uri;
-};
-
-/** Parse EXIF date (YYYY:MM:DD HH:MM:SS) to ISO string. */
-function parseExifDate(exifDate: unknown): string | null {
-  if (typeof exifDate !== 'string') return null;
-  try {
-    const cleaned = exifDate.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
-    const date = new Date(cleaned);
-    return isNaN(date.getTime()) ? null : date.toISOString();
-  } catch {
-    return null;
-  }
-}
 
 export function UploadScreen() {
   const insets = useSafeAreaInsets();
@@ -175,30 +145,6 @@ export function UploadScreen() {
       };
     }, [route.params?.imageUri, route.params?.exifLocation, editMode, editPost])
   );
-
-  async function requestCameraPermission(): Promise<boolean> {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Camera Permission Required',
-        'HeatMap needs camera access to take photos. Please enable it in your device settings.',
-      );
-      return false;
-    }
-    return true;
-  }
-
-  async function requestMediaLibraryPermission(): Promise<boolean> {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Photo Library Permission Required',
-        'HeatMap needs access to your photo library to choose photos. Please enable it in your device settings.',
-      );
-      return false;
-    }
-    return true;
-  }
 
   async function requestLocationPermission(): Promise<boolean> {
     const { status } = await Location.requestForegroundPermissionsAsync();

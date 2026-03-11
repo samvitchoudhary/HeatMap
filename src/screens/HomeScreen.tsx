@@ -36,6 +36,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useCardStack } from '../lib/CardStackContext';
 import type { MapStackParamList, RootStackNavigationProp } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
+import { IMAGE_OPTIONS } from '../lib/imageUtils';
+import { requestCameraPermission, requestMediaLibraryPermission } from '../lib/permissions';
 import { getCategoryByKey } from '../lib/categories';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -49,11 +51,6 @@ import { StyledTextInput } from '../components/StyledTextInput';
 type HomeScreenProps = {
   profile: Profile | null;
   route?: RouteProp<MapStackParamList, 'Map'>;
-};
-
-const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
-  allowsEditing: true,
-  quality: 0.7,
 };
 
 /** Max distance (m) for "nearby" posts when tapping map */
@@ -337,30 +334,6 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     runCloseAnimation();
   }, [runCloseAnimation]);
-
-  async function requestCameraPermission(): Promise<boolean> {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Camera Permission Required',
-        'HeatMap needs camera access to take photos. Please enable it in your device settings.',
-      );
-      return false;
-    }
-    return true;
-  }
-
-  async function requestMediaLibraryPermission(): Promise<boolean> {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(
-        'Photo Library Permission Required',
-        'HeatMap needs access to your photo library to choose photos. Please enable it in your device settings.',
-      );
-      return false;
-    }
-    return true;
-  }
 
   const handleFabCamera = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

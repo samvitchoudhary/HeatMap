@@ -43,6 +43,7 @@ import { useFriends, usePosts } from '../hooks';
 import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
+import { requestCameraPermission, requestMediaLibraryPermission } from '../lib/permissions';
 import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
 import { Skeleton } from '../components/Skeleton';
@@ -254,14 +255,8 @@ export function ProfileScreen() {
         {
           text: 'Take Photo',
           onPress: async () => {
-            const { status } = await ImagePicker.requestCameraPermissionsAsync();
-            if (status !== 'granted') {
-              Alert.alert(
-                'Camera Permission Required',
-                'HeatMap needs camera access to take a profile photo.',
-              );
-              return;
-            }
+            const hasPermission = await requestCameraPermission();
+            if (!hasPermission) return;
             await pickAndUploadAvatar(() =>
               ImagePicker.launchCameraAsync({
                 mediaTypes: ['images'],
@@ -275,14 +270,8 @@ export function ProfileScreen() {
         {
           text: 'Choose from Library',
           onPress: async () => {
-            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-            if (status !== 'granted') {
-              Alert.alert(
-                'Photo Library Permission Required',
-                'HeatMap needs access to your photo library to change your profile photo.',
-              );
-              return;
-            }
+            const hasPermission = await requestMediaLibraryPermission();
+            if (!hasPermission) return;
             await pickAndUploadAvatar(() =>
               ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],

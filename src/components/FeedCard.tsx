@@ -23,7 +23,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import type { PostWithProfile, PostTag } from '../types';
+import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
@@ -32,6 +32,7 @@ import { ReactionBar } from './ReactionBar';
 import { CommentSheet } from './CommentSheet';
 import { timeAgo } from '../lib/timeAgo';
 import { getCategoryByKey } from '../lib/categories';
+import { TaggedLine } from './TaggedLine';
 
 const CARD_MARGIN_H = 20;
 const CARD_MARGIN_V = 10;
@@ -41,34 +42,6 @@ const BOTTOM_BAR_HEIGHT = 50;
 const CARD_BORDER_RADIUS = 16;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CARD_WIDTH = SCREEN_WIDTH - CARD_MARGIN_H * 2;
-
-/** Renders "with @user1, @user2 +N others" for tagged users */
-function TaggedLine({ tags, onProfilePress }: { tags: PostTag[] | undefined; onProfilePress?: (userId: string) => void }) {
-  if (!tags || tags.length === 0) return null;
-  const maxShow = 2;
-  const shown = tags.slice(0, maxShow);
-  const rest = tags.length - maxShow;
-  return (
-    <Text style={styles.infoTaggedLine} numberOfLines={1}>
-      {' with '}
-      {shown.map((t, i) => {
-        const username = t.profiles?.username ?? 'deleted';
-        const content = `@${username}`;
-        return onProfilePress ? (
-          <Text key={t.tagged_user_id}>
-            {i > 0 ? ', ' : ''}
-            <Text style={styles.infoTaggedLink} onPress={() => onProfilePress(t.tagged_user_id)}>
-              {content}
-            </Text>
-          </Text>
-        ) : (
-          <Text key={t.tagged_user_id}>{i > 0 ? `, ${content}` : content}</Text>
-        );
-      })}
-      {rest > 0 ? ` +${rest} others` : ''}
-    </Text>
-  );
-}
 
 /** Latest comment preview - used for "View N comments" preview text */
 export type FeedLatestComment = {
@@ -610,16 +583,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.text,
     marginBottom: 2,
-  },
-  infoTaggedLine: {
-    fontSize: 12,
-    fontStyle: 'italic',
-    color: theme.colors.textSecondary,
-    marginTop: 1,
-    marginBottom: 2,
-  },
-  infoTaggedLink: {
-    color: theme.colors.primary,
   },
   infoVenueRow: {
     flexDirection: 'row',
