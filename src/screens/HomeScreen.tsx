@@ -38,7 +38,13 @@ import type { MapStackParamList, RootStackNavigationProp } from '../navigation/t
 import { parseExifGps } from '../lib/exif';
 import { IMAGE_OPTIONS } from '../lib/imageUtils';
 import { requestCameraPermission, requestMediaLibraryPermission } from '../lib/permissions';
-import { getCategoryByKey } from '../lib/categories';
+import { getCategoryByKey, type CategoryKey } from '../lib/categories';
+import {
+  MapFilterSheet,
+  type MapFilters,
+  DEFAULT_FILTERS,
+  filtersAreDefault,
+} from '../components/MapFilterSheet';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { supabase } from '../lib/supabase';
@@ -165,6 +171,9 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const [searchLoading, setSearchLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [filters, setFilters] = useState<MapFilters>(DEFAULT_FILTERS);
   const mapRef = useRef<MapView>(null);
   const hasCenteredOnUser = useRef(false);
   const loadingOpacity = useRef(new Animated.Value(1)).current;
@@ -371,19 +380,60 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
   }, [navigation, resetFabToClosed]);
 
+  const userId = profile?.id;
+
+  const filteredPosts = useMemo(() => {
+    let result = posts;
+
+    if (filters.owner === 'me' && userId) {
+      result = result.filter((p) => p.user_id === userId);
+    } else if (filters.owner === 'friends' && userId) {
+      result = result.filter((p) => p.user_id !== userId);
+    }
+
+    result = result.filter((p) => {
+      const cat = (p.category ?? 'misc') as CategoryKey;
+      return filters.categories.has(cat);
+    });
+
+    if (filters.timeRange !== 'all') {
+      const now = new Date();
+      let cutoff: Date;
+      switch (filters.timeRange) {
+        case 'today':
+          cutoff = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'week':
+          cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          cutoff = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+          break;
+        case 'year':
+          cutoff = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+          break;
+        default:
+          cutoff = new Date(0);
+      }
+      result = result.filter((p) => new Date(p.created_at) >= cutoff);
+    }
+
+    return result;
+  }, [posts, filters, userId]);
+
   const visiblePosts = useMemo(() => {
     const region = currentRegion;
-    if (!region) return posts;
+    if (!region) return filteredPosts;
     const latBuffer = region.latitudeDelta * 0.1;
     const lngBuffer = region.longitudeDelta * 0.1;
-    return posts.filter(
+    return filteredPosts.filter(
       (p) =>
         p.latitude >= region.latitude - region.latitudeDelta / 2 - latBuffer &&
         p.latitude <= region.latitude + region.latitudeDelta / 2 + latBuffer &&
         p.longitude >= region.longitude - region.longitudeDelta / 2 - lngBuffer &&
         p.longitude <= region.longitude + region.longitudeDelta / 2 + lngBuffer
     );
-  }, [posts, currentRegion]);
+  }, [filteredPosts, currentRegion]);
 
   const offsetPosts = useMemo(() => {
     const groups: Record<string, PostWithProfile[]> = {};
@@ -434,7 +484,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       const zoom = currentRegionRef.current?.latitudeDelta ?? 0.01;
       const tapRadius = zoom * 0.05;
 
-      const nearbyPosts = posts.filter((p) => {
+      const nearbyPosts = filteredPosts.filter((p) => {
         const latDiff = Math.abs(p.latitude - tappedPost.latitude);
         const lngDiff = Math.abs(p.longitude - tappedPost.longitude);
         return latDiff < tapRadius && lngDiff < tapRadius;
@@ -452,7 +502,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       setSelectedInitialIndex(0);
       setSelectedPosts(sorted);
     },
-    [posts]
+    [filteredPosts]
   );
 
   async function searchPlaces(query: string): Promise<PlacePrediction[]> {
@@ -534,6 +584,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     Keyboard.dismiss();
     setSearchText('');
     setShowDropdown(false);
+    setSearchExpanded(false);
     const coords = await getPlaceDetails(place.placeId);
     if (coords && mapRef.current) {
       mapRef.current.animateToRegion(
@@ -550,10 +601,13 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
   const handleMapPress = useCallback(() => {
     Keyboard.dismiss();
+    setSearchExpanded(false);
     if (showDropdown) {
       setShowDropdown(false);
     }
   }, [showDropdown]);
+
+  const hasActiveFilters = !filtersAreDefault(filters);
 
   const hasRunFocusFetch = useRef(false);
 
@@ -710,7 +764,14 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
   const showEmptyState =
     hasCompletedInitialLoad && friendPostsFetched && !postsLoading && posts.length === 0;
+  const showFilteredEmptyState =
+    hasCompletedInitialLoad &&
+    friendPostsFetched &&
+    !postsLoading &&
+    posts.length > 0 &&
+    filteredPosts.length === 0;
   const showSearchBar = selectedPosts === null;
+  const showMapControls = !cardStackOpen && showSearchBar;
 
   return (
     <View style={styles.container}>
@@ -741,96 +802,124 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           })}
       </MapView>
 
-      {showSearchBar && (
-        <>
-          <View style={[styles.searchBarContainer, { top: insets.top + 12 }]} pointerEvents="box-none">
-            <View style={styles.searchBar}>
-              <Feather name="search" size={18} color={theme.colors.textTertiary} style={styles.searchIcon} />
-              <StyledTextInput
-                embedded
-                style={styles.searchInput}
-                placeholder="Search a location..."
-                value={searchText}
-                onChangeText={setSearchText}
-                onFocus={() => {
-                  setSearchFocused(true);
-                  searchText.trim() && setShowDropdown(true);
-                }}
-                onBlur={() => setSearchFocused(false)}
-                returnKeyType="search"
-              />
-              {searchText.length > 0 && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setSearchText('');
-                    setShowDropdown(false);
-                    Keyboard.dismiss();
-                  }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="x" size={18} color={theme.colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+      {showMapControls && !searchExpanded && (
+        <TouchableOpacity
+          style={[styles.searchCircle, { top: insets.top + 12, left: 16 }]}
+          onPress={() => setSearchExpanded(true)}
+          activeOpacity={0.8}
+        >
+          <Feather name="search" size={20} color={theme.colors.text} />
+        </TouchableOpacity>
+      )}
 
-            {showDropdown && (
-              <>
-                <Pressable
-                  style={styles.dropdownBackdrop}
-                  onPress={() => {
-                    Keyboard.dismiss();
-                    setShowDropdown(false);
-                  }}
-                />
-                <Animated.View
-                  style={[
-                    styles.dropdown,
-                    {
-                      opacity: dropdownOpacity,
-                      transform: [{ translateY: dropdownTranslateY }],
-                    },
-                  ]}
-                  onStartShouldSetResponder={() => true}
-                >
-                  {searchLoading ? (
-                    <View style={styles.dropdownLoading}>
-                      <ActivityIndicator size="small" color={theme.colors.text} />
-                    </View>
-                  ) : searchResults.length === 0 ? (
-                    <View style={styles.dropdownEmpty}>
-                      <Text style={styles.dropdownEmptyText}>No results found</Text>
-                    </View>
-                  ) : (
-                    <ScrollView
-                      style={styles.dropdownScroll}
-                      keyboardShouldPersistTaps="handled"
-                      showsVerticalScrollIndicator={false}
-                      overScrollMode="never"
-                    >
-                      {searchResults.map((place) => (
-                        <TouchableOpacity
-                          key={place.placeId}
-                          style={styles.dropdownItem}
-                          onPress={() => handleSelectPlace(place)}
-                          activeOpacity={0.7}
-                        >
-                          <Feather name="map-pin" size={16} color={theme.colors.textSecondary} />
-                          <View style={styles.dropdownItemText}>
-                            <Text style={styles.dropdownItemName}>{place.name}</Text>
-                            {place.description && (
-                              <Text style={styles.dropdownItemDesc}>{place.description}</Text>
-                            )}
-                          </View>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  )}
-                </Animated.View>
-              </>
-            )}
+      {showMapControls && searchExpanded && (
+        <View style={[styles.searchBarContainer, { top: insets.top + 12 }]} pointerEvents="box-none">
+          <View style={styles.searchBar}>
+            <Feather name="search" size={18} color={theme.colors.textTertiary} style={styles.searchIcon} />
+            <StyledTextInput
+              embedded
+              style={styles.searchInput}
+              placeholder="Search a location..."
+              value={searchText}
+              onChangeText={setSearchText}
+              onFocus={() => {
+                setSearchFocused(true);
+                searchText.trim() && setShowDropdown(true);
+              }}
+              onBlur={() => setSearchFocused(false)}
+              returnKeyType="search"
+            />
+            <TouchableOpacity
+              onPress={() => {
+                setSearchText('');
+                setShowDropdown(false);
+                setSearchExpanded(false);
+                Keyboard.dismiss();
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.7}
+            >
+              <Feather name="x" size={18} color={theme.colors.textSecondary} />
+            </TouchableOpacity>
           </View>
-        </>
+
+          {showDropdown && (
+            <>
+              <Pressable
+                style={styles.dropdownBackdrop}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setShowDropdown(false);
+                }}
+              />
+              <Animated.View
+                style={[
+                  styles.dropdown,
+                  {
+                    opacity: dropdownOpacity,
+                    transform: [{ translateY: dropdownTranslateY }],
+                  },
+                ]}
+                onStartShouldSetResponder={() => true}
+              >
+                {searchLoading ? (
+                  <View style={styles.dropdownLoading}>
+                    <ActivityIndicator size="small" color={theme.colors.text} />
+                  </View>
+                ) : searchResults.length === 0 ? (
+                  <View style={styles.dropdownEmpty}>
+                    <Text style={styles.dropdownEmptyText}>No results found</Text>
+                  </View>
+                ) : (
+                  <ScrollView
+                    style={styles.dropdownScroll}
+                    keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
+                    overScrollMode="never"
+                  >
+                    {searchResults.map((place) => (
+                      <TouchableOpacity
+                        key={place.placeId}
+                        style={styles.dropdownItem}
+                        onPress={() => handleSelectPlace(place)}
+                        activeOpacity={0.7}
+                      >
+                        <Feather name="map-pin" size={16} color={theme.colors.textSecondary} />
+                        <View style={styles.dropdownItemText}>
+                          <Text style={styles.dropdownItemName}>{place.name}</Text>
+                          {place.description && (
+                            <Text style={styles.dropdownItemDesc}>{place.description}</Text>
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                )}
+              </Animated.View>
+            </>
+          )}
+        </View>
+      )}
+
+      {showMapControls && (
+        <TouchableOpacity
+          style={[
+            styles.filterCircle,
+            {
+              top: insets.top + 12,
+              right: 16,
+              backgroundColor: hasActiveFilters ? theme.colors.primary : theme.colors.background,
+            },
+          ]}
+          onPress={() => setShowFilterSheet(true)}
+          activeOpacity={0.8}
+        >
+          <Feather
+            name="sliders"
+            size={20}
+            color={hasActiveFilters ? '#FFFFFF' : theme.colors.text}
+          />
+        </TouchableOpacity>
       )}
 
       {showSearchBar && (
@@ -962,6 +1051,25 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         </View>
       )}
 
+      {showFilteredEmptyState && (
+        <View style={styles.emptyOverlay} pointerEvents="none">
+          <View style={styles.emptyCard}>
+            <Feather name="filter" size={40} color={theme.colors.primary} />
+            <Text style={styles.emptyTitle}>No posts match your filters</Text>
+            <Text style={styles.emptySubtitle}>
+              Try adjusting your time range, categories, or who to show posts from
+            </Text>
+          </View>
+        </View>
+      )}
+
+      <MapFilterSheet
+        visible={showFilterSheet}
+        onClose={() => setShowFilterSheet(false)}
+        currentFilters={filters}
+        onApply={setFilters}
+      />
+
       {selectedPosts !== null && selectedPosts.length > 0 && (
         <CardStack
           posts={selectedPosts}
@@ -995,12 +1103,40 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
   },
+  searchCircle: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: theme.colors.background,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+    zIndex: 1000,
+  },
+  filterCircle: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 4,
+    zIndex: 1000,
+  },
   searchBarContainer: {
     position: 'absolute',
-    left: 0,
-    right: 0,
+    left: theme.screenPadding,
+    right: 60,
     zIndex: 1000,
-    paddingHorizontal: theme.screenPadding,
   },
   searchBar: {
     flexDirection: 'row',
