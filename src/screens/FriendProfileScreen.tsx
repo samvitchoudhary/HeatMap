@@ -77,134 +77,142 @@ export function FriendProfileScreen() {
   const [actionLoading, setActionLoading] = useState(false);
   const friendFetchIdRef = useRef(0);
 
-  const fetchProfile = useCallback(async (fetchId: number) => {
-    if (!targetUserId) return;
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, username, display_name, avatar_url')
-      .eq('id', targetUserId)
-      .single();
-    if (error || !data) {
-      showToast('Could not load profile');
-      return;
-    }
-    if (fetchId !== friendFetchIdRef.current) return;
-    setProfile(data);
-  }, [targetUserId, showToast]);
-
-  const fetchPosts = useCallback(async (fetchId: number) => {
-    if (!targetUserId || !myUserId) return;
-
-    const { data: ownData, error: ownError } = await supabase
-      .from('posts')
-      .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
-      .eq('user_id', targetUserId)
-      .order('created_at', { ascending: false })
-      .limit(100);
-    if (ownError) {
-      __DEV__ && console.error('Error fetching friend posts:', ownError);
-      return;
-    }
-    const ownPosts = (ownData ?? []) as PostWithProfile[];
-
-    const { data: taggedData } = await supabase
-      .from('post_tags')
-      .select('post_id, posts:post_id(*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
-      .eq('tagged_user_id', targetUserId)
-      .limit(100);
-    const taggedPosts = ((taggedData ?? []) as { post_id: string; posts: PostWithProfile }[])
-      .map((t) => t.posts)
-      .filter((p): p is PostWithProfile => !!p && (friendIds.includes(p.user_id) || p.user_id === myUserId));
-
-    const merged = [...ownPosts];
-    const seenIds = new Set(ownPosts.map((p) => p.id));
-    for (const p of taggedPosts) {
-      if (!seenIds.has(p.id)) {
-        merged.push(p);
-        seenIds.add(p.id);
+  const mergeAndSetPosts = useCallback(
+    (ownPosts: PostWithProfile[], taggedData: { post_id: string; posts: PostWithProfile }[]) => {
+      const taggedPosts = taggedData
+        .map((t) => t.posts)
+        .filter((p): p is PostWithProfile => !!p && (friendIds.includes(p.user_id) || p.user_id === myUserId));
+      const merged = [...ownPosts];
+      const seenIds = new Set(ownPosts.map((p) => p.id));
+      for (const p of taggedPosts) {
+        if (!seenIds.has(p.id)) {
+          merged.push(p);
+          seenIds.add(p.id);
+        }
       }
-    }
-    merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    if (fetchId !== friendFetchIdRef.current) return;
-    setPosts(merged);
-  }, [targetUserId, myUserId, friendIds]);
+      merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setPosts(merged);
+    },
+    [myUserId, friendIds]
+  );
 
-  const fetchPostsCount = useCallback(async (fetchId: number) => {
-    if (!targetUserId) return;
-    const { count, error } = await supabase
-      .from('posts')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', targetUserId);
-    if (fetchId !== friendFetchIdRef.current) return;
-    if (!error) setPostsCount(count ?? 0);
-  }, [targetUserId]);
-
-  const fetchFriendsCount = useCallback(async (fetchId: number) => {
-    if (!targetUserId) return;
-    const { count, error } = await supabase
-      .from('friendships')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'accepted')
-      .or(`requester_id.eq.${targetUserId},addressee_id.eq.${targetUserId}`);
-    if (fetchId !== friendFetchIdRef.current) return;
-    if (!error) setFriendsCount(count ?? 0);
-  }, [targetUserId]);
-
-  const fetchFriendshipStatus = useCallback(async (fetchId: number): Promise<FriendshipStatus> => {
-    if (!myUserId || !targetUserId || myUserId === targetUserId) return 'none';
-    const { data: rows, error } = await supabase
-      .from('friendships')
-      .select('id, requester_id, addressee_id, status')
-      .or(`requester_id.eq.${myUserId},addressee_id.eq.${myUserId}`)
-      .limit(500);
-    if (error) return 'none';
-    const match = (rows ?? []).find(
-      (r: { requester_id: string; addressee_id: string }) =>
-        (r.requester_id === myUserId && r.addressee_id === targetUserId) ||
-        (r.requester_id === targetUserId && r.addressee_id === myUserId)
-    );
-    if (fetchId !== friendFetchIdRef.current) return 'none';
-    if (!match) {
-      setFriendshipStatus('none');
-      setFriendshipId(null);
-      return 'none';
-    }
-    setFriendshipId(match.id);
-    const status: FriendshipStatus =
-      match.status === 'accepted'
-        ? 'friends'
-        : match.requester_id === myUserId
-          ? 'pending_sent'
-          : 'pending_received';
-    setFriendshipStatus(status);
-    return status;
-  }, [myUserId, targetUserId]);
-
-  const loadAll = useCallback(async (fetchId?: number) => {
-    const id = fetchId ?? ++friendFetchIdRef.current;
-    await Promise.all([
-      fetchProfile(id),
-      fetchFriendshipStatus(id),
-      fetchPostsCount(id),
-      fetchFriendsCount(id),
-    ]);
-  }, [fetchProfile, fetchFriendshipStatus, fetchPostsCount, fetchFriendsCount]);
-
-  useEffect(() => {
-    if (!targetUserId) return;
-    setLoading(true);
-    loadAll().finally(() => setLoading(false));
-  }, [targetUserId]);
-
-
-  useEffect(() => {
-    if (friendshipStatus === 'friends') {
+  const runLoadAll = useCallback(
+    async (isCancelled?: () => boolean) => {
       const fetchId = ++friendFetchIdRef.current;
-      fetchPosts(fetchId);
-    } else {
-      setPosts([]);
-    }
-  }, [friendshipStatus, targetUserId, fetchPosts]);
+
+      const [
+        profileResult,
+        friendshipResult,
+        ownPostsResult,
+        taggedPostsResult,
+        postCountResult,
+        friendCountResult,
+      ] = await Promise.allSettled([
+        supabase
+          .from('profiles')
+          .select('id, username, display_name, avatar_url')
+          .eq('id', targetUserId)
+          .single(),
+        myUserId && targetUserId && myUserId !== targetUserId
+          ? supabase
+              .from('friendships')
+              .select('id, status, requester_id, addressee_id')
+              .or(
+                `and(requester_id.eq.${myUserId},addressee_id.eq.${targetUserId}),and(requester_id.eq.${targetUserId},addressee_id.eq.${myUserId})`
+              )
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        supabase
+          .from('posts')
+          .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+          .eq('user_id', targetUserId)
+          .order('created_at', { ascending: false })
+          .limit(100),
+        supabase
+          .from('post_tags')
+          .select('post_id, posts:post_id(*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
+          .eq('tagged_user_id', targetUserId)
+          .limit(100),
+        supabase.from('posts').select('id', { count: 'exact', head: true }).eq('user_id', targetUserId),
+        supabase
+          .from('friendships')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'accepted')
+          .or(`requester_id.eq.${targetUserId},addressee_id.eq.${targetUserId}`),
+      ]);
+
+      if ((isCancelled && isCancelled()) || fetchId !== friendFetchIdRef.current) return;
+
+      if (profileResult.status === 'fulfilled') {
+        const { data, error } = profileResult.value;
+        if (error || !data) showToast('Could not load profile');
+        else setProfile(data);
+      }
+
+      if (friendshipResult.status === 'fulfilled') {
+        const { data } = friendshipResult.value;
+        if (data) {
+          const match = data as { id: string; status: string; requester_id: string; addressee_id: string } | null;
+          if (match) {
+            setFriendshipId(match.id);
+            const status: FriendshipStatus =
+              match.status === 'accepted'
+                ? 'friends'
+                : match.requester_id === myUserId
+                  ? 'pending_sent'
+                  : 'pending_received';
+            setFriendshipStatus(status);
+          } else {
+            setFriendshipStatus('none');
+            setFriendshipId(null);
+          }
+        } else {
+          setFriendshipStatus('none');
+          setFriendshipId(null);
+        }
+      }
+
+      if (ownPostsResult.status === 'fulfilled' && taggedPostsResult.status === 'fulfilled') {
+        const { data: ownData, error: ownError } = ownPostsResult.value;
+        if (!ownError && ownData) {
+          const ownPosts = ownData as PostWithProfile[];
+          const taggedData = (taggedPostsResult.value.data ?? []) as {
+            post_id: string;
+            posts: PostWithProfile;
+          }[];
+          mergeAndSetPosts(ownPosts, taggedData);
+        }
+      }
+
+      if (postCountResult.status === 'fulfilled') {
+        const { count } = postCountResult.value;
+        setPostsCount(count ?? 0);
+      }
+
+      if (friendCountResult.status === 'fulfilled') {
+        const { count } = friendCountResult.value;
+        setFriendsCount(count ?? 0);
+      }
+
+      setLoading(false);
+    },
+    [targetUserId, myUserId, showToast, mergeAndSetPosts]
+  );
+
+  useEffect(() => {
+    if (!targetUserId) return;
+    let mounted = true;
+    setLoading(true);
+    runLoadAll(() => !mounted).finally(() => {});
+    return () => {
+      mounted = false;
+    };
+  }, [targetUserId, runLoadAll]);
+
+  useEffect(() => {
+    if (friendshipStatus !== 'friends') setPosts([]);
+  }, [friendshipStatus]);
 
   useEffect(() => {
     setCardStackOpen(selectedPosts !== null);
@@ -213,10 +221,7 @@ export function FriendProfileScreen() {
 
   async function handleRefresh() {
     setRefreshing(true);
-    const fetchId = ++friendFetchIdRef.current;
-    await loadAll(fetchId);
-    const status = await fetchFriendshipStatus(fetchId);
-    if (status === 'friends') await fetchPosts(fetchId);
+    await runLoadAll();
     setRefreshing(false);
   }
 
@@ -260,7 +265,7 @@ export function FriendProfileScreen() {
         .eq('id', friendshipId);
       if (error) throw error;
       setFriendshipStatus('friends');
-      await fetchPosts(++friendFetchIdRef.current);
+      await runLoadAll();
     } catch (err) {
       if (__DEV__) console.error('Accept friend request failed:', err);
       Alert.alert('Error', 'Could not accept friend request. Please try again.');
