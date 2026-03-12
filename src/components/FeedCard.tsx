@@ -127,6 +127,12 @@ const FeedCardInner = function FeedCard({
       if (initialUserReaction) {
         const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
         if (delErr) throw delErr;
+        await supabase
+          .from('notifications')
+          .delete()
+          .eq('from_user_id', userId)
+          .eq('post_id', post.id)
+          .eq('type', 'reaction');
       }
       const { error } = await supabase.from('reactions').insert({ post_id: post.id, user_id: userId, emoji: '❤️' });
       if (error) throw error;
@@ -268,10 +274,22 @@ const FeedCardInner = function FeedCard({
         if (previousReaction === emoji) {
           const { error } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
           if (error) throw error;
+          await supabase
+            .from('notifications')
+            .delete()
+            .eq('from_user_id', userId)
+            .eq('post_id', post.id)
+            .eq('type', 'reaction');
         } else {
           if (previousReaction) {
             const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
             if (delErr) throw delErr;
+            await supabase
+              .from('notifications')
+              .delete()
+              .eq('from_user_id', userId)
+              .eq('post_id', post.id)
+              .eq('type', 'reaction');
           }
           const { error } = await supabase.from('reactions').insert({ post_id: post.id, user_id: userId, emoji });
           if (error) throw error;

@@ -551,6 +551,12 @@ export function CardStack({
       if (existingReactions) {
         const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
         if (delErr) throw delErr;
+        await supabase
+          .from('notifications')
+          .delete()
+          .eq('from_user_id', userId)
+          .eq('post_id', post.id)
+          .eq('type', 'reaction');
       }
 
       // Insert heart reaction
@@ -628,12 +634,24 @@ export function CardStack({
           Alert.alert('Error', 'Could not remove reaction. Please try again.');
           return;
         }
+        await supabase
+          .from('notifications')
+          .delete()
+          .eq('from_user_id', userId)
+          .eq('post_id', post.id)
+          .eq('type', 'reaction');
         const nextCounts = { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) };
         reactionsCache.current[post.id] = { counts: nextCounts, userReaction: null };
       } else {
         if (prevReaction) {
           const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
           if (delErr) throw delErr;
+          await supabase
+            .from('notifications')
+            .delete()
+            .eq('from_user_id', userId)
+            .eq('post_id', post.id)
+            .eq('type', 'reaction');
         }
         const { error } = await supabase.from('reactions').insert({
           post_id: post.id,
