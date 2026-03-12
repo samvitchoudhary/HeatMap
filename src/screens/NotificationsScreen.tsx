@@ -83,6 +83,8 @@ export function NotificationsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const notificationsCountRef = useRef(0);
   const notificationsRef = useRef(notifications);
   const notifFetchIdRef = useRef(0);
@@ -144,6 +146,15 @@ export function NotificationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      return () => {
+        setSelectMode(false);
+        setSelectedIds(new Set());
+      };
+    }, [])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
       if (!userId) return;
       const timer = setTimeout(async () => {
         try {
@@ -178,8 +189,44 @@ export function NotificationsScreen() {
     [refreshUnreadCount]
   );
 
+  const handleBulkDeleteNotifications = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setNotifications((prev) => (prev ?? []).filter((n) => !selectedIds.has(n.id)));
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    try {
+      const { error } = await supabase.from('notifications').delete().in('id', ids);
+      if (error) throw error;
+      await refreshUnreadCount();
+    } catch (err) {
+      if (__DEV__) console.error('Failed to bulk delete notifications:', err);
+      fetchNotifications(false);
+    }
+  }, [selectedIds, fetchNotifications, refreshUnreadCount]);
+
+  const handleLongPress = useCallback((notificationId: string) => {
+    setSelectMode(true);
+    setSelectedIds(new Set([notificationId]));
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  }, []);
+
   const handleNotificationPress = useCallback(
     async (n: NotificationWithRelations) => {
+      if (selectMode) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(n.id)) {
+            next.delete(n.id);
+            if (next.size === 0) setSelectMode(false);
+          } else {
+            next.add(n.id);
+          }
+          return next;
+        });
+        return;
+      }
+
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await markAsRead(n.id);
 
@@ -203,7 +250,7 @@ export function NotificationsScreen() {
         rootNav?.navigate('FriendProfile', { userId: n.from_user_id });
       }
     },
-    [navigation, markAsRead]
+    [selectMode, navigation, markAsRead]
   );
 
   const handleAcceptFriendRequest = useCallback(
@@ -283,16 +330,29 @@ export function NotificationsScreen() {
     const { bold, rest } = getNotificationText(item);
     const isFriendRequest = item.type === 'friend_request';
     const loading = actionLoadingId === item.id;
+    const isSelected = selectedIds.has(item.id);
 
     return (
       <TouchableOpacity
         style={[
           styles.row,
-          !item.read && styles.rowUnread,
+          !item.read && !selectMode && styles.rowUnread,
         ]}
         onPress={() => handleNotificationPress(item)}
+        onLongPress={() => handleLongPress(item.id)}
+        delayLongPress={400}
         activeOpacity={0.7}
       >
+        {selectMode && (
+          <View
+            style={[
+              styles.selectCircle,
+              isSelected && styles.selectCircleSelected,
+            ]}
+          >
+            {isSelected && <Feather name="check" size={14} color="#FFFFFF" />}
+          </View>
+        )}
         {item.type === 'tag' ? (
           <View style={styles.tagIconWrap}>
             <Feather name="tag" size={18} color={theme.colors.primary} />
@@ -370,8 +430,31 @@ export function NotificationsScreen() {
           </Text>
         </View>
       ) : (
-        <FlatList
-          data={notifications ?? []}
+        <>
+          {selectMode && (
+            <View style={styles.selectModeBar}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectMode(false);
+                  setSelectedIds(new Set());
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.selectModeCancel}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.selectModeCount}>{selectedIds.size} selected</Text>
+              <TouchableOpacity
+                onPress={handleBulkDeleteNotifications}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.selectModeDelete}>
+                  Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          <FlatList
+            data={notifications ?? []}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
@@ -395,6 +478,7 @@ export function NotificationsScreen() {
             />
           }
         />
+        </>
       )}
     </View>
   );
@@ -515,5 +599,45 @@ const styles = StyleSheet.create({
   },
   btnDisabled: {
     opacity: 0.7,
+  },
+  selectModeBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: theme.colors.background,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderLight,
+  },
+  selectModeCancel: {
+    fontSize: 16,
+    color: theme.colors.primary,
+    fontWeight: '600',
+  },
+  selectModeCount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  selectModeDelete: {
+    fontSize: 16,
+    color: '#FF3B30',
+    fontWeight: '600',
+  },
+  selectCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: theme.colors.border,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  selectCircleSelected: {
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
   },
 });
