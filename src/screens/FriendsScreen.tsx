@@ -93,7 +93,7 @@ export function FriendsScreen() {
     if (!userId) return;
     const { data, error } = await supabase
       .from('friendships')
-      .select('*')
+      .select('id, status, requester_id, addressee_id, created_at')
       .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
       .limit(500);
     if (error) {
@@ -140,7 +140,7 @@ export function FriendsScreen() {
     debounceRef.current = setTimeout(async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, username, display_name, avatar_url')
         .ilike('username', `%${searchText.trim()}%`)
         .neq('id', userId)
         .limit(20);
