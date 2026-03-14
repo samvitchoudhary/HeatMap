@@ -160,7 +160,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const navigation = useNavigation<NativeStackNavigationProp<MapStackParamList, 'Map'>>();
   const { cardStackOpen, setCardStackOpen } = useCardStack();
   const { friendIds, loading: friendsLoading } = useFriends();
-  const { posts, loading: postsLoading, fetchOwnPosts, fetchAllPosts, removePost } = usePosts();
+  const { posts, loading: postsLoading, fetchOwnPosts, fetchAllPosts, fetchPublicPosts, removePost } =
+    usePosts();
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [openWithCommentsPostId, setOpenWithCommentsPostId] = useState<string | null>(null);
@@ -389,7 +390,9 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     if (filters.owner === 'me' && userId) {
       result = result.filter((p) => p.user_id === userId);
     } else if (filters.owner === 'friends' && userId) {
-      result = result.filter((p) => p.user_id !== userId);
+      result = result.filter(
+        (p) => p.user_id !== userId && friendIds.includes(p.user_id)
+      );
     }
 
     result = result.filter((p) => {
@@ -420,7 +423,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
 
     return result;
-  }, [posts, filters, userId]);
+  }, [posts, filters, userId, friendIds]);
 
   const visiblePosts = useMemo(() => {
     const region = currentRegion;
@@ -627,15 +630,28 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
   }, [profile?.id, fetchOwnPosts]);
 
-  // When friends load, fetch full set (force bypasses throttle)
+  // When friends load or filter changes, fetch appropriate set
   useEffect(() => {
     if (!profile?.id) return;
-    if (friendIds.length > 0) {
-      fetchAllPosts(friendIds, profile.id, true).finally(() => setFriendPostsFetched(true));
+    if (filters.owner === 'all') {
+      fetchPublicPosts(friendIds, profile.id).finally(() =>
+        setFriendPostsFetched(true)
+      );
+    } else if (friendIds.length > 0) {
+      fetchAllPosts(friendIds, profile.id, true).finally(() =>
+        setFriendPostsFetched(true)
+      );
     } else if (!friendsLoading) {
       setFriendPostsFetched(true);
     }
-  }, [profile?.id, friendIds, friendsLoading, fetchAllPosts]);
+  }, [
+    profile?.id,
+    friendIds,
+    friendsLoading,
+    filters.owner,
+    fetchPublicPosts,
+    fetchAllPosts,
+  ]);
 
   // On subsequent focuses, refresh (skip first focus — already fetched above)
   useFocusEffect(
@@ -645,8 +661,18 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         hasRunFocusFetch.current = true;
         return;
       }
-      fetchAllPosts(friendIds, profile.id);
-    }, [profile?.id, friendIds, fetchAllPosts])
+      if (filters.owner === 'all') {
+        fetchPublicPosts(friendIds, profile.id);
+      } else {
+        fetchAllPosts(friendIds, profile.id);
+      }
+    }, [
+      profile?.id,
+      friendIds,
+      filters.owner,
+      fetchPublicPosts,
+      fetchAllPosts,
+    ])
   );
 
   useFocusEffect(
@@ -770,8 +796,6 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   }, []);
 
 
-  const showEmptyState =
-    hasCompletedInitialLoad && friendPostsFetched && !postsLoading && posts.length === 0;
   const showFilteredEmptyState =
     hasCompletedInitialLoad &&
     friendPostsFetched &&
@@ -1055,18 +1079,6 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         <Animated.View style={[styles.loadingBar, { opacity: loadingOpacity }]} pointerEvents="none">
           <View style={styles.loadingBarInner} />
         </Animated.View>
-      )}
-
-      {showEmptyState && (
-        <View style={styles.emptyOverlay} pointerEvents="none">
-          <View style={styles.emptyCard}>
-            <Feather name="map-pin" size={40} color={theme.colors.primary} />
-            <Text style={styles.emptyTitle}>No posts yet</Text>
-            <Text style={styles.emptySubtitle}>
-              Upload your first photo or add friends to see their activity
-            </Text>
-          </View>
-        </View>
       )}
 
       {showFilteredEmptyState && (

@@ -71,6 +71,12 @@ export type ProfileStackParamList = {
   Profile: undefined;
   Friends: undefined;
   Gallery: undefined;
+  Settings: undefined;
+  AccountSettings: undefined;
+  NotificationSettings: undefined;
+  PrivacySettings: undefined;
+  AppearanceSettings: undefined;
+  DeleteAccount: undefined;
 };
 
 /** Root stack navigator - used for navigating to FriendProfile from nested screens */

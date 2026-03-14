@@ -15,6 +15,7 @@ export type Profile = {
   display_name: string;
   avatar_url: string | null;
   created_at: string;
+  is_private?: boolean;
 };
 
 /** Post from posts table - core content type for map pins and feed cards */
@@ -45,6 +46,7 @@ export type PostWithProfile = Post & {
     username: string;
     display_name: string;
     avatar_url: string | null;
+    is_private?: boolean;
   } | null;
   post_tags?: PostTag[];
 };

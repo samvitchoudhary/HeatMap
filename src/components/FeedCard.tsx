@@ -26,6 +26,7 @@ import * as Haptics from 'expo-haptics';
 import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
+import { shouldSendNotification } from '../lib/notifications';
 import { theme } from '../lib/theme';
 import { SmoothImage } from './SmoothImage';
 import { ReactionBar } from './ReactionBar';
@@ -125,8 +126,6 @@ const FeedCardInner = function FeedCard({
 
     try {
       if (initialUserReaction) {
-        const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
-        if (delErr) throw delErr;
         await supabase
           .from('notifications')
           .delete()
@@ -134,17 +133,22 @@ const FeedCardInner = function FeedCard({
           .eq('post_id', post.id)
           .eq('type', 'reaction');
       }
-      const { error } = await supabase.from('reactions').insert({ post_id: post.id, user_id: userId, emoji: '❤️' });
+      const { error } = await supabase
+        .from('reactions')
+        .upsert({ post_id: post.id, user_id: userId, emoji: '❤️' }, { onConflict: 'post_id,user_id' });
       if (error) throw error;
       if (post.user_id !== userId) {
-        const { error: notifErr } = await supabase.from('notifications').insert({
-          user_id: post.user_id,
-          type: 'reaction',
-          from_user_id: userId,
-          post_id: post.id,
-          emoji: '❤️',
-        });
-        if (notifErr) throw notifErr;
+        const ok = await shouldSendNotification(post.user_id, 'reaction');
+        if (ok) {
+          const { error: notifErr } = await supabase.from('notifications').insert({
+            user_id: post.user_id,
+            type: 'reaction',
+            from_user_id: userId,
+            post_id: post.id,
+            emoji: '❤️',
+          });
+          if (notifErr) throw notifErr;
+        }
       }
     } catch (err) {
       if (__DEV__) console.error('Reaction failed:', err);
@@ -282,8 +286,6 @@ const FeedCardInner = function FeedCard({
             .eq('type', 'reaction');
         } else {
           if (previousReaction) {
-            const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
-            if (delErr) throw delErr;
             await supabase
               .from('notifications')
               .delete()
@@ -291,17 +293,22 @@ const FeedCardInner = function FeedCard({
               .eq('post_id', post.id)
               .eq('type', 'reaction');
           }
-          const { error } = await supabase.from('reactions').insert({ post_id: post.id, user_id: userId, emoji });
+          const { error } = await supabase
+            .from('reactions')
+            .upsert({ post_id: post.id, user_id: userId, emoji }, { onConflict: 'post_id,user_id' });
           if (error) throw error;
           if (post.user_id !== userId) {
-            const { error: notifErr } = await supabase.from('notifications').insert({
-              user_id: post.user_id,
-              type: 'reaction',
-              from_user_id: userId,
-              post_id: post.id,
-              emoji,
-            });
-            if (notifErr) throw notifErr;
+            const ok = await shouldSendNotification(post.user_id, 'reaction');
+            if (ok) {
+              const { error: notifErr } = await supabase.from('notifications').insert({
+                user_id: post.user_id,
+                type: 'reaction',
+                from_user_id: userId,
+                post_id: post.id,
+                emoji,
+              });
+              if (notifErr) throw notifErr;
+            }
           }
         }
       } catch (err) {

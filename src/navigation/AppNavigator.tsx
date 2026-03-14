@@ -60,6 +60,12 @@ import { FriendsScreen } from '../screens/FriendsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { GalleryScreen } from '../screens/GalleryScreen';
 import { FriendProfileScreen } from '../screens/FriendProfileScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
+import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
+import { NotificationSettingsScreen } from '../screens/NotificationSettingsScreen';
+import { PrivacySettingsScreen } from '../screens/PrivacySettingsScreen';
+import { AppearanceSettingsScreen } from '../screens/AppearanceSettingsScreen';
+import { DeleteAccountScreen } from '../screens/DeleteAccountScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createMaterialTopTabNavigator<MainTabParamList>();
@@ -151,6 +157,54 @@ function ProfileStackNavigator() {
         options={{
           headerShown: true,
           headerTitle: 'All Posts',
+        }}
+      />
+      <ProfileStack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'Settings',
+        }}
+      />
+      <ProfileStack.Screen
+        name="AccountSettings"
+        component={AccountSettingsScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'Account',
+        }}
+      />
+      <ProfileStack.Screen
+        name="NotificationSettings"
+        component={NotificationSettingsScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'Notifications',
+        }}
+      />
+      <ProfileStack.Screen
+        name="PrivacySettings"
+        component={PrivacySettingsScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'Privacy',
+        }}
+      />
+      <ProfileStack.Screen
+        name="AppearanceSettings"
+        component={AppearanceSettingsScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'Appearance',
+        }}
+      />
+      <ProfileStack.Screen
+        name="DeleteAccount"
+        component={DeleteAccountScreen}
+        options={{
+          headerShown: true,
+          headerTitle: 'Delete Account',
         }}
       />
     </ProfileStack.Navigator>

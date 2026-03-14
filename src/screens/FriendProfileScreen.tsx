@@ -30,6 +30,7 @@ import { useCardStack } from '../lib/CardStackContext';
 import { useFriends } from '../hooks';
 import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
+import { shouldSendNotification } from '../lib/notifications';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
@@ -101,6 +102,7 @@ export function FriendProfileScreen() {
     username: string;
     display_name: string;
     avatar_url: string | null;
+    is_private?: boolean;
   } | null>(null);
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [postsCount, setPostsCount] = useState(0);
@@ -148,7 +150,7 @@ export function FriendProfileScreen() {
       ] = await Promise.allSettled([
         supabase
           .from('profiles')
-          .select('id, username, display_name, avatar_url')
+          .select('id, username, display_name, avatar_url, is_private')
           .eq('id', targetUserId)
           .single(),
         myUserId && targetUserId && myUserId !== targetUserId
@@ -249,8 +251,11 @@ export function FriendProfileScreen() {
   }, [targetUserId, runLoadAll]);
 
   useEffect(() => {
-    if (friendshipStatus !== 'friends') setPosts([]);
-  }, [friendshipStatus]);
+    const isPrivateAccount = profile?.is_private ?? true;
+    if (friendshipStatus !== 'friends' && isPrivateAccount) {
+      setPosts([]);
+    }
+  }, [friendshipStatus, profile?.is_private]);
 
   useEffect(() => {
     setCardStackOpen(selectedPosts !== null);
@@ -275,11 +280,14 @@ export function FriendProfileScreen() {
       });
       if (error) throw error;
       try {
-        await supabase.from('notifications').insert({
-          user_id: targetUserId,
-          type: 'friend_request',
-          from_user_id: myUserId,
-        });
+        const ok = await shouldSendNotification(targetUserId, 'friend_request');
+        if (ok) {
+          await supabase.from('notifications').insert({
+            user_id: targetUserId,
+            type: 'friend_request',
+            from_user_id: myUserId,
+          });
+        }
       } catch (notifErr) {
         if (__DEV__) console.error('Friend request notification failed:', notifErr);
       }
@@ -361,7 +369,8 @@ export function FriendProfileScreen() {
   const username = profile?.username ?? 'username';
   const avatarUrl = profile?.avatar_url;
   const isFriend = friendshipStatus === 'friends';
-  const canViewPosts = isFriend;
+  const isPrivateAccount = profile?.is_private ?? false;
+  const canSeePosts = !isPrivateAccount || isFriend || targetUserId === myUserId;
   const bottomPadding = insets.bottom + 100;
   const gridPosts = posts.slice(0, 9);
   const GRID_SLOTS = 9;
@@ -482,11 +491,34 @@ export function FriendProfileScreen() {
 
         <View style={styles.gallerySection}>
           <Text style={styles.galleryHeader}>Posts</Text>
-          {!canViewPosts ? (
-            <View style={styles.emptyGallery}>
-              <Feather name="image" size={40} color={theme.colors.textTertiary} />
-              <Text style={styles.emptyGalleryText}>
-                Add {displayName} as a friend to see their posts
+          {!canSeePosts ? (
+            <View
+              style={{
+                alignItems: 'center',
+                paddingVertical: 40,
+                paddingHorizontal: 20,
+              }}
+            >
+              <Feather name="lock" size={32} color={theme.colors.textTertiary} />
+              <Text
+                style={{
+                  fontSize: 15,
+                  fontWeight: '600',
+                  color: theme.colors.text,
+                  marginTop: 12,
+                }}
+              >
+                This account is private
+              </Text>
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: theme.colors.textSecondary,
+                  marginTop: 4,
+                  textAlign: 'center',
+                }}
+              >
+                Add them as a friend to see their posts
               </Text>
             </View>
           ) : posts.length === 0 ? (

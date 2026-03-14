@@ -6,7 +6,7 @@
  * Key responsibilities:
  * - Avatar (tap to change), display name, username, posts/friends count
  * - 3x3 post grid with FlatList; tap opens CardStack, long-press delete
- * - Edit profile modal (display name, username); logout
+ * - Gear icon navigates to Settings
  * - Fetches own posts + posts where user is tagged (from friends)
  */
 
@@ -16,12 +16,8 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
-  Pressable,
   ScrollView,
   Alert,
-  Keyboard,
-  KeyboardAvoidingView,
   Platform,
   RefreshControl,
   Dimensions,
@@ -49,9 +45,6 @@ import { CardStack } from '../components/CardStack';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
 import { SmoothImage } from '../components/SmoothImage';
-import { StyledTextInput } from '../components/StyledTextInput';
-
-const USERNAME_REGEX = /^[a-z0-9_]+$/;
 const GRID_GAP = 2;
 
 const profileSkeletonStyles = StyleSheet.create({
@@ -91,12 +84,6 @@ const ProfileSkeleton = React.memo(() => (
   </View>
 ));
 ProfileSkeleton.displayName = 'ProfileSkeleton';
-
-/** Username must be lowercase, alphanumeric + underscores */
-function validateUsername(value: string): boolean {
-  const normalized = value.toLowerCase().trim();
-  return normalized.length > 0 && USERNAME_REGEX.test(normalized) && !/\s/.test(value);
-}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const GRID_CELL_SIZE = (SCREEN_WIDTH - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
@@ -166,11 +153,6 @@ export function ProfileScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
-  const [editModalVisible, setEditModalVisible] = useState(false);
-  const [editDisplayName, setEditDisplayName] = useState('');
-  const [editUsername, setEditUsername] = useState('');
-  const [usernameError, setUsernameError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [gridImageErrors, setGridImageErrors] = useState<Record<string, boolean>>({});
   const hasInitiallyFetched = useRef(false);
@@ -325,46 +307,6 @@ export function ProfileScreen() {
     );
   }
 
-  async function handleLogOut() {
-    await supabase.auth.signOut();
-  }
-
-  function openEditModal() {
-    setEditDisplayName(profile?.display_name ?? '');
-    setEditUsername(profile?.username ?? '');
-    setUsernameError(null);
-    setEditModalVisible(true);
-  }
-
-  async function handleSaveProfile() {
-    const newDisplayName = editDisplayName.trim();
-    const newUsername = editUsername.toLowerCase().trim();
-    setUsernameError(null);
-    if (!validateUsername(editUsername)) {
-      setUsernameError('Lowercase, no spaces, letters numbers and underscores only');
-      return;
-    }
-    if (!userId) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ display_name: newDisplayName, username: newUsername })
-        .eq('id', userId);
-      if (error) throw error;
-      setEditModalVisible(false);
-      await refreshProfile();
-    } catch (err: unknown) {
-      const message =
-        err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505'
-          ? 'That username is already taken.'
-          : err instanceof Error ? err.message : 'Could not update profile. Please try again.';
-      Alert.alert('Error', message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
   function handleFriendsPress() {
     navigation.navigate('Friends');
   }
@@ -468,6 +410,24 @@ export function ProfileScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      <TouchableOpacity
+        onPress={() => navigation.navigate('Settings')}
+        style={{
+          position: 'absolute',
+          top: insets.top + 12,
+          right: 16,
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: theme.colors.surface,
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 10,
+        }}
+        activeOpacity={0.7}
+      >
+        <Feather name="settings" size={20} color={theme.colors.text} />
+      </TouchableOpacity>
       <ScrollView
         style={styles.scroll}
         scrollEnabled={selectedPosts === null}
@@ -522,14 +482,6 @@ export function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={openEditModal}
-            activeOpacity={0.8}
-          >
-            <Feather name="edit-2" size={14} color={theme.colors.text} />
-            <Text style={styles.secondaryButtonText}>Edit Profile</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.gallerySection}>
@@ -575,15 +527,6 @@ export function ProfileScreen() {
             </TouchableOpacity>
           )}
         </View>
-
-        <TouchableOpacity
-          style={styles.destructiveButton}
-          onPress={handleLogOut}
-          activeOpacity={0.6}
-        >
-          <Feather name="log-out" size={16} color={theme.colors.red} />
-          <Text style={styles.destructiveButtonText}>Log Out</Text>
-        </TouchableOpacity>
           </>
         )}
       </ScrollView>
@@ -601,90 +544,6 @@ export function ProfileScreen() {
           }}
         />
       )}
-
-      <Modal
-        visible={editModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setEditModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => {
-              Keyboard.dismiss();
-              setEditModalVisible(false);
-            }}
-          />
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.modalCenter}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Edit Profile</Text>
-                <TouchableOpacity
-                  onPress={() => setEditModalVisible(false)}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="x" size={24} color={theme.colors.text} />
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.inputLabel}>Display Name</Text>
-              <StyledTextInput
-                auth
-                style={styles.input}
-                value={editDisplayName}
-                onChangeText={setEditDisplayName}
-                placeholder="Display name"
-                autoCapitalize="words"
-              />
-
-              <Text style={styles.inputLabel}>Username</Text>
-              <StyledTextInput
-                auth
-                style={[styles.input, usernameError && styles.inputError]}
-                value={editUsername}
-                onChangeText={(t) => {
-                  setEditUsername(t);
-                  setUsernameError(null);
-                }}
-                placeholder="username"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              {usernameError ? (
-                <Text style={styles.errorText}>{usernameError}</Text>
-              ) : null}
-
-              <Text style={styles.avatarNote}>Profile photo: tap your avatar to change it</Text>
-
-            <TouchableOpacity
-              style={[styles.primaryButtonModal, saving && styles.buttonDisabled]}
-                onPress={handleSaveProfile}
-                disabled={saving}
-                activeOpacity={0.8}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color={theme.colors.textOnPrimary} />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save</Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.secondaryButtonModal}
-                onPress={() => setEditModalVisible(false)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.cancelButtonText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -745,24 +604,6 @@ const styles = StyleSheet.create({
   statsLabel: { fontSize: theme.fontSize.xs, fontWeight: '400', color: theme.colors.textSecondary },
   statsLabelTappable: { color: theme.colors.primary },
   statsDivider: { fontSize: theme.fontSize.sm, color: theme.colors.textSecondary, marginHorizontal: 4 },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    height: theme.button.secondaryHeight,
-    paddingHorizontal: theme.spacing.md,
-    borderRadius: 14,
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    marginBottom: theme.spacing.lg,
-  },
-  secondaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.text,
-  },
   gallerySection: {
     paddingHorizontal: theme.screenPadding,
     marginBottom: theme.spacing.lg,
@@ -836,85 +677,5 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     fontWeight: '400',
     color: theme.colors.primary,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: theme.colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: theme.spacing.lg,
-  },
-  modalCenter: { width: '100%', maxWidth: 340, alignItems: 'stretch' },
-  modalContent: {
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.lg,
-    padding: theme.spacing.lg,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: theme.spacing.lg,
-  },
-  modalTitle: { fontSize: 18, fontWeight: '700', color: theme.colors.text },
-  inputLabel: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: '400',
-    color: theme.colors.textSecondary,
-    marginBottom: theme.spacing.xs,
-  },
-  input: {
-    marginBottom: theme.spacing.md,
-  },
-  inputError: { borderColor: theme.colors.red },
-  errorText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.red,
-    marginTop: -theme.spacing.sm,
-    marginBottom: theme.spacing.md,
-  },
-  avatarNote: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textTertiary,
-    marginBottom: theme.spacing.lg,
-  },
-  primaryButtonModal: {
-    backgroundColor: theme.colors.primary,
-    height: 52,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: theme.spacing.sm,
-    ...theme.shadows.button,
-  },
-  buttonDisabled: { opacity: 0.8 },
-  saveButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.textOnPrimary,
-  },
-  secondaryButtonModal: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: theme.button.secondaryHeight,
-    borderRadius: 14,
-    backgroundColor: 'transparent',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: theme.colors.textSecondary,
-  },
-  destructiveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: theme.spacing.md,
-  },
-  destructiveButtonText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: '600',
-    color: theme.colors.red,
   },
 });

@@ -34,6 +34,7 @@ import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/ToastContext';
 import { useFriends } from '../hooks';
 import { supabase } from '../lib/supabase';
+import { shouldSendNotification } from '../lib/notifications';
 import { theme } from '../lib/theme';
 import type { Profile, Friendship } from '../types';
 import { Skeleton } from '../components/Skeleton';
@@ -173,11 +174,14 @@ export function FriendsScreen() {
       });
       if (error) throw error;
       try {
-        await supabase.from('notifications').insert({
-          user_id: addresseeId,
-          type: 'friend_request',
-          from_user_id: userId,
-        });
+        const ok = await shouldSendNotification(addresseeId, 'friend_request');
+        if (ok) {
+          await supabase.from('notifications').insert({
+            user_id: addresseeId,
+            type: 'friend_request',
+            from_user_id: userId,
+          });
+        }
       } catch (notifErr) {
         if (__DEV__) console.error('Friend request notification failed:', notifErr);
       }

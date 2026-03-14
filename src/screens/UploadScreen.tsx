@@ -40,6 +40,7 @@ import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/ToastContext';
 import { useFriends, usePosts } from '../hooks';
 import { supabase } from '../lib/supabase';
+import { shouldSendNotification } from '../lib/notifications';
 import { theme } from '../lib/theme';
 import { StyledTextInput } from '../components/StyledTextInput';
 import { LocationSearchModal, type PlaceResult } from '../components/LocationSearchModal';
@@ -332,13 +333,21 @@ export function UploadScreen() {
         const newlyTagged = taggedFriends.filter((f) => !originalTagIds.includes(f.id));
 
         if (newlyTagged.length > 0) {
-          const notifInserts = newlyTagged.map((friend) => ({
-            user_id: friend.id,
-            type: 'tag',
-            from_user_id: session.user.id,
-            post_id: editPost.id,
-          }));
-          await supabase.from('notifications').insert(notifInserts);
+          const toNotify = [];
+          for (const friend of newlyTagged) {
+            const ok = await shouldSendNotification(friend.id, 'tag');
+            if (ok) {
+              toNotify.push({
+                user_id: friend.id,
+                type: 'tag',
+                from_user_id: session.user.id,
+                post_id: editPost.id,
+              });
+            }
+          }
+          if (toNotify.length > 0) {
+            await supabase.from('notifications').insert(toNotify);
+          }
         }
       }
 
@@ -477,15 +486,23 @@ export function UploadScreen() {
           __DEV__ && console.error('Failed to insert tags:', tagError);
         }
 
-        const notificationInserts = taggedFriends.map((friend) => ({
-          user_id: friend.id,
-          type: 'tag',
-          from_user_id: userId,
-          post_id: newPostId,
-        }));
-        const { error: notifError } = await supabase.from('notifications').insert(notificationInserts);
-        if (notifError) {
-          __DEV__ && console.error('Failed to send tag notifications:', notifError);
+        const toNotify = [];
+        for (const friend of taggedFriends) {
+          const ok = await shouldSendNotification(friend.id, 'tag');
+          if (ok) {
+            toNotify.push({
+              user_id: friend.id,
+              type: 'tag',
+              from_user_id: userId,
+              post_id: newPostId,
+            });
+          }
+        }
+        if (toNotify.length > 0) {
+          const { error: notifError } = await supabase.from('notifications').insert(toNotify);
+          if (notifError) {
+            __DEV__ && console.error('Failed to send tag notifications:', notifError);
+          }
         }
       }
 

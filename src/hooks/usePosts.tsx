@@ -10,6 +10,9 @@ import React, { createContext, useContext, useState, useCallback, useRef } from 
 import { supabase } from '../lib/supabase';
 import type { PostWithProfile } from '../types';
 
+const POST_SELECT =
+  'id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, profiles:user_id(username, display_name, avatar_url, is_private), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))';
+
 type PostsContextType = {
   /** All fetched posts (map + feed) */
   posts: PostWithProfile[];
@@ -19,6 +22,8 @@ type PostsContextType = {
   fetchOwnPosts: (userId: string) => Promise<void>;
   /** Fetch all posts (user + friends). Use force=true when friendIds just loaded to bypass throttle. */
   fetchAllPosts: (friendIds: string[], userId: string, force?: boolean) => Promise<void>;
+  /** Fetch own + friends + public accounts' posts. Use when "Everyone" filter is active. */
+  fetchPublicPosts: (friendIds: string[], userId: string) => Promise<void>;
   /** Add a newly created post to the cache */
   addPost: (post: PostWithProfile) => void;
   /** Update an existing post in the cache */
@@ -34,6 +39,7 @@ const PostsContext = createContext<PostsContextType>({
   loading: true,
   fetchOwnPosts: async () => {},
   fetchAllPosts: async () => {},
+  fetchPublicPosts: async () => {},
   addPost: () => {},
   updatePost: () => {},
   removePost: () => {},
@@ -52,7 +58,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const { data, error } = await supabase
         .from('posts')
-        .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+        .select(POST_SELECT)
         .eq('user_id', userId)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -78,7 +84,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const allUserIds = [userId, ...friendIds];
       const { data, error } = await supabase
         .from('posts')
-        .select('id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+        .select(POST_SELECT)
         .in('user_id', allUserIds)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -92,6 +98,66 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       hasFetchedRef.current = true;
       setPosts((data ?? []) as unknown as PostWithProfile[]);
+    } finally {
+      if (fetchId === postsFetchIdRef.current) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  const fetchPublicPosts = useCallback(async (friendIds: string[], userId: string) => {
+    const fetchId = ++postsFetchIdRef.current;
+    const excludeIds = [userId, ...friendIds];
+
+    try {
+      const friendQuery = supabase
+        .from('posts')
+        .select(POST_SELECT)
+        .in('user_id', [userId, ...friendIds])
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      const excludeStr = `("${excludeIds.join('","')}")`;
+      const publicQuery = supabase
+        .from('posts')
+        .select(POST_SELECT)
+        .not('user_id', 'in', excludeStr)
+        .order('created_at', { ascending: false })
+        .limit(200);
+
+      const [friendResult, publicResult] = await Promise.allSettled([
+        friendQuery,
+        publicQuery,
+      ]);
+
+      if (fetchId !== postsFetchIdRef.current) return;
+
+      const friendPosts =
+        friendResult.status === 'fulfilled' ? (friendResult.value.data ?? []) : [];
+      const publicRaw =
+        publicResult.status === 'fulfilled' ? (publicResult.value.data ?? []) : [];
+      const publicPosts = publicRaw.filter(
+        (p: { profiles?: { is_private?: boolean } }) => p.profiles?.is_private !== true
+      );
+
+      const allPosts: typeof friendPosts = [...friendPosts];
+      const existingIds = new Set(friendPosts.map((p: { id: string }) => p.id));
+      for (const post of publicPosts) {
+        if (!existingIds.has(post.id)) {
+          allPosts.push(post);
+          existingIds.add(post.id);
+        }
+      }
+
+      allPosts.sort(
+        (a: { created_at: string }, b: { created_at: string }) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+
+      hasFetchedRef.current = true;
+      setPosts(allPosts as unknown as PostWithProfile[]);
+    } catch (err) {
+      if (__DEV__) console.error('Failed to fetch public posts:', err);
     } finally {
       if (fetchId === postsFetchIdRef.current) {
         setLoading(false);
@@ -113,14 +179,33 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setPosts((prev) => prev.filter((p) => p.id !== postId));
   }, []);
 
-  const refresh = useCallback(async (friendIds: string[], userId: string) => {
-    lastFetchRef.current = 0;
-    hasFetchedRef.current = false;
-    await fetchAllPosts(friendIds, userId);
-  }, [fetchAllPosts]);
+  const refresh = useCallback(
+    async (friendIds: string[], userId: string, includePublic = false) => {
+      lastFetchRef.current = 0;
+      hasFetchedRef.current = false;
+      if (includePublic) {
+        await fetchPublicPosts(friendIds, userId);
+      } else {
+        await fetchAllPosts(friendIds, userId);
+      }
+    },
+    [fetchAllPosts, fetchPublicPosts]
+  );
 
   return (
-    <PostsContext.Provider value={{ posts, loading, fetchOwnPosts, fetchAllPosts, addPost, updatePost, removePost, refresh }}>
+    <PostsContext.Provider
+      value={{
+        posts,
+        loading,
+        fetchOwnPosts,
+        fetchAllPosts,
+        fetchPublicPosts,
+        addPost,
+        updatePost,
+        removePost,
+        refresh,
+      }}
+    >
       {children}
     </PostsContext.Provider>
   );

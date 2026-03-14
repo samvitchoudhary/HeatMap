@@ -27,6 +27,7 @@ import {
 import type { TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
+import { shouldSendNotification } from '../lib/notifications';
 import { theme } from '../lib/theme';
 import { Avatar } from './Avatar';
 import { StyledTextInput } from './StyledTextInput';
@@ -184,13 +185,16 @@ export function FeedCommentModal({
       const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
       if (shouldNotify) {
         try {
-          await supabase.from('notifications').insert({
-            user_id: postUserId!,
-            type: 'comment',
-            from_user_id: userId,
-            post_id: postId,
-            comment_id: newComment!.id,
-          });
+          const ok = await shouldSendNotification(postUserId!, 'comment');
+          if (ok) {
+            await supabase.from('notifications').insert({
+              user_id: postUserId!,
+              type: 'comment',
+              from_user_id: userId,
+              post_id: postId,
+              comment_id: newComment!.id,
+            });
+          }
         } catch (notifErr) {
           if (__DEV__) console.error('Notification insert failed:', notifErr);
         }

@@ -32,6 +32,7 @@ import * as Haptics from 'expo-haptics';
 import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
+import { shouldSendNotification } from '../lib/notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../lib/theme';
 import { ReactionBar } from './ReactionBar';
@@ -547,10 +548,8 @@ export function CardStack({
         return next;
       });
 
-      // Delete old reaction if exists
+      // Delete old notification if changing from another emoji
       if (existingReactions) {
-        const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
-        if (delErr) throw delErr;
         await supabase
           .from('notifications')
           .delete()
@@ -559,12 +558,10 @@ export function CardStack({
           .eq('type', 'reaction');
       }
 
-      // Insert heart reaction
-      const { error } = await supabase.from('reactions').insert({
-        post_id: post.id,
-        user_id: userId,
-        emoji: '❤️',
-      });
+      // Upsert heart reaction (handles both new and changed)
+      const { error } = await supabase
+        .from('reactions')
+        .upsert({ post_id: post.id, user_id: userId, emoji: '❤️' }, { onConflict: 'post_id,user_id' });
 
       if (error) {
         if (__DEV__) console.error('Double tap heart error:', error);
@@ -582,13 +579,16 @@ export function CardStack({
       // Send notification (best-effort, don't block UI)
       if (post.user_id !== userId) {
         try {
-          await supabase.from('notifications').insert({
-            user_id: post.user_id,
-            type: 'reaction',
-            from_user_id: userId,
-            post_id: post.id,
-            emoji: '❤️',
-          });
+          const ok = await shouldSendNotification(post.user_id, 'reaction');
+          if (ok) {
+            await supabase.from('notifications').insert({
+              user_id: post.user_id,
+              type: 'reaction',
+              from_user_id: userId,
+              post_id: post.id,
+              emoji: '❤️',
+            });
+          }
         } catch (notifErr) {
           if (__DEV__) console.error('Notification insert failed:', notifErr);
         }
@@ -644,8 +644,6 @@ export function CardStack({
         reactionsCache.current[post.id] = { counts: nextCounts, userReaction: null };
       } else {
         if (prevReaction) {
-          const { error: delErr } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
-          if (delErr) throw delErr;
           await supabase
             .from('notifications')
             .delete()
@@ -653,11 +651,9 @@ export function CardStack({
             .eq('post_id', post.id)
             .eq('type', 'reaction');
         }
-        const { error } = await supabase.from('reactions').insert({
-          post_id: post.id,
-          user_id: userId,
-          emoji,
-        });
+        const { error } = await supabase
+          .from('reactions')
+          .upsert({ post_id: post.id, user_id: userId, emoji }, { onConflict: 'post_id,user_id' });
         if (error) {
           setUserReaction(prevReaction);
           setReactionCounts(prevCounts);
@@ -674,13 +670,16 @@ export function CardStack({
         const shouldNotify = post.user_id !== userId;
         if (shouldNotify) {
           try {
-            await supabase.from('notifications').insert({
-              user_id: post.user_id,
-              type: 'reaction',
-              from_user_id: userId,
-              post_id: post.id,
-              emoji,
-            });
+            const ok = await shouldSendNotification(post.user_id, 'reaction');
+            if (ok) {
+              await supabase.from('notifications').insert({
+                user_id: post.user_id,
+                type: 'reaction',
+                from_user_id: userId,
+                post_id: post.id,
+                emoji,
+              });
+            }
           } catch (notifErr) {
             if (__DEV__) console.error('Notification insert failed:', notifErr);
           }
