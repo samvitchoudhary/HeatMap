@@ -3,14 +3,13 @@
  *
  * Shared hook and context for notifications.
  * Provides unread count (for badge) and refresh/markAllRead.
+ * Uses Supabase Realtime instead of polling for live badge updates.
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
-
-const POLL_INTERVAL_MS = 30000;
 
 type NotificationsContextType = {
   /** Number of unread notifications */
@@ -31,6 +30,7 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const { session } = useAuth();
   const userId = session?.user?.id;
   const [unreadCount, setUnreadCount] = useState(0);
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   const refreshUnreadCount = useCallback(async () => {
     if (!userId) {
@@ -71,8 +71,41 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
 
   useEffect(() => {
     if (!userId) return;
-    const interval = setInterval(refreshUnreadCount, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+
+    refreshUnreadCount();
+
+    channelRef.current = supabase
+      .channel(`notif-badge-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setUnreadCount((prev) => prev + 1);
+          } else if (payload.eventType === 'DELETE') {
+            setUnreadCount((prev) => Math.max(0, prev - 1));
+          } else if (payload.eventType === 'UPDATE') {
+            const newRow = payload.new as Record<string, unknown>;
+            const oldRow = payload.old as Record<string, unknown>;
+            if (newRow?.read === true && oldRow?.read === false) {
+              setUnreadCount((prev) => Math.max(0, prev - 1));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
   }, [userId, refreshUnreadCount]);
 
   return (
