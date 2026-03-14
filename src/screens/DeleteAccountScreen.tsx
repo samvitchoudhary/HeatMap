@@ -74,12 +74,22 @@ export function DeleteAccountScreen() {
     const userId = profile.id;
 
     try {
-      // 1. Delete all post images from storage
-      const { data: userPosts } = await supabase
+      const check = (result: { error: any }, step: string) => {
+        if (result.error) {
+          throw new Error(`Failed at "${step}": ${result.error.message}`);
+        }
+      };
+
+      // 1. Get user's posts for cleanup
+      const { data: userPosts, error: postsError } = await supabase
         .from('posts')
         .select('id, image_url')
         .eq('user_id', userId);
+      if (postsError) throw new Error(`Failed to fetch posts: ${postsError.message}`);
 
+      const postIds = (userPosts ?? []).map((p) => p.id);
+
+      // 2. Delete post images from storage (best-effort)
       if (userPosts && userPosts.length > 0) {
         const storagePaths: string[] = [];
         for (const post of userPosts) {
@@ -99,58 +109,50 @@ export function DeleteAccountScreen() {
         }
       }
 
-      // 2. Delete avatar from storage if exists
+      // 3. Delete avatar from storage (best-effort)
       if (profile.avatar_url) {
         try {
           const url = new URL(profile.avatar_url);
-          const pathParts = url.pathname.split('/avatars/');
+          const pathParts = url.pathname.split('/posts/');
           if (pathParts[1]) {
             const path = pathParts[1].split('?')[0];
             if (path) {
-              await supabase.storage.from('avatars').remove([path]);
+              await supabase.storage.from('posts').remove([path]);
             }
           }
         } catch {}
       }
 
-      const postIds = (userPosts ?? []).map((p) => p.id);
-
-      // 3. Delete user data from all tables
-      await supabase.from('reactions').delete().eq('user_id', userId);
+      // 4. Delete data from all tables — check each one
       if (postIds.length > 0) {
-        await supabase.from('reactions').delete().in('post_id', postIds);
-        await supabase.from('comments').delete().in('post_id', postIds);
-        await supabase.from('post_tags').delete().in('post_id', postIds);
+        check(await supabase.from('reactions').delete().in('post_id', postIds), 'reactions on posts');
+        check(await supabase.from('comments').delete().in('post_id', postIds), 'comments on posts');
+        check(await supabase.from('post_tags').delete().in('post_id', postIds), 'tags on posts');
       }
 
-      await supabase.from('comments').delete().eq('user_id', userId);
-      await supabase.from('post_tags').delete().eq('tagged_user_id', userId);
+      check(await supabase.from('reactions').delete().eq('user_id', userId), 'user reactions');
+      check(await supabase.from('comments').delete().eq('user_id', userId), 'user comments');
+      check(await supabase.from('post_tags').delete().eq('tagged_user_id', userId), 'user tags');
+      check(await supabase.from('notifications').delete().eq('user_id', userId), 'notifications received');
+      check(await supabase.from('notifications').delete().eq('from_user_id', userId), 'notifications sent');
+      check(await supabase.from('friendships').delete().or(`requester_id.eq.${userId},addressee_id.eq.${userId}`), 'friendships');
+      check(await supabase.from('posts').delete().eq('user_id', userId), 'posts');
+      check(await supabase.from('profiles').delete().eq('id', userId), 'profile');
 
-      await supabase.from('notifications').delete().eq('user_id', userId);
-      await supabase.from('notifications').delete().eq('from_user_id', userId);
-
-      await supabase
-        .from('friendships')
-        .delete()
-        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`);
-
-      await supabase.from('posts').delete().eq('user_id', userId);
-      await supabase.from('profiles').delete().eq('id', userId);
-
-      // 4. Delete auth user via RPC
+      // 5. Delete auth user via RPC
       try {
         await supabase.rpc('delete_user');
       } catch {
-        // RPC doesn't exist — continue to sign out
+        // RPC may not exist — sign out anyway
       }
 
-      // 5. Sign out
+      // 6. Sign out
       await supabase.auth.signOut();
-    } catch (err) {
+    } catch (err: any) {
       if (__DEV__) console.error('Account deletion failed:', err);
       Alert.alert(
-        'Error',
-        'Failed to delete account. Please try again or contact support.'
+        'Deletion Failed',
+        `Your account could not be fully deleted. Please try again.\n\nError: ${err.message ?? 'Unknown error'}`,
       );
       setDeleting(false);
       return;
