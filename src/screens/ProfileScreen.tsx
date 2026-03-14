@@ -150,6 +150,7 @@ export function ProfileScreen() {
   const { removePost } = usePosts();
   const userId = profile?.id ?? session?.user?.id;
   const { friendIds, refresh: refreshFriends } = useFriends();
+  const friendIdSet = useMemo(() => new Set(friendIds), [friendIds]);
 
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
   const [postsCount, setPostsCount] = useState(0);
@@ -184,7 +185,7 @@ export function ProfileScreen() {
       .limit(100);
     const taggedPosts = ((taggedData ?? []) as { post_id: string; posts: PostWithProfile }[])
       .map((t) => t.posts)
-      .filter((p): p is PostWithProfile => !!p && friendIds.includes(p.user_id));
+      .filter((p): p is PostWithProfile => !!p && friendIdSet.has(p.user_id));
 
     const merged = [...ownPosts];
     const ownIds = new Set(ownPosts.map((p) => p.id));
@@ -197,7 +198,7 @@ export function ProfileScreen() {
     merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     if (fetchId !== profileFetchIdRef.current) return;
     setPosts(merged);
-  }, [userId, friendIds]);
+  }, [userId, friendIdSet]);
 
   const fetchPostsCount = useCallback(async (fetchId: number) => {
     if (!userId) return;

@@ -10,7 +10,7 @@
  * - Accessed from Feed (tap author) or CardStack (onProfilePress)
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -100,6 +100,7 @@ export function FriendProfileScreen() {
   const { showToast } = useToast();
   const myUserId = session?.user?.id;
   const { friendIds } = useFriends();
+  const friendIdSet = useMemo(() => new Set(friendIds), [friendIds]);
 
   const [profile, setProfile] = useState<{
     id: string;
@@ -125,7 +126,7 @@ export function FriendProfileScreen() {
     (ownPosts: PostWithProfile[], taggedData: { post_id: string; posts: PostWithProfile }[]) => {
       const taggedPosts = taggedData
         .map((t) => t.posts)
-        .filter((p): p is PostWithProfile => !!p && (friendIds.includes(p.user_id) || p.user_id === myUserId));
+        .filter((p): p is PostWithProfile => !!p && (friendIdSet.has(p.user_id) || p.user_id === myUserId));
       const merged = [...ownPosts];
       const seenIds = new Set(ownPosts.map((p) => p.id));
       for (const p of taggedPosts) {
@@ -137,7 +138,7 @@ export function FriendProfileScreen() {
       merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setPosts(merged);
     },
-    [myUserId, friendIds]
+    [myUserId, friendIdSet]
   );
 
   const runLoadAll = useCallback(

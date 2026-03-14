@@ -160,6 +160,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const navigation = useNavigation<NativeStackNavigationProp<MapStackParamList, 'Map'>>();
   const { cardStackOpen, setCardStackOpen } = useCardStack();
   const { friendIds, loading: friendsLoading } = useFriends();
+  const friendIdSet = useMemo(() => new Set(friendIds), [friendIds]);
   const { posts, loading: postsLoading, fetchOwnPosts, fetchAllPosts, fetchPublicPosts, removePost } =
     usePosts();
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
@@ -400,7 +401,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       result = result.filter((p) => p.user_id === userId);
     } else if (filters.owner === 'friends' && userId) {
       result = result.filter(
-        (p) => p.user_id !== userId && friendIds.includes(p.user_id)
+        (p) => p.user_id !== userId && friendIdSet.has(p.user_id)
       );
     }
 
@@ -432,7 +433,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
 
     return result;
-  }, [posts, filters, userId, friendIds]);
+  }, [posts, filters, userId, friendIdSet]);
 
   const visiblePosts = useMemo(() => {
     const region = currentRegion;

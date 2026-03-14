@@ -11,7 +11,7 @@
  * - Wraps app in Auth, Notification, FeedBadge, CardStack, Toast providers
  */
 
-import React, { useMemo, useContext } from 'react';
+import React, { useMemo, useCallback, useContext } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { FriendsProvider, NotificationsProvider, PostsProvider, useNotifications } from '../hooks';
 import { FeedBadgeProvider, useFeedBadge } from '../lib/FeedBadgeContext';
@@ -313,18 +313,20 @@ function MainTabs({ profile }: { profile: Profile }) {
   );
   const mapTabContextValue = useMemo(() => ({ profile: stableProfile }), [stableProfile]);
 
+  const renderTabBar = useCallback((props: any) => (
+    <CustomTabBar
+      state={props.state}
+      navigation={props.navigation as React.ComponentProps<typeof CustomTabBar>['navigation']}
+      descriptors={props.descriptors as React.ComponentProps<typeof CustomTabBar>['descriptors']}
+      position={props.position}
+    />
+  ), []);
+
   return (
     <MapTabContext.Provider value={mapTabContextValue}>
     <CardStackProvider>
       <Tab.Navigator
-        tabBar={(props) => (
-          <CustomTabBar
-            state={props.state}
-            navigation={props.navigation as React.ComponentProps<typeof CustomTabBar>['navigation']}
-            descriptors={props.descriptors as React.ComponentProps<typeof CustomTabBar>['descriptors']}
-            position={props.position}
-          />
-        )}
+        tabBar={renderTabBar}
         tabBarPosition="bottom"
         screenOptions={{
           tabBarShowLabel: false,
