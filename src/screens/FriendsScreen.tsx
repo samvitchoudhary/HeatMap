@@ -284,6 +284,10 @@ export function FriendsScreen() {
             bounces={true}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
+            removeClippedSubviews={true}
+            windowSize={5}
+            maxToRenderPerBatch={10}
+            initialNumToRender={10}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}

@@ -166,6 +166,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [openWithCommentsPostId, setOpenWithCommentsPostId] = useState<string | null>(null);
   const currentRegionRef = useRef(INITIAL_MAP_REGION);
+  const regionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [currentRegion, setCurrentRegion] = useState(INITIAL_MAP_REGION);
   const [searchText, setSearchText] = useState('');
   const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
@@ -200,6 +201,14 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   useEffect(() => {
     if (postsLoading === false) setHasCompletedInitialLoad(true);
   }, [postsLoading]);
+
+  useEffect(() => {
+    return () => {
+      if (regionDebounceRef.current) {
+        clearTimeout(regionDebounceRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const loading = friendsLoading || postsLoading;
@@ -478,7 +487,12 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
   const onRegionChangeComplete = useCallback((region: typeof INITIAL_MAP_REGION) => {
     currentRegionRef.current = region;
-    setCurrentRegion(region);
+    if (regionDebounceRef.current) {
+      clearTimeout(regionDebounceRef.current);
+    }
+    regionDebounceRef.current = setTimeout(() => {
+      setCurrentRegion(region);
+    }, 150);
   }, []);
 
   const handlePostDotPress = useCallback(

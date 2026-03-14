@@ -17,6 +17,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  FlatList,
   Alert,
   RefreshControl,
   Dimensions,
@@ -527,11 +528,19 @@ export function FriendProfileScreen() {
               <Text style={styles.emptyGalleryText}>No posts yet</Text>
             </View>
           ) : (
-            <View style={styles.grid}>
-              {gridSlots.map((post, i) =>
+            <FlatList
+              data={gridSlots}
+              numColumns={3}
+              scrollEnabled={false}
+              keyExtractor={(_item, i) => _item?.id ?? `empty-${i}`}
+              columnWrapperStyle={styles.gridRow}
+              removeClippedSubviews={true}
+              windowSize={5}
+              maxToRenderPerBatch={9}
+              initialNumToRender={9}
+              renderItem={({ item: post }) =>
                 post ? (
                   <TouchableOpacity
-                    key={post.id}
                     style={styles.gridCell}
                     onPress={() => handlePhotoPress(post)}
                     activeOpacity={0.7}
@@ -559,10 +568,10 @@ export function FriendProfileScreen() {
                     )}
                   </TouchableOpacity>
                 ) : (
-                  <View key={`empty-${i}`} style={[styles.gridCell, styles.gridCellEmpty]} />
+                  <View style={[styles.gridCell, styles.gridCellEmpty]} />
                 )
-              )}
-            </View>
+              }
+            />
           )}
         </View>
         </>
@@ -686,6 +695,10 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: GRID_GAP,
     backgroundColor: theme.colors.background,
+  },
+  gridRow: {
+    gap: GRID_GAP,
+    marginBottom: GRID_GAP,
   },
   gridCell: {
     width: GRID_CELL_SIZE,

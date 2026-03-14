@@ -461,6 +461,10 @@ export function NotificationsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          removeClippedSubviews={true}
+          windowSize={7}
+          maxToRenderPerBatch={10}
+          initialNumToRender={10}
           onEndReached={() => {
             if (hasMore && !loadingMore) fetchNotifications(true);
           }}
