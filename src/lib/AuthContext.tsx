@@ -69,17 +69,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let mounted = true;
 
     async function init() {
-      const {
-        data: { session: s },
-      } = await supabase.auth.getSession();
-      if (!mounted) return;
-      setSession(s as { user: { id: string } } | null);
-      if (s?.user?.id) {
-        await fetchProfile(s.user.id);
-      } else {
-        setProfile(null);
+      try {
+        const {
+          data: { session: s },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (!mounted) return;
+
+        if (sessionError) {
+          console.error('Failed to get session:', sessionError);
+          setSession(null);
+          setProfile(null);
+          return;
+        }
+
+        setSession(s as { user: { id: string } } | null);
+
+        if (s?.user?.id) {
+          try {
+            await fetchProfile(s.user.id);
+          } catch (err) {
+            console.error('Profile fetch error:', err);
+            if (mounted) setProfile(null);
+          }
+        } else {
+          setProfile(null);
+        }
+      } catch (err) {
+        console.error('Auth init error:', err);
+        if (mounted) {
+          setSession(null);
+          setProfile(null);
+        }
+      } finally {
+        if (mounted) setLoading(false);
       }
-      if (mounted) setLoading(false);
     }
 
     init();
@@ -88,11 +112,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, s) => {
       if (!mounted) return;
-      setSession(s as { user: { id: string } } | null);
-      if (s?.user?.id) {
-        await fetchProfile(s.user.id);
-      } else {
-        setProfile(null);
+      try {
+        setSession(s as { user: { id: string } } | null);
+        if (s?.user?.id) {
+          await fetchProfile(s.user.id);
+        } else {
+          setProfile(null);
+        }
+      } catch (err) {
+        console.error('Auth state change error:', err);
       }
       setLoading(false);
     });
@@ -101,6 +129,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setLoading((prev) => {
+        if (prev) {
+          console.error('Auth loading timed out after 10 seconds');
+          return false;
+        }
+        return prev;
+      });
+    }, 10000);
+
+    return () => clearTimeout(timeout);
   }, []);
 
   return (
