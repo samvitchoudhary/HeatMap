@@ -21,6 +21,7 @@ import {
   Alert,
   RefreshControl,
   Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
@@ -40,7 +41,7 @@ import { Avatar } from '../components/Avatar';
 import { SmoothImage } from '../components/SmoothImage';
 
 const GRID_GAP = 2;
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SCREEN_WIDTH_STATIC = Dimensions.get('window').width;
 
 const friendProfileSkeletonStyles = StyleSheet.create({
   friendProfileSkeleton: { padding: 20, alignItems: 'center' },
@@ -79,7 +80,7 @@ const FriendProfileSkeleton = React.memo(() => (
   </View>
 ));
 FriendProfileSkeleton.displayName = 'FriendProfileSkeleton';
-const GRID_CELL_SIZE = (SCREEN_WIDTH - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
+const GRID_CELL_SIZE_STATIC = (SCREEN_WIDTH_STATIC - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
 
 type FriendshipStatus = 'friends' | 'pending_sent' | 'pending_received' | 'none';
 
@@ -88,6 +89,8 @@ type FriendProfileRouteParams = {
 };
 
 export function FriendProfileScreen() {
+  const { width: screenWidth } = useWindowDimensions();
+  const gridCellSize = (screenWidth - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
   const insets = useSafeAreaInsets();
   const route = useRoute();
   const navigation = useNavigation();
@@ -541,7 +544,7 @@ export function FriendProfileScreen() {
               renderItem={({ item: post }) =>
                 post ? (
                   <TouchableOpacity
-                    style={styles.gridCell}
+                    style={[styles.gridCell, { width: gridCellSize, height: gridCellSize }]}
                     onPress={() => handlePhotoPress(post)}
                     activeOpacity={0.7}
                   >
@@ -568,7 +571,7 @@ export function FriendProfileScreen() {
                     )}
                   </TouchableOpacity>
                 ) : (
-                  <View style={[styles.gridCell, styles.gridCellEmpty]} />
+                  <View style={[styles.gridCell, { width: gridCellSize, height: gridCellSize }, styles.gridCellEmpty]} />
                 )
               }
             />
@@ -701,8 +704,8 @@ const styles = StyleSheet.create({
     marginBottom: GRID_GAP,
   },
   gridCell: {
-    width: GRID_CELL_SIZE,
-    height: GRID_CELL_SIZE,
+    width: GRID_CELL_SIZE_STATIC,
+    height: GRID_CELL_SIZE_STATIC,
     overflow: 'hidden',
     borderRadius: 4,
     position: 'relative',

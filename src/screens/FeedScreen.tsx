@@ -18,8 +18,8 @@ import {
   FlatList,
   RefreshControl,
   ActivityIndicator,
-  Dimensions,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -118,6 +118,7 @@ function scoreFeedPost(post: FeedPost): number {
 }
 
 export function FeedScreen() {
+  const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<FeedScreenNav>();
   const { profile } = useAuth();
@@ -138,14 +139,13 @@ export function FeedScreen() {
 
   /** Estimated card height for FlatList getItemLayout - improves scroll perf */
   const FEED_CARD_HEIGHT = useMemo(() => {
-    const { width } = Dimensions.get('window');
     const cardWidth = width - 40;
     const photoHeight = cardWidth * (5 / 4);
     const infoHeight = 110;
     const barHeight = 50;
     const margins = 20;
     return photoHeight + infoHeight + barHeight + margins;
-  }, []);
+  }, [width]);
 
   const fetchPage = useCallback(
     async (offset: number, append: boolean, silent = false) => {

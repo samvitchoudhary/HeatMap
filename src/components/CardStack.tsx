@@ -26,6 +26,7 @@ import {
   Platform,
   Alert,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -308,6 +309,9 @@ export function CardStack({
   onPostDeleted,
   onProfilePress,
 }: CardStackProps) {
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const cardWidth = screenWidth * 0.9;
+  const cardHeight = Math.min(screenHeight * 0.75, cardWidth * 1.5);
   const { session } = useAuth();
   const insets = useSafeAreaInsets();
   const safeInitial = Math.min(
@@ -806,8 +810,8 @@ export function CardStack({
       post={{ image_url: post.image_url, venue_name: post.venue_name }}
       postUserId={post.user_id}
       userId={session?.user?.id}
-      cardHeight={CARD_HEIGHT}
-      cardWidth={CARD_WIDTH}
+      cardHeight={cardHeight}
+      cardWidth={cardWidth}
       cardBorderRadius={CARD_BORDER_RADIUS}
       onFlippedChange={handleFlippedChange}
       initialFlipped={post.id === initialFlippedPostId}

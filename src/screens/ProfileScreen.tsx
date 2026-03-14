@@ -24,6 +24,7 @@ import {
   ActivityIndicator,
   FlatList,
   ActionSheetIOS,
+  useWindowDimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
@@ -85,8 +86,7 @@ const ProfileSkeleton = React.memo(() => (
 ));
 ProfileSkeleton.displayName = 'ProfileSkeleton';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const GRID_CELL_SIZE = (SCREEN_WIDTH - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
+const GRID_CELL_SIZE_STATIC = (Dimensions.get('window').width - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
 
 /** Memoized thumbnail for profile grid - tap to open, long-press for action menu (own posts only) */
 const GalleryThumbnail = React.memo(function GalleryThumbnail({
@@ -96,6 +96,7 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
   onLongPress,
   hasError,
   onError,
+  cellSize,
 }: {
   post: PostWithProfile;
   userId: string | undefined;
@@ -103,10 +104,11 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
   onLongPress?: () => void;
   hasError: boolean;
   onError: () => void;
+  cellSize: number;
 }) {
   return (
     <TouchableOpacity
-      style={styles.gridCell}
+      style={[styles.gridCell, { width: cellSize, height: cellSize }]}
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={400}
@@ -138,6 +140,8 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
 });
 
 export function ProfileScreen() {
+  const { width: screenWidth } = useWindowDimensions();
+  const gridCellSize = (screenWidth - theme.screenPadding * 2 - GRID_GAP * 2) / 3;
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<ProfileStackParamList, 'Profile'>>();
   const { profile, session, refreshProfile } = useAuth();
@@ -506,9 +510,10 @@ export function ProfileScreen() {
                     onLongPress={post.user_id === userId ? () => showPostActionMenu(post) : undefined}
                     hasError={!!gridImageErrors[post.id]}
                     onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
+                    cellSize={gridCellSize}
                   />
                 ) : (
-                  <View style={[styles.gridCell, styles.gridCellEmpty]} />
+                  <View style={[styles.gridCell, { width: gridCellSize, height: gridCellSize }, styles.gridCellEmpty]} />
                 )
               }
               columnWrapperStyle={{ gap: GRID_GAP, marginBottom: GRID_GAP }}
@@ -619,8 +624,8 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
   },
   gridCell: {
-    width: GRID_CELL_SIZE,
-    height: GRID_CELL_SIZE,
+    width: GRID_CELL_SIZE_STATIC,
+    height: GRID_CELL_SIZE_STATIC,
     overflow: 'hidden',
     borderRadius: 4,
     position: 'relative',

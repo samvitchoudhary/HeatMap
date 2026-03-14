@@ -20,6 +20,7 @@ import {
   Dimensions,
   Animated,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -82,6 +83,8 @@ const FeedCardInner = function FeedCard({
   isFadingOut,
   onFadeComplete,
 }: FeedCardProps) {
+  const { width: screenWidth } = useWindowDimensions();
+  const feedCardWidth = screenWidth - CARD_MARGIN_H * 2;
   const { session } = useAuth();
   const userId = session?.user?.id;
 
@@ -362,8 +365,8 @@ const FeedCardInner = function FeedCard({
         post={{ image_url: post.image_url, venue_name: post.venue_name }}
         postUserId={post.user_id}
         userId={userId}
-        cardHeight={CARD_WIDTH / PHOTO_ASPECT_RATIO + 150}
-        cardWidth={CARD_WIDTH}
+        cardHeight={feedCardWidth / PHOTO_ASPECT_RATIO + 150}
+        cardWidth={feedCardWidth}
         cardBorderRadius={CARD_BORDER_RADIUS}
         contentSized
         onCommentPosted={handleCommentPosted}
