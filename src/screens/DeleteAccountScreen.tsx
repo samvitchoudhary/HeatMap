@@ -27,10 +27,11 @@ import { supabase } from '../lib/supabase';
 export function DeleteAccountScreen() {
   const insets = useSafeAreaInsets();
   const { profile, session } = useAuth();
+  const [password, setPassword] = useState('');
   const [confirmText, setConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
 
-  const isConfirmed = confirmText.trim().toUpperCase() === 'DELETE';
+  const isConfirmed = confirmText.trim().toUpperCase() === 'DELETE' && password.length > 0;
 
   const handleDeleteAccount = async () => {
     if (!isConfirmed) return;
@@ -53,6 +54,23 @@ export function DeleteAccountScreen() {
   const performDeletion = async () => {
     if (!profile?.id || !session?.user?.id) return;
     setDeleting(true);
+
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: session.user.email!,
+        password: password,
+      });
+      if (authError) {
+        Alert.alert('Incorrect Password', 'The password you entered is incorrect. Please try again.');
+        setDeleting(false);
+        return;
+      }
+    } catch {
+      Alert.alert('Error', 'Could not verify your identity. Please try again.');
+      setDeleting(false);
+      return;
+    }
+
     const userId = profile.id;
 
     try {
@@ -161,8 +179,27 @@ export function DeleteAccountScreen() {
             <Text style={styles.warningItem}>• All notifications</Text>
           </View>
           <Text style={[styles.warningText, { marginTop: 12, fontWeight: '600' }]}>
-            This action cannot be undone.
+            This action cannot be undone. You will need to enter your password to
+            confirm.
           </Text>
+        </View>
+      </View>
+
+      {/* Password Verification */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>VERIFY YOUR IDENTITY</Text>
+        <View style={styles.inputCard}>
+          <TextInput
+            style={styles.passwordInput}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Enter your password"
+            placeholderTextColor={theme.colors.textTertiary}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!deleting}
+          />
         </View>
       </View>
 
@@ -249,6 +286,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: theme.colors.textSecondary,
     lineHeight: 22,
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.textSecondary,
+    letterSpacing: 0.5,
+    marginBottom: 10,
+    marginLeft: 4,
+  },
+  passwordInput: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: theme.colors.text,
+    textAlign: 'left',
   },
   confirmLabel: {
     fontSize: 14,

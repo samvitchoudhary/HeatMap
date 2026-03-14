@@ -105,7 +105,7 @@ export function FriendsScreen() {
 
   const friends: FriendshipWithProfile[] = React.useMemo(() => {
     return friendsFromContext.map((f) => ({
-      id: '',
+      id: f.id,
       requester_id: userId ?? '',
       addressee_id: f.id,
       status: 'accepted' as const,

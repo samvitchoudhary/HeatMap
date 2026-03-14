@@ -198,7 +198,7 @@ export const MapFilterSheet: React.FC<Props> = ({
 
   const ownerOptions: { key: MapFilters['owner']; label: string }[] = [
     { key: 'all', label: 'Everyone' },
-    { key: 'mine', label: 'Me' },
+    { key: 'me', label: 'Me' },
     { key: 'friends', label: 'Friends' },
   ];
 
