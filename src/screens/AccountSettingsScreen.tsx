@@ -35,6 +35,7 @@ export function AccountSettingsScreen() {
 
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
@@ -125,23 +126,38 @@ export function AccountSettingsScreen() {
   const handleChangePassword = async () => {
     Keyboard.dismiss();
 
+    if (!currentPassword) {
+      Alert.alert('Error', 'Please enter your current password.');
+      return;
+    }
     if (newPassword.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters.');
+      Alert.alert('Error', 'New password must be at least 6 characters.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match.');
+      Alert.alert('Error', 'New passwords do not match.');
       return;
     }
 
     setChangingPassword(true);
     try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: session?.user?.email!,
+        password: currentPassword,
+      });
+      if (authError) {
+        Alert.alert('Error', 'Current password is incorrect.');
+        setChangingPassword(false);
+        return;
+      }
+
       const { error } = await supabase.auth.updateUser({
         password: newPassword,
       });
       if (error) throw error;
 
       Alert.alert('Success', 'Password updated successfully.');
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       setShowPasswordChange(false);
@@ -250,6 +266,19 @@ export function AccountSettingsScreen() {
           ) : (
             <>
               <View style={styles.fieldRow}>
+                <Text style={styles.fieldLabel}>Current</Text>
+                <TextInput
+                  style={styles.fieldInput}
+                  value={currentPassword}
+                  onChangeText={setCurrentPassword}
+                  placeholder="Current password"
+                  placeholderTextColor={theme.colors.textTertiary}
+                  secureTextEntry
+                  autoCapitalize="none"
+                />
+              </View>
+              <View style={styles.fieldDivider} />
+              <View style={styles.fieldRow}>
                 <Text style={styles.fieldLabel}>New Password</Text>
                 <TextInput
                   style={styles.fieldInput}
@@ -279,9 +308,10 @@ export function AccountSettingsScreen() {
                 <TouchableOpacity
                   style={[styles.passwordButton, styles.passwordButtonSecondary]}
                   onPress={() => {
-                    setShowPasswordChange(false);
+                    setCurrentPassword('');
                     setNewPassword('');
                     setConfirmPassword('');
+                    setShowPasswordChange(false);
                   }}
                   activeOpacity={0.8}
                 >
