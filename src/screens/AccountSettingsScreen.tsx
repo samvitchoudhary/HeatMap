@@ -33,6 +33,10 @@ export function AccountSettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
+  // Email re-auth state
+  const [emailChangePassword, setEmailChangePassword] = useState('');
+  const [showEmailReauth, setShowEmailReauth] = useState(false);
+
   // Password change state
   const [showPasswordChange, setShowPasswordChange] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -102,21 +106,54 @@ export function AccountSettingsScreen() {
       if (profileError) throw profileError;
       await refreshProfile();
 
-      // Update email if changed
       if (email.trim() !== (session?.user?.email ?? '')) {
-        const { error: emailError } = await supabase.auth.updateUser({
-          email: email.trim(),
-        });
-        if (emailError) throw emailError;
-        Alert.alert('Email Updated', 'A confirmation link has been sent to your new email address.');
-      } else {
-        Alert.alert('Success', 'Account info updated.');
+        setSaving(false);
+        setShowEmailReauth(true);
+        return;
       }
+
+      Alert.alert('Success', 'Account info updated.');
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'code' in err && (err as { code: string }).code === '23505'
           ? 'This username is already taken.'
           : err instanceof Error ? err.message : 'Failed to update account info.';
+      Alert.alert('Error', message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEmailChange = async () => {
+    Keyboard.dismiss();
+
+    if (!emailChangePassword) {
+      Alert.alert('Error', 'Please enter your password.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: session?.user?.email!,
+        password: emailChangePassword,
+      });
+      if (authError) {
+        Alert.alert('Error', 'Incorrect password.');
+        setSaving(false);
+        return;
+      }
+
+      const { error: emailError } = await supabase.auth.updateUser({
+        email: email.trim(),
+      });
+      if (emailError) throw emailError;
+
+      Alert.alert('Email Updated', 'A confirmation link has been sent to your new email address.');
+      setShowEmailReauth(false);
+      setEmailChangePassword('');
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to update email.';
       Alert.alert('Error', message);
     } finally {
       setSaving(false);
@@ -247,6 +284,57 @@ export function AccountSettingsScreen() {
               <Text style={styles.saveButtonText}>Save Changes</Text>
             )}
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Email re-auth */}
+      {showEmailReauth && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>CONFIRM PASSWORD TO CHANGE EMAIL</Text>
+          <View style={styles.sectionCard}>
+            <View style={styles.fieldRow}>
+              <Text style={styles.fieldLabel}>Password</Text>
+              <TextInput
+                style={styles.fieldInput}
+                value={emailChangePassword}
+                onChangeText={setEmailChangePassword}
+                placeholder="Enter password"
+                placeholderTextColor={theme.colors.textTertiary}
+                secureTextEntry
+                autoCapitalize="none"
+                autoFocus
+              />
+            </View>
+          </View>
+          <View style={styles.emailReauthButtons}>
+            <TouchableOpacity
+              style={[styles.passwordButton, styles.passwordButtonSecondary]}
+              onPress={() => {
+                setShowEmailReauth(false);
+                setEmailChangePassword('');
+                setEmail(session?.user?.email ?? '');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.passwordButtonText, { color: theme.colors.text }]}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.passwordButton, styles.passwordButtonPrimary, saving && { opacity: 0.6 }]}
+              onPress={handleEmailChange}
+              disabled={saving}
+              activeOpacity={0.8}
+            >
+              {saving ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={[styles.passwordButtonText, { color: '#FFFFFF' }]}>
+                  Confirm
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -401,6 +489,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  emailReauthButtons: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 8,
   },
   passwordButtons: {
     flexDirection: 'row',
