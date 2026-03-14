@@ -152,7 +152,10 @@ export function ProfileScreen() {
   const { friendIds, refresh: refreshFriends } = useFriends();
   const friendIdSet = useMemo(() => new Set(friendIds), [friendIds]);
 
+  const PROFILE_PAGE_SIZE = 30;
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [postsCount, setPostsCount] = useState(0);
   const [profileDataReady, setProfileDataReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -171,7 +174,7 @@ export function ProfileScreen() {
       .select('id, image_url, caption, latitude, longitude, created_at, user_id, venue_name, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(100);
+      .limit(PROFILE_PAGE_SIZE);
     if (ownError) {
       if (__DEV__) console.error('Error fetching profile posts:', ownError);
       return;
@@ -182,7 +185,7 @@ export function ProfileScreen() {
       .from('post_tags')
       .select('post_id, posts:post_id(id, image_url, caption, latitude, longitude, created_at, user_id, venue_name, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
       .eq('tagged_user_id', userId)
-      .limit(100);
+      .limit(PROFILE_PAGE_SIZE);
     const taggedPosts = ((taggedData ?? []) as { post_id: string; posts: PostWithProfile }[])
       .map((t) => t.posts)
       .filter((p): p is PostWithProfile => !!p && friendIdSet.has(p.user_id));
@@ -198,6 +201,7 @@ export function ProfileScreen() {
     merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     if (fetchId !== profileFetchIdRef.current) return;
     setPosts(merged);
+    setHasMore(ownPosts.length === PROFILE_PAGE_SIZE);
   }, [userId, friendIdSet]);
 
   const fetchPostsCount = useCallback(async (fetchId: number) => {
@@ -209,6 +213,34 @@ export function ProfileScreen() {
     if (fetchId !== profileFetchIdRef.current) return;
     if (!error) setPostsCount(count ?? 0);
   }, [userId]);
+
+  const loadMoreProfilePosts = useCallback(async () => {
+    if (loadingMore || !hasMore || !userId) return;
+    setLoadingMore(true);
+    try {
+      const lastPost = posts[posts.length - 1];
+      if (!lastPost) return;
+
+      const { data, error } = await supabase
+        .from('posts')
+        .select('id, image_url, caption, latitude, longitude, created_at, user_id, venue_name, category, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+        .eq('user_id', userId)
+        .lt('created_at', lastPost.created_at)
+        .order('created_at', { ascending: false })
+        .limit(PROFILE_PAGE_SIZE);
+
+      if (error) {
+        if (__DEV__) console.error('Error loading more profile posts:', error);
+        return;
+      }
+
+      const newPosts = (data ?? []) as PostWithProfile[];
+      setPosts((prev) => [...prev, ...newPosts]);
+      setHasMore(newPosts.length === PROFILE_PAGE_SIZE);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [userId, posts, loadingMore, hasMore]);
 
   const friendsCount = friendIds.length;
 

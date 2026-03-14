@@ -18,6 +18,7 @@ import {
   FlatList,
   Dimensions,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
@@ -48,7 +49,10 @@ export function GalleryScreen({ navigation }: Props) {
   const { setCardStackOpen } = useCardStack();
   const userId = profile?.id ?? session?.user?.id;
 
+  const PAGE_SIZE = 30;
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [selectMode, setSelectMode] = useState(false);
@@ -61,13 +65,39 @@ export function GalleryScreen({ navigation }: Props) {
       .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(200);
+      .limit(PAGE_SIZE);
     if (error) {
       __DEV__ && console.error('Error fetching gallery posts:', error);
       return;
     }
     setPosts((data ?? []) as PostWithProfile[]);
+    setHasMore((data ?? []).length === PAGE_SIZE);
   }, [userId]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || !userId) return;
+    setLoadingMore(true);
+    try {
+      const lastPost = posts[posts.length - 1];
+      if (!lastPost) return;
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+        .eq('user_id', userId)
+        .lt('created_at', lastPost.created_at)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+      if (error) {
+        if (__DEV__) console.error('Error loading more gallery posts:', error);
+        return;
+      }
+      const newPosts = (data ?? []) as PostWithProfile[];
+      setPosts((prev) => [...prev, ...newPosts]);
+      setHasMore(newPosts.length === PAGE_SIZE);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [userId, posts, loadingMore, hasMore]);
 
   useFocusEffect(
     useCallback(() => {
@@ -237,6 +267,13 @@ export function GalleryScreen({ navigation }: Props) {
           const row = Math.floor(index / 3);
           return { length: GRID_CELL_SIZE, offset: row * (GRID_CELL_SIZE + GRID_GAP), index };
         }}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={
+          loadingMore ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} style={{ padding: 16 }} />
+          ) : null
+        }
         renderItem={({ item: post, index }) => (
           <TouchableOpacity
             style={styles.gridCell}

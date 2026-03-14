@@ -148,7 +148,7 @@ export function FeedScreen() {
   }, [width]);
 
   const fetchPage = useCallback(
-    async (offset: number, append: boolean, silent = false) => {
+    async (cursor: string | null, append: boolean, silent = false) => {
       const fetchId = ++feedFetchIdRef.current;
       const userId = profile?.id;
       if (!userId) {
@@ -157,9 +157,9 @@ export function FeedScreen() {
       }
       const hasData = posts.length > 0 || append;
       if (!silent) {
-        if (offset === 0 && !hasData) {
+        if (!cursor && !hasData) {
           setLoading(true);
-        } else if (offset > 0) {
+        } else if (cursor) {
           setLoadingMore(true);
         }
       }
@@ -174,7 +174,7 @@ export function FeedScreen() {
       }
 
       try {
-        const { data: postsData, error } = await supabase
+        let query = supabase
           .from('posts')
           .select(
             '*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)), comments(count)'
@@ -182,7 +182,13 @@ export function FeedScreen() {
           .neq('user_id', userId)
           .in('user_id', friendIds)
           .order('created_at', { ascending: false })
-          .range(offset, offset + PAGE_SIZE - 1);
+          .limit(PAGE_SIZE);
+
+        if (cursor) {
+          query = query.lt('created_at', cursor);
+        }
+
+        const { data: postsData, error } = await query;
 
         if (error) throw error;
 
@@ -254,16 +260,16 @@ export function FeedScreen() {
       const isInitial = !hasInitiallyFetched.current;
       hasInitiallyFetched.current = true;
       if (isInitial) {
-        fetchPage(0, false);
+        fetchPage(null, false);
       } else {
-        fetchPage(0, false, true);
+        fetchPage(null, false, true);
       }
     }, [fetchPage])
   );
 
   async function handleRefresh() {
     setRefreshing(true);
-    await fetchPage(0, false, true);
+    await fetchPage(null, false, true);
     setRefreshing(false);
   }
 
@@ -326,7 +332,8 @@ export function FeedScreen() {
 
   function handleEndReached() {
     if (loadingMore || !hasMore || loading || posts.length === 0) return;
-    fetchPage(posts.length, true);
+    const lastPost = posts[posts.length - 1];
+    if (lastPost) fetchPage(lastPost.created_at, true);
   }
 
   const sortedPosts = useMemo(() => {
@@ -410,7 +417,7 @@ export function FeedScreen() {
             />
           }
           onEndReached={handleEndReached}
-          onEndReachedThreshold={0.5}
+          onEndReachedThreshold={0.3}
           ListFooterComponent={
             loadingMore ? (
               <View style={styles.footerSpinner}>
