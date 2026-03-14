@@ -66,8 +66,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
         toValue: -100,
         duration: 200,
         useNativeDriver: true,
-      }).start(() => {
-        setMessage(null);
+      }).start(({ finished }) => {
+        if (finished) {
+          setMessage(null);
+        }
       });
       timeoutRef.current = null;
     }, TOAST_DURATION_MS);
