@@ -15,7 +15,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
   Dimensions,
   Alert,
 } from 'react-native';
@@ -220,73 +220,80 @@ export function GalleryScreen({ navigation }: Props) {
           </View>
         </View>
       ) : null}
-      <ScrollView
-        style={styles.scroll}
+      <FlatList
+        data={posts}
+        numColumns={3}
+        keyExtractor={(item) => item.id}
         scrollEnabled={selectedPosts === null}
         contentContainerStyle={styles.gridContainer}
+        columnWrapperStyle={styles.columnWrapper}
         showsVerticalScrollIndicator={false}
         overScrollMode="never"
-      >
-        <View style={styles.grid}>
-          {posts.map((post, index) => (
-            <TouchableOpacity
-              key={post.id}
-              style={styles.gridCell}
-              onPress={() => handleThumbnailPress(post, index)}
-              onLongPress={() => handleLongPress(post)}
-              delayLongPress={400}
-              activeOpacity={0.7}
-            >
-              {imageErrors[post.id] ? (
-                <View style={styles.gridImagePlaceholder}>
-                  <Feather name="image" size={24} color={theme.colors.textTertiary} />
-                </View>
-              ) : (
-                <>
-                  <SmoothImage
-                    source={{ uri: post.image_url }}
-                    style={styles.gridImage}
-                    resizeMode="cover"
-                    onError={() => setImageErrors((prev) => ({ ...prev, [post.id]: true }))}
-                  />
-                  {selectMode && post.user_id === userId && (
+        removeClippedSubviews={true}
+        windowSize={7}
+        maxToRenderPerBatch={12}
+        initialNumToRender={15}
+        getItemLayout={(_data, index) => {
+          const row = Math.floor(index / 3);
+          return { length: GRID_CELL_SIZE, offset: row * (GRID_CELL_SIZE + GRID_GAP), index };
+        }}
+        renderItem={({ item: post, index }) => (
+          <TouchableOpacity
+            style={styles.gridCell}
+            onPress={() => handleThumbnailPress(post, index)}
+            onLongPress={() => handleLongPress(post)}
+            delayLongPress={400}
+            activeOpacity={0.7}
+          >
+            {imageErrors[post.id] ? (
+              <View style={styles.gridImagePlaceholder}>
+                <Feather name="image" size={24} color={theme.colors.textTertiary} />
+              </View>
+            ) : (
+              <>
+                <SmoothImage
+                  source={{ uri: post.image_url }}
+                  style={styles.gridImage}
+                  resizeMode="cover"
+                  onError={() => setImageErrors((prev) => ({ ...prev, [post.id]: true }))}
+                />
+                {selectMode && post.user_id === userId && (
+                  <View
+                    style={[
+                      StyleSheet.absoluteFillObject,
+                      {
+                        backgroundColor: selectedPostIds.has(post.id)
+                          ? 'rgba(255,45,85,0.3)'
+                          : 'rgba(0,0,0,0.1)',
+                      },
+                    ]}
+                  >
                     <View
                       style={[
-                        StyleSheet.absoluteFillObject,
+                        styles.selectCheck,
                         {
                           backgroundColor: selectedPostIds.has(post.id)
-                            ? 'rgba(255,45,85,0.3)'
-                            : 'rgba(0,0,0,0.1)',
+                            ? theme.colors.primary
+                            : 'rgba(0,0,0,0.3)',
                         },
                       ]}
                     >
-                      <View
-                        style={[
-                          styles.selectCheck,
-                          {
-                            backgroundColor: selectedPostIds.has(post.id)
-                              ? theme.colors.primary
-                              : 'rgba(0,0,0,0.3)',
-                          },
-                        ]}
-                      >
-                        {selectedPostIds.has(post.id) && (
-                          <Feather name="check" size={14} color="#FFFFFF" />
-                        )}
-                      </View>
+                      {selectedPostIds.has(post.id) && (
+                        <Feather name="check" size={14} color="#FFFFFF" />
+                      )}
                     </View>
-                  )}
-                  {selectMode && post.user_id !== userId && (
-                    <View
-                      style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.6)' }]}
-                    />
-                  )}
-                </>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+                  </View>
+                )}
+                {selectMode && post.user_id !== userId && (
+                  <View
+                    style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.6)' }]}
+                  />
+                )}
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+      />
 
       {selectedPosts !== null && selectedPosts.length > 0 && (
         <CardStack
@@ -306,13 +313,8 @@ export function GalleryScreen({ navigation }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scroll: { flex: 1 },
   gridContainer: { padding: theme.screenPadding, paddingBottom: theme.spacing.xl },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: GRID_GAP,
-  },
+  columnWrapper: { gap: GRID_GAP, marginBottom: GRID_GAP },
   gridCell: {
     width: GRID_CELL_SIZE,
     height: GRID_CELL_SIZE,

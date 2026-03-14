@@ -10,7 +10,7 @@
  * - Lazy-loads comments when flipped to back (or when initialFlipped)
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -34,6 +34,7 @@ import { Avatar } from './Avatar';
 import { SmoothImage } from './SmoothImage';
 import { StyledTextInput } from './StyledTextInput';
 import { timeAgo } from '../lib/timeAgo';
+import { buildThreadedComments } from '../lib/commentUtils';
 
 const COMMENTS_PAGE_SIZE = 30;
 
@@ -52,44 +53,6 @@ type CommentWithProfile = {
 };
 
 type ReplyTarget = { id: string; username: string; parentUserId: string };
-
-/** Groups comments into top-level + replies, sorted by created_at */
-function buildThreadedComments(comments: CommentWithProfile[]): Array<
-  | { type: 'top'; comment: CommentWithProfile }
-  | { type: 'reply'; comment: CommentWithProfile; parentUsername: string; parentUserId: string }
-> {
-  const topLevel = comments
-    .filter((c) => !c.parent_id)
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-  const repliesByParent: Record<string, Array<{ comment: CommentWithProfile; parentUsername: string; parentUserId: string }>> = {};
-
-  for (const c of comments) {
-    if (c.parent_id) {
-      const parent = comments.find((p) => p.id === c.parent_id);
-      const parentUsername = parent?.profiles?.username ?? 'deleted';
-      const parentUserId = parent?.user_id ?? '';
-      if (!repliesByParent[c.parent_id]) repliesByParent[c.parent_id] = [];
-      repliesByParent[c.parent_id].push({ comment: c, parentUsername, parentUserId });
-    }
-  }
-  for (const pid of Object.keys(repliesByParent)) {
-    repliesByParent[pid].sort(
-      (a, b) => new Date(a.comment.created_at).getTime() - new Date(b.comment.created_at).getTime()
-    );
-  }
-
-  const result: Array<
-    | { type: 'top'; comment: CommentWithProfile }
-    | { type: 'reply'; comment: CommentWithProfile; parentUsername: string; parentUserId: string }
-  > = [];
-  for (const comment of topLevel) {
-    result.push({ type: 'top', comment });
-    for (const { comment: reply, parentUsername, parentUserId } of repliesByParent[comment.id] ?? []) {
-      result.push({ type: 'reply', comment: reply, parentUsername, parentUserId });
-    }
-  }
-  return result;
-}
 
 type PostInfo = {
   image_url: string;
@@ -299,7 +262,7 @@ export function CommentSheet({
     }
   }, [replyTarget, flipped]);
 
-  const threadedComments = buildThreadedComments(comments);
+  const threadedComments = useMemo(() => buildThreadedComments(comments), [comments]);
 
   const renderCommentItem = ({ item }: { item: typeof threadedComments[0] }) =>
     item.type === 'top' ? (

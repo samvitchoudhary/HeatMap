@@ -61,18 +61,16 @@ export function LoginScreen() {
       let emailToUse = input;
 
       if (!input.includes('@')) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('username', input.toLowerCase())
-          .single();
+        const { data: email, error: rpcError } = await supabase.rpc('get_email_by_username', {
+          lookup_username: input.toLowerCase(),
+        });
 
-        if (!profile?.email) {
+        if (rpcError || !email) {
           showToast('Invalid username or password.');
           setLoading(false);
           return;
         }
-        emailToUse = profile.email;
+        emailToUse = email;
       } else {
         emailToUse = input.toLowerCase();
       }
@@ -86,9 +84,20 @@ export function LoginScreen() {
         return result;
       });
       if (error) throw error;
-      // Auth state change will handle navigation
-    } catch (error: unknown) {
-      showToast('Invalid username or password.');
+    } catch (err: any) {
+      const message = err?.message ?? '';
+
+      if (message.includes('Invalid login credentials')) {
+        showToast('Invalid username or password.');
+      } else if (message.includes('Email not confirmed')) {
+        Alert.alert('Error', 'Please confirm your email address before logging in.');
+      } else if (message.includes('Too many requests') || message.includes('rate limit')) {
+        Alert.alert('Too Many Attempts', 'Please wait a moment before trying again.');
+      } else if (message.includes('network') || message.includes('fetch')) {
+        Alert.alert('Connection Error', 'Please check your internet connection and try again.');
+      } else {
+        showToast('Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }

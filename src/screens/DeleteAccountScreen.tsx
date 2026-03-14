@@ -74,22 +74,13 @@ export function DeleteAccountScreen() {
     const userId = profile.id;
 
     try {
-      const check = (result: { error: any }, step: string) => {
-        if (result.error) {
-          throw new Error(`Failed at "${step}": ${result.error.message}`);
-        }
-      };
-
-      // 1. Get user's posts for cleanup
-      const { data: userPosts, error: postsError } = await supabase
+      // 1. Get user's posts for storage cleanup
+      const { data: userPosts } = await supabase
         .from('posts')
         .select('id, image_url')
         .eq('user_id', userId);
-      if (postsError) throw new Error(`Failed to fetch posts: ${postsError.message}`);
 
-      const postIds = (userPosts ?? []).map((p) => p.id);
-
-      // 2. Delete post images from storage (best-effort)
+      // 2. Delete post images from storage (best-effort — can't do this in SQL)
       if (userPosts && userPosts.length > 0) {
         const storagePaths: string[] = [];
         for (const post of userPosts) {
@@ -123,30 +114,13 @@ export function DeleteAccountScreen() {
         } catch {}
       }
 
-      // 4. Delete data from all tables — check each one
-      if (postIds.length > 0) {
-        check(await supabase.from('reactions').delete().in('post_id', postIds), 'reactions on posts');
-        check(await supabase.from('comments').delete().in('post_id', postIds), 'comments on posts');
-        check(await supabase.from('post_tags').delete().in('post_id', postIds), 'tags on posts');
+      // 4. Atomically delete all user data and auth account via RPC
+      const { error: deleteError } = await supabase.rpc('delete_account');
+      if (deleteError) {
+        throw new Error(`Account deletion failed: ${deleteError.message}`);
       }
 
-      check(await supabase.from('reactions').delete().eq('user_id', userId), 'user reactions');
-      check(await supabase.from('comments').delete().eq('user_id', userId), 'user comments');
-      check(await supabase.from('post_tags').delete().eq('tagged_user_id', userId), 'user tags');
-      check(await supabase.from('notifications').delete().eq('user_id', userId), 'notifications received');
-      check(await supabase.from('notifications').delete().eq('from_user_id', userId), 'notifications sent');
-      check(await supabase.from('friendships').delete().or(`requester_id.eq.${userId},addressee_id.eq.${userId}`), 'friendships');
-      check(await supabase.from('posts').delete().eq('user_id', userId), 'posts');
-      check(await supabase.from('profiles').delete().eq('id', userId), 'profile');
-
-      // 5. Delete auth user via RPC
-      try {
-        await supabase.rpc('delete_user');
-      } catch {
-        // RPC may not exist — sign out anyway
-      }
-
-      // 6. Sign out
+      // 5. Sign out (auth user already deleted by the RPC)
       await supabase.auth.signOut();
     } catch (err: any) {
       if (__DEV__) console.error('Account deletion failed:', err);
