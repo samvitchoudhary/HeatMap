@@ -152,7 +152,7 @@ const CardImage = memo(function CardImage({
         pointerEvents="none"
         style={[
           StyleSheet.absoluteFill,
-          { backgroundColor: '#FFF', opacity: flashOpacity },
+          { backgroundColor: theme.colors.white, opacity: flashOpacity },
         ]}
       />
       {heartVisible && (
@@ -304,7 +304,7 @@ export const CardContent = memo(function CardContent({
             onPress={() => onExpandPhoto(post.image_url)}
             activeOpacity={0.7}
           >
-            <Feather name="maximize-2" size={18} color="#FFF" />
+            <Feather name="maximize-2" size={18} color={theme.colors.white} />
           </TouchableOpacity>
         )}
         {post.user_id === currentUserId && onDeletePost && (
@@ -431,7 +431,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: theme.colors.overlayDark,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -445,7 +445,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,

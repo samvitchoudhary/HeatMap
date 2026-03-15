@@ -214,7 +214,7 @@ export function DeleteAccountScreen() {
         >
           {deleting ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={theme.colors.white} />
               <Text style={styles.deleteButtonText}>Deleting Account...</Text>
             </View>
           ) : (
@@ -310,6 +310,6 @@ const styles = StyleSheet.create({
   deleteButtonText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.white,
   },
 });

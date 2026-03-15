@@ -251,7 +251,7 @@ const CardImage = React.memo(function CardImage({
         style={[
           StyleSheet.absoluteFill,
           {
-            backgroundColor: '#FFF',
+            backgroundColor: theme.colors.white,
             opacity: flashOpacity,
           },
         ]}
@@ -843,7 +843,7 @@ export function CardStack({
                 accessibilityLabel="View full photo"
                 accessibilityRole="button"
               >
-                <Feather name="maximize-2" size={18} color="#FFF" />
+                <Feather name="maximize-2" size={18} color={theme.colors.white} />
               </TouchableOpacity>
             )}
             {post.user_id === currentUserId && (
@@ -1114,7 +1114,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: theme.colors.overlayDark,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1128,7 +1128,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
@@ -1190,7 +1190,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,

@@ -22,6 +22,7 @@ import {
   Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import { theme } from '../lib/theme';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -259,7 +260,7 @@ export function PhotoViewer({ imageUrl, onClose }: PhotoViewerProps) {
             onPress={handleClose}
             activeOpacity={0.7}
           >
-            <Feather name="x" size={22} color="#FFF" />
+            <Feather name="x" size={22} color={theme.colors.white} />
           </TouchableOpacity>
         )}
       </View>

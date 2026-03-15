@@ -123,8 +123,8 @@ const PostDot = React.memo(({ color }: { color: string }) => (
       borderRadius: 7,
       backgroundColor: color,
       borderWidth: 2,
-      borderColor: '#FFFFFF',
-      shadowColor: '#000',
+      borderColor: theme.colors.white,
+      shadowColor: theme.colors.shadowColor,
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.3,
       shadowRadius: 2,
@@ -988,7 +988,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           <Feather
             name="sliders"
             size={20}
-            color={hasActiveFilters ? '#FFFFFF' : theme.colors.text}
+            color={hasActiveFilters ? theme.colors.white : theme.colors.text}
           />
         </TouchableOpacity>
       )}
@@ -1105,7 +1105,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
                 ],
               }}
             >
-              <Feather name="plus" size={24} color="#FFF" />
+              <Feather name="plus" size={24} color={theme.colors.white} />
             </Animated.View>
           </TouchableOpacity>
           </View>
@@ -1178,7 +1178,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -1192,7 +1192,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -1206,7 +1206,7 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     backgroundColor: theme.colors.background,
     paddingHorizontal: 14,
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -1330,7 +1330,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -1352,7 +1352,7 @@ const styles = StyleSheet.create({
   },
   fabOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: theme.colors.overlayLight,
   },
   fabSubButtonWrap: {
     position: 'absolute',
@@ -1372,7 +1372,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,

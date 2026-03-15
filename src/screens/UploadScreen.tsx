@@ -591,7 +591,7 @@ export function UploadScreen() {
                   position: 'absolute',
                   top: 8,
                   right: 8,
-                  backgroundColor: 'rgba(0,0,0,0.5)',
+                  backgroundColor: theme.colors.overlayDark,
                   borderRadius: 12,
                   paddingHorizontal: 8,
                   paddingVertical: 4,
@@ -599,8 +599,8 @@ export function UploadScreen() {
                   alignItems: 'center',
                 }}
               >
-                <Feather name="lock" size={12} color="#FFF" />
-                <Text style={{ color: '#FFF', fontSize: 10, marginLeft: 4 }}>Photo locked</Text>
+                <Feather name="lock" size={12} color={theme.colors.white} />
+                <Text style={{ color: theme.colors.white, fontSize: 10, marginLeft: 4 }}>Photo locked</Text>
               </View>
             )}
           </Animated.View>

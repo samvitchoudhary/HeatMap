@@ -399,7 +399,7 @@ const FeedCardInner = function FeedCard({
                       style={[
                         StyleSheet.absoluteFill,
                         {
-                          backgroundColor: '#FFF',
+                          backgroundColor: theme.colors.white,
                           opacity: flashOpacity,
                         },
                       ]}
@@ -440,7 +440,7 @@ const FeedCardInner = function FeedCard({
                   accessibilityLabel="View full photo"
                   accessibilityRole="button"
                 >
-                  <Feather name="maximize-2" size={16} color="#FFF" />
+                  <Feather name="maximize-2" size={16} color={theme.colors.white} />
                 </TouchableOpacity>
               )}
               {onDeletePost && post.user_id === userId && (
@@ -582,7 +582,7 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: theme.colors.primary,
     borderWidth: 2,
-    borderColor: '#FFF',
+    borderColor: theme.colors.white,
     zIndex: 1,
   },
   photoSection: {
@@ -653,7 +653,7 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: theme.colors.overlayDark,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -667,7 +667,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.8)',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,

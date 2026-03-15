@@ -96,7 +96,7 @@ export const SuccessToast: React.FC<SuccessToastProps> = ({ message, visible, on
       pointerEvents="none"
     >
       <Animated.View style={[styles.checkCircle, { transform: [{ scale: checkScale }] }]}>
-        <Feather name="check" size={16} color="#FFF" />
+        <Feather name="check" size={16} color={theme.colors.white} />
       </Animated.View>
       <Text style={styles.text}>{message}</Text>
     </Animated.View>
@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     zIndex: 9999,
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
     shadowRadius: 8,
@@ -133,7 +133,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   text: {
-    color: '#FFF',
+    color: theme.colors.white,
     fontSize: 15,
     fontWeight: '600',
   },

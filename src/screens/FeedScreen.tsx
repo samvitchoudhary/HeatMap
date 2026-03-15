@@ -83,7 +83,7 @@ FeedSkeleton.displayName = 'FeedSkeleton';
 const feedSkeletonStyles = StyleSheet.create({
   skeletonFeed: { padding: 16 },
   skeletonCard: {
-    backgroundColor: '#FFF',
+    backgroundColor: theme.colors.white,
     borderRadius: 16,
     marginBottom: 16,
     overflow: 'hidden',

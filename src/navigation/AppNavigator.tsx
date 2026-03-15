@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
     marginRight: -16,
   },
   badgeText: {
-    color: '#FFF',
+    color: theme.colors.white,
     fontSize: 11,
     fontWeight: '600',
   },

@@ -251,7 +251,7 @@ export const MapFilterSheet: React.FC<Props> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: theme.colors.overlayDark,
   },
   overlaySpacer: {
     flex: 1,
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
   },
   segmentOptionActive: {
     backgroundColor: theme.colors.background,
-    shadowColor: '#000',
+    shadowColor: theme.colors.shadowColor,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
@@ -380,6 +380,6 @@ const styles = StyleSheet.create({
   applyText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.white,
   },
 });

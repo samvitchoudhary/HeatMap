@@ -280,7 +280,7 @@ export function AccountSettingsScreen() {
             activeOpacity={0.8}
           >
             {saving ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={theme.colors.white} />
             ) : (
               <Text style={styles.saveButtonText}>Save Changes</Text>
             )}
@@ -328,9 +328,9 @@ export function AccountSettingsScreen() {
               activeOpacity={0.8}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
+                <ActivityIndicator size="small" color={theme.colors.white} />
               ) : (
-                <Text style={[styles.passwordButtonText, { color: '#FFFFFF' }]}>
+                <Text style={[styles.passwordButtonText, { color: theme.colors.white }]}>
                   Confirm
                 </Text>
               )}
@@ -419,9 +419,9 @@ export function AccountSettingsScreen() {
                   activeOpacity={0.8}
                 >
                   {changingPassword ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <ActivityIndicator size="small" color={theme.colors.white} />
                   ) : (
-                    <Text style={[styles.passwordButtonText, { color: '#FFFFFF' }]}>
+                    <Text style={[styles.passwordButtonText, { color: theme.colors.white }]}>
                       Update
                     </Text>
                   )}
@@ -489,7 +489,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#FFFFFF',
+    color: theme.colors.white,
   },
   emailReauthButtons: {
     flexDirection: 'row',

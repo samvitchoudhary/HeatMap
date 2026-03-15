@@ -46,9 +46,18 @@ export const theme = {
     orange: '#FF9500',
     yellow: '#FFCC00',
 
+    // Core
+    white: '#FFFFFF',
+    black: '#1A1A1A',
+    shadowColor: '#000000',
+    transparent: 'transparent',
+
     // Overlays
     overlay: 'rgba(0, 0, 0, 0.6)',
     overlayMedium: 'rgba(0, 0, 0, 0.5)',
+    overlayDark: 'rgba(0, 0, 0, 0.5)',
+    overlayLight: 'rgba(0, 0, 0, 0.3)',
+    overlayCard: 'rgba(0, 0, 0, 0.6)',
 
     // Aliases (backwards compatibility)
     light: '#FFFFFF',

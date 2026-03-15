@@ -340,7 +340,7 @@ export function NotificationsScreen() {
               isSelected && styles.selectCircleSelected,
             ]}
           >
-            {isSelected && <Feather name="check" size={14} color="#FFFFFF" />}
+            {isSelected && <Feather name="check" size={14} color={theme.colors.white} />}
           </View>
         )}
         {item.type === 'tag' ? (

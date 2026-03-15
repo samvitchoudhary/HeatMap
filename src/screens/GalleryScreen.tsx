@@ -311,12 +311,12 @@ export function GalleryScreen({ navigation }: Props) {
                         {
                           backgroundColor: selectedPostIds.has(post.id)
                             ? theme.colors.primary
-                            : 'rgba(0,0,0,0.3)',
+                            : theme.colors.overlayLight,
                         },
                       ]}
                     >
                       {selectedPostIds.has(post.id) && (
-                        <Feather name="check" size={14} color="#FFFFFF" />
+                        <Feather name="check" size={14} color={theme.colors.white} />
                       )}
                     </View>
                   </View>
@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#FFFFFF',
+    borderColor: theme.colors.white,
     justifyContent: 'center',
     alignItems: 'center',
   },
