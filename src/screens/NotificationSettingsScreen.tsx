@@ -6,7 +6,7 @@
  * Saved to profiles.notification_prefs jsonb column.
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   ScrollView,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -62,6 +63,8 @@ export function NotificationSettingsScreen() {
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingPrefsRef = useRef<NotificationPrefs | null>(null);
 
   const loadPrefs = useCallback(async () => {
     if (!profile?.id) return;
@@ -89,24 +92,45 @@ export function NotificationSettingsScreen() {
   }, [profile?.id, loadPrefs]);
 
   const savePrefs = useCallback(
-    async (newPrefs: NotificationPrefs) => {
+    (newPrefs: NotificationPrefs) => {
       if (!profile?.id) return;
-      setSaving(true);
-      try {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ notification_prefs: newPrefs })
-          .eq('id', profile.id);
+      pendingPrefsRef.current = newPrefs;
 
-        if (error) throw error;
-      } catch (err) {
-        if (__DEV__) console.error('Failed to save notification prefs:', err);
-      } finally {
-        setSaving(false);
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
       }
+
+      saveTimeoutRef.current = setTimeout(async () => {
+        const prefsToSave = pendingPrefsRef.current;
+        if (!prefsToSave) return;
+
+        setSaving(true);
+        try {
+          const { error } = await supabase
+            .from('profiles')
+            .update({ notification_prefs: prefsToSave })
+            .eq('id', profile?.id);
+
+          if (error) throw error;
+        } catch (err) {
+          if (__DEV__) console.error('Failed to save notification prefs:', err);
+          Alert.alert('Error', 'Failed to save preference. Reverting.');
+          loadPrefs();
+        } finally {
+          setSaving(false);
+        }
+      }, 500);
     },
-    [profile?.id]
+    [profile?.id, loadPrefs]
   );
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const toggleMaster = (value: boolean) => {
     const newPrefs = { ...prefs, all: value };

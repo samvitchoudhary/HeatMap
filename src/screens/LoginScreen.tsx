@@ -9,7 +9,7 @@
  * - Links to SignUp screen
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -42,9 +42,28 @@ export function LoginScreen() {
   const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const interval = setInterval(() => {
+      if (Date.now() >= lockedUntil) {
+        setLockedUntil(null);
+        clearInterval(interval);
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockedUntil]);
 
   /** Validates input, resolves username→email if needed, calls signInWithPassword */
   async function handleLogin() {
+    if (lockedUntil && Date.now() < lockedUntil) {
+      const secondsLeft = Math.ceil((lockedUntil - Date.now()) / 1000);
+      Alert.alert('Too Many Attempts', `Please wait ${secondsLeft} seconds before trying again.`);
+      return;
+    }
+
     const input = emailOrUsername.trim();
     if (!input) {
       Alert.alert('Error', 'Please enter your email or username.');
@@ -84,7 +103,20 @@ export function LoginScreen() {
         return result;
       });
       if (error) throw error;
+
+      setFailedAttempts(0);
+      setLockedUntil(null);
     } catch (err: any) {
+      const attempts = failedAttempts + 1;
+      setFailedAttempts(attempts);
+
+      if (attempts >= 5) {
+        const lockoutSeconds = 30 * Math.pow(2, attempts - 5);
+        const maxLockout = 300;
+        const lockoutMs = Math.min(lockoutSeconds, maxLockout) * 1000;
+        setLockedUntil(Date.now() + lockoutMs);
+      }
+
       const message = err?.message ?? '';
 
       if (message.includes('Invalid login credentials')) {
@@ -144,12 +176,17 @@ export function LoginScreen() {
         />
 
         <TouchableOpacity
-          style={[styles.primaryButton, loading && styles.buttonDisabled]}
+          style={[
+            styles.primaryButton,
+            (loading || (lockedUntil !== null && Date.now() < lockedUntil)) && { opacity: 0.5 },
+          ]}
           onPress={handleLogin}
-          disabled={loading}
+          disabled={loading || (lockedUntil !== null && Date.now() < lockedUntil)}
           activeOpacity={0.9}
         >
-          {loading ? (
+          {lockedUntil !== null && Date.now() < lockedUntil ? (
+            <Text style={styles.buttonText}>Try again later</Text>
+          ) : loading ? (
             <ActivityIndicator color={theme.colors.primary} />
           ) : (
             <Text style={styles.buttonText}>Log In</Text>

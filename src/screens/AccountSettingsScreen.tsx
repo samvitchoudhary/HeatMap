@@ -382,7 +382,7 @@ export function AccountSettingsScreen() {
                   style={styles.fieldInput}
                   value={newPassword}
                   onChangeText={setNewPassword}
-                  placeholder="Min 6 characters"
+                  placeholder={`Min ${CONFIG.MIN_PASSWORD_LENGTH} characters`}
                   placeholderTextColor={theme.colors.textTertiary}
                   secureTextEntry
                   autoCapitalize="none"
