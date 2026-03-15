@@ -37,11 +37,10 @@ import { FeedCard, type FeedLatestComment } from '../components/FeedCard';
 import { PhotoViewer } from '../components/PhotoViewer';
 import { Skeleton } from '../components/Skeleton';
 
-/** Feed post with embedded reaction/comment counts from joined query */
+/** Feed post with user's reaction emoji and per-emoji counts for the ReactionBar */
 export type FeedPost = PostWithProfile & {
   reaction_counts: Record<string, number>;
   user_reaction: string | null;
-  comment_count: number;
 };
 
 type FeedScreenNav = MaterialTopTabNavigationProp<MainTabParamList>;
@@ -108,7 +107,7 @@ function scoreFeedPost(post: FeedPost): number {
   // Recency: 1.0 for brand new, approaches 0 after 48 hours
   const recencyScore = Math.max(0, 1 - ageHours / 48);
 
-  const reactionCount = Object.values(post.reaction_counts ?? {}).reduce((s, c) => s + c, 0);
+  const reactionCount = post.reaction_count ?? 0;
   const commentCount = post.comment_count ?? 0;
 
   // Engagement: small bonus for reactions and comments
@@ -177,7 +176,7 @@ export function FeedScreen() {
         let query = supabase
           .from('posts')
           .select(
-            '*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)), comments(count)'
+            '*, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))'
           )
           .neq('user_id', userId)
           .in('user_id', friendIds)
@@ -194,39 +193,28 @@ export function FeedScreen() {
 
         if (fetchId !== feedFetchIdRef.current) return;
 
-        const rawPosts = (postsData ?? []) as (PostWithProfile & { comments?: { count: number }[] })[];
+        const rawPosts = (postsData ?? []) as PostWithProfile[];
         const postIds = rawPosts.map((p) => p.id);
 
-        const countsByPost: Record<string, Record<string, number>> = {};
-        const userReactionsByPost: Record<string, string | null> = {};
+        const userReactionsByPost: Record<string, string> = {};
 
         if (postIds.length > 0) {
-          const { data: reactions } = await supabase
+          const { data: userReactions } = await supabase
             .from('reactions')
-            .select('post_id, emoji, user_id')
+            .select('post_id, emoji')
+            .eq('user_id', userId)
             .in('post_id', postIds);
 
-          for (const row of reactions ?? []) {
-            const pid = row.post_id as string;
-            const emoji = row.emoji as string;
-            if (!countsByPost[pid]) countsByPost[pid] = {};
-            countsByPost[pid][emoji] = (countsByPost[pid][emoji] ?? 0) + 1;
-            if (row.user_id === userId) {
-              userReactionsByPost[pid] = emoji;
-            }
+          for (const row of userReactions ?? []) {
+            userReactionsByPost[row.post_id as string] = row.emoji as string;
           }
         }
 
-        const postsList: FeedPost[] = rawPosts.map((p) => {
-          const { comments, ...rest } = p;
-          const commentCount = (comments as { count: number }[] | undefined)?.[0]?.count ?? 0;
-          return {
-            ...rest,
-            reaction_counts: countsByPost[p.id] ?? {},
-            user_reaction: userReactionsByPost[p.id] ?? null,
-            comment_count: commentCount,
-          };
-        });
+        const postsList: FeedPost[] = rawPosts.map((p) => ({
+          ...p,
+          reaction_counts: {},
+          user_reaction: userReactionsByPost[p.id] ?? null,
+        }));
 
         setHasMore(postsList.length === PAGE_SIZE);
 

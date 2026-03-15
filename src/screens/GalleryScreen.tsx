@@ -62,7 +62,7 @@ export function GalleryScreen({ navigation }: Props) {
     if (!userId) return;
     const { data, error } = await supabase
       .from('posts')
-      .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+      .select('*, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(PAGE_SIZE);
@@ -82,7 +82,7 @@ export function GalleryScreen({ navigation }: Props) {
       if (!lastPost) return;
       const { data, error } = await supabase
         .from('posts')
-        .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+        .select('*, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
         .eq('user_id', userId)
         .lt('created_at', lastPost.created_at)
         .order('created_at', { ascending: false })

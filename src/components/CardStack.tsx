@@ -815,6 +815,7 @@ export function CardStack({
       cardBorderRadius={CARD_BORDER_RADIUS}
       onFlippedChange={handleFlippedChange}
       initialFlipped={post.id === initialFlippedPostId}
+      initialCommentCount={post.comment_count ?? 0}
     >
       {({ onCommentPress, commentCount }) => (
         <View style={styles.cardFront}>

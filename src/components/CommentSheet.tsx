@@ -73,6 +73,8 @@ type CommentSheetProps = {
   onCommentPosted?: () => void;
   /** When true, start with the card flipped to comments side */
   initialFlipped?: boolean;
+  /** Denormalized comment count from the post row — avoids a separate count query */
+  initialCommentCount?: number;
   children: (props: { onCommentPress: () => void; commentCount: number }) => React.ReactNode;
 };
 
@@ -88,6 +90,7 @@ export function CommentSheet({
   onFlippedChange,
   onCommentPosted,
   initialFlipped = false,
+  initialCommentCount = 0,
   children,
 }: CommentSheetProps) {
   const [flipped, setFlipped] = useState(initialFlipped);
@@ -141,7 +144,7 @@ export function CommentSheet({
     onFlippedChange?.(postId, false);
   }, [flipAnimation, postId, onFlippedChange]);
   const [comments, setComments] = useState<CommentWithProfile[]>([]);
-  const [commentCount, setCommentCount] = useState(0);
+  const [commentCount, setCommentCount] = useState(initialCommentCount);
   const [hasMore, setHasMore] = useState(true);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -151,18 +154,6 @@ export function CommentSheet({
   const inputRef = useRef<TextInput>(null);
   const commentsCountRef = useRef(0);
   commentsCountRef.current = comments.length;
-
-  const fetchCommentCount = useCallback(async (pid: string) => {
-    try {
-      const { count, error } = await supabase
-        .from('comments')
-        .select('id', { count: 'exact', head: true })
-        .eq('post_id', pid);
-      if (!error) setCommentCount(count ?? 0);
-    } catch (err) {
-      if (__DEV__) console.error('Failed to fetch comment count:', err);
-    }
-  }, []);
 
   const fetchComments = useCallback(async (pid: string, isLoadMore = false) => {
     if (isLoadMore) {
@@ -200,8 +191,8 @@ export function CommentSheet({
   }, []);
 
   useEffect(() => {
-    fetchCommentCount(postId);
-  }, [postId, fetchCommentCount]);
+    setCommentCount(initialCommentCount);
+  }, [postId, initialCommentCount]);
 
   const handleCommentPress = useCallback(() => {
     setHasMore(true);

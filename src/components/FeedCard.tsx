@@ -324,11 +324,7 @@ const FeedCardInner = function FeedCard({
   );
 
   const handleCommentPosted = useCallback(async () => {
-    const { count, error: countError } = await supabase
-      .from('comments')
-      .select('id', { count: 'exact', head: true })
-      .eq('post_id', post.id);
-    const newCount = countError ? commentCount : (count ?? commentCount);
+    const newCount = commentCount + 1;
 
     const { data: commentData, error: listError } = await supabase
       .from('comments')
@@ -369,6 +365,7 @@ const FeedCardInner = function FeedCard({
         cardWidth={feedCardWidth}
         cardBorderRadius={CARD_BORDER_RADIUS}
         contentSized
+        initialCommentCount={commentCount}
         onCommentPosted={handleCommentPosted}
       >
         {({ onCommentPress, commentCount: sheetCommentCount }) => (

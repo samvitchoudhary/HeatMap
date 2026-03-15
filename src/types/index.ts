@@ -29,6 +29,8 @@ export type Post = {
   longitude: number;
   created_at: string;
   category: string | null;
+  reaction_count?: number;
+  comment_count?: number;
 };
 
 /** Tag on a post - links a tagged user to their profile for display */

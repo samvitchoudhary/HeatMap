@@ -170,13 +170,13 @@ export function FriendProfileScreen() {
           : Promise.resolve({ data: null, error: null }),
         supabase
           .from('posts')
-          .select('*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
+          .select('*, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
           .eq('user_id', targetUserId)
           .order('created_at', { ascending: false })
           .limit(100),
         supabase
           .from('post_tags')
-          .select('post_id, posts:post_id(*, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
+          .select('post_id, posts:post_id(*, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username)))')
           .eq('tagged_user_id', targetUserId)
           .limit(100),
         supabase.from('posts').select('id', { count: 'exact', head: true }).eq('user_id', targetUserId),

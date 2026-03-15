@@ -11,7 +11,7 @@ import { supabase } from '../lib/supabase';
 import type { PostWithProfile } from '../types';
 
 const POST_SELECT =
-  'id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, profiles:user_id(username, display_name, avatar_url, is_private), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))';
+  'id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url, is_private), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))';
 
 const PAGE_SIZE = 50;
 
