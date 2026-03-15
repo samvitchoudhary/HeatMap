@@ -962,7 +962,7 @@ export function CardStack({
   return (
     <KeyboardAvoidingView
       style={styles.overlay}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'padding'}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <Animated.View
         style={[

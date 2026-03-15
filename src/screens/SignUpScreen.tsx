@@ -30,6 +30,7 @@ import { supabase } from '../lib/supabase';
 import { useToast } from '../lib/ToastContext';
 import { StyledTextInput } from '../components/StyledTextInput';
 import { theme } from '../lib/theme';
+import { CONFIG } from '../lib/config';
 
 type SignUpNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
 
@@ -55,8 +56,8 @@ export function SignUpScreen() {
       return;
     }
 
-    if (!password || password.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters.');
+    if (!password || password.length < CONFIG.MIN_PASSWORD_LENGTH) {
+      Alert.alert('Error', `Password must be at least ${CONFIG.MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
 

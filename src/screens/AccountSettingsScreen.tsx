@@ -22,6 +22,7 @@ import { Feather } from '@expo/vector-icons';
 import { theme } from '../lib/theme';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
+import { CONFIG } from '../lib/config';
 
 export function AccountSettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -167,8 +168,8 @@ export function AccountSettingsScreen() {
       Alert.alert('Error', 'Please enter your current password.');
       return;
     }
-    if (newPassword.length < 6) {
-      Alert.alert('Error', 'New password must be at least 6 characters.');
+    if (newPassword.length < CONFIG.MIN_PASSWORD_LENGTH) {
+      Alert.alert('Error', `New password must be at least ${CONFIG.MIN_PASSWORD_LENGTH} characters.`);
       return;
     }
     if (newPassword !== confirmPassword) {

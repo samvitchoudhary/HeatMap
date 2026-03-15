@@ -44,6 +44,7 @@ import { useCardStack } from '../lib/CardStackContext';
 import type { MapStackParamList, RootStackNavigationProp } from '../navigation/types';
 import { parseExifGps } from '../lib/exif';
 import { IMAGE_OPTIONS } from '../lib/imageUtils';
+import { CONFIG } from '../lib/config';
 import { requestCameraPermission, requestMediaLibraryPermission } from '../lib/permissions';
 import { getCategoryByKey, type CategoryKey } from '../lib/categories';
 import {
@@ -71,16 +72,14 @@ const NEARBY_RADIUS_METERS = 100;
 
 /** Zoom level used when centering on user location (initial, recenter button, search) */
 const USER_ZOOM_LEVEL = {
-  latitudeDelta: 0.01,
-  longitudeDelta: 0.01,
+  latitudeDelta: CONFIG.MAP_DEFAULT_REGION.latitudeDelta,
+  longitudeDelta: CONFIG.MAP_DEFAULT_REGION.longitudeDelta,
 };
 
-/** Default map center - UMD campus */
-const INITIAL_MAP_REGION = {
-  latitude: 38.9869,
-  longitude: -76.9426,
-  ...USER_ZOOM_LEVEL,
-};
+type MapRegion = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+
+/** Default map center from centralized config */
+const INITIAL_MAP_REGION: MapRegion = CONFIG.MAP_DEFAULT_REGION;
 
 const GOOGLE_MAPS_API_KEY =
   Constants.expoConfig?.ios?.config?.googleMapsApiKey ||
@@ -493,14 +492,14 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     return result;
   }, [visiblePosts, currentRegion]);
 
-  const onRegionChangeComplete = useCallback((region: typeof INITIAL_MAP_REGION) => {
+  const onRegionChangeComplete = useCallback((region: MapRegion) => {
     currentRegionRef.current = region;
     if (regionDebounceRef.current) {
       clearTimeout(regionDebounceRef.current);
     }
     regionDebounceRef.current = setTimeout(() => {
       setCurrentRegion(region);
-    }, 150);
+    }, CONFIG.MAP_REGION_DEBOUNCE_MS);
   }, []);
 
   const handlePostDotPress = useCallback(

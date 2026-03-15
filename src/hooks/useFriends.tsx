@@ -8,6 +8,7 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { CONFIG } from '../lib/config';
 
 type FriendProfile = {
   id: string;
@@ -47,7 +48,7 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
     if (!userId) return;
 
     const now = Date.now();
-    if (now - lastFetchRef.current < 10000 && hasDataRef.current) return;
+    if (now - lastFetchRef.current < CONFIG.FRIENDS_THROTTLE_MS && hasDataRef.current) return;
     lastFetchRef.current = now;
 
     try {
@@ -56,7 +57,7 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
         .select('requester_id, addressee_id, requester:requester_id(id, username, display_name, avatar_url), addressee:addressee_id(id, username, display_name, avatar_url)')
         .eq('status', 'accepted')
         .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-        .limit(500);
+        .limit(CONFIG.FRIENDS_LIMIT);
 
       if (error) {
         if (__DEV__) console.error('Failed to fetch friends:', error);

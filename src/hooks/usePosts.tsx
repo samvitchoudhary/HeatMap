@@ -8,12 +8,13 @@
 
 import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { CONFIG } from '../lib/config';
 import type { PostWithProfile } from '../types';
 
 const POST_SELECT =
   'id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url, is_private), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))';
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = CONFIG.POSTS_PAGE_SIZE;
 
 /**
  * Shape returned by Supabase post queries with joins.
@@ -157,7 +158,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const fetchId = ++postsFetchIdRef.current;
     fetchModeRef.current = 'all';
     const now = Date.now();
-    if (!force && now - lastFetchRef.current < 15000 && hasFetchedRef.current) return;
+    if (!force && now - lastFetchRef.current < CONFIG.POSTS_THROTTLE_MS && hasFetchedRef.current) return;
     lastFetchRef.current = now;
 
     try {

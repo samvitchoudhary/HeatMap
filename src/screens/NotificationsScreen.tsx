@@ -259,8 +259,8 @@ export function NotificationsScreen() {
     [selectMode, navigation, markAsRead]
   );
 
-  const handleAcceptFriendRequest = useCallback(
-    async (n: NotificationWithRelations) => {
+  const handleFriendRequestResponse = useCallback(
+    async (n: NotificationWithRelations, action: 'accepted' | 'declined') => {
       if (!userId || n.type !== 'friend_request') return;
       setActionLoadingId(n.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -273,14 +273,15 @@ export function NotificationsScreen() {
           .eq('status', 'pending')
           .single();
         if (friendship) {
-          const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendship.id);
+          const { error } = await supabase.from('friendships').update({ status: action }).eq('id', friendship.id);
           if (error) throw error;
         }
         await markAsRead(n.id);
         setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
       } catch (err) {
-        if (__DEV__) console.error('Accept friend request failed:', err);
-        Alert.alert('Error', 'Could not accept friend request. Please try again.');
+        const verb = action === 'accepted' ? 'accept' : 'decline';
+        if (__DEV__) console.error(`Failed to ${verb} friend request:`, err);
+        Alert.alert('Error', `Could not ${verb} friend request. Please try again.`);
       } finally {
         setActionLoadingId(null);
       }
@@ -288,33 +289,14 @@ export function NotificationsScreen() {
     [userId, markAsRead]
   );
 
+  const handleAcceptFriendRequest = useCallback(
+    (n: NotificationWithRelations) => handleFriendRequestResponse(n, 'accepted'),
+    [handleFriendRequestResponse]
+  );
+
   const handleDeclineFriendRequest = useCallback(
-    async (n: NotificationWithRelations) => {
-      if (!userId || n.type !== 'friend_request') return;
-      setActionLoadingId(n.id);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      try {
-        const { data: friendship } = await supabase
-          .from('friendships')
-          .select('id')
-          .eq('requester_id', n.from_user_id)
-          .eq('addressee_id', userId)
-          .eq('status', 'pending')
-          .single();
-        if (friendship) {
-          const { error } = await supabase.from('friendships').update({ status: 'declined' }).eq('id', friendship.id);
-          if (error) throw error;
-        }
-        await markAsRead(n.id);
-        setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
-      } catch (err) {
-        if (__DEV__) console.error('Decline friend request failed:', err);
-        Alert.alert('Error', 'Could not decline friend request. Please try again.');
-      } finally {
-        setActionLoadingId(null);
-      }
-    },
-    [userId, markAsRead]
+    (n: NotificationWithRelations) => handleFriendRequestResponse(n, 'declined'),
+    [handleFriendRequestResponse]
   );
 
   const getNotificationText = (n: NotificationWithRelations) => {

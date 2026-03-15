@@ -6,17 +6,18 @@
 
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { CONFIG } from './config';
 
 export const IMAGE_OPTIONS: ImagePicker.ImagePickerOptions = {
   allowsEditing: true,
-  quality: 0.7,
+  quality: CONFIG.IMAGE_COMPRESS_QUALITY,
 };
 
 export async function compressImage(uri: string): Promise<string> {
   const result = await manipulateAsync(
     uri,
-    [{ resize: { width: 1080 } }],
-    { compress: 0.7, format: SaveFormat.JPEG }
+    [{ resize: { width: CONFIG.IMAGE_COMPRESS_WIDTH } }],
+    { compress: CONFIG.IMAGE_COMPRESS_QUALITY, format: SaveFormat.JPEG }
   );
   return result.uri;
 }
