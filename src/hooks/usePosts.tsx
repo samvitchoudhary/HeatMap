@@ -15,6 +15,69 @@ const POST_SELECT =
 
 const PAGE_SIZE = 50;
 
+/**
+ * Shape returned by Supabase post queries with joins.
+ * Must match the POST_SELECT columns exactly.
+ * Supabase types foreign-key joins as arrays; at runtime they're single objects.
+ */
+type SupabaseProfileJoin = {
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_private?: boolean;
+};
+
+type SupabaseTagProfileJoin = {
+  display_name: string;
+  username: string;
+};
+
+export type SupabasePostRow = {
+  id: string;
+  user_id: string;
+  image_url: string;
+  caption: string | null;
+  latitude: number;
+  longitude: number;
+  venue_name: string | null;
+  created_at: string;
+  category: string | null;
+  reaction_count: number | null;
+  comment_count: number | null;
+  profiles: SupabaseProfileJoin | SupabaseProfileJoin[] | null;
+  post_tags: {
+    tagged_user_id: string;
+    profiles: SupabaseTagProfileJoin | SupabaseTagProfileJoin[] | null;
+  }[] | null;
+};
+
+function unwrapJoin<T>(val: T | T[] | null): T | null {
+  if (val == null) return null;
+  return Array.isArray(val) ? val[0] ?? null : val;
+}
+
+export function mapSupabasePost(row: SupabasePostRow): PostWithProfile {
+  const profile = unwrapJoin(row.profiles);
+  return {
+    id: row.id,
+    user_id: row.user_id,
+    image_url: row.image_url,
+    caption: row.caption ?? '',
+    latitude: row.latitude,
+    longitude: row.longitude,
+    venue_name: row.venue_name,
+    created_at: row.created_at,
+    category: row.category,
+    reaction_count: row.reaction_count ?? 0,
+    comment_count: row.comment_count ?? 0,
+    profiles: profile ?? { username: 'deleted', display_name: 'Deleted User', avatar_url: null },
+    post_tags: (row.post_tags ?? []).map(tag => ({
+      tagged_user_id: tag.tagged_user_id,
+      profiles: unwrapJoin(tag.profiles) ?? { display_name: 'Unknown', username: 'unknown' },
+    })),
+  };
+}
+
 type PostsContextType = {
   /** All fetched posts (map + feed) */
   posts: PostWithProfile[];
@@ -38,8 +101,8 @@ type PostsContextType = {
   updatePost: (postId: string, updates: Partial<PostWithProfile>) => void;
   /** Remove a post from the cache */
   removePost: (postId: string) => void;
-  /** Force refresh */
-  refresh: (friendIds: string[], userId: string) => Promise<void>;
+  /** Force refresh (pass includePublic=true for "Everyone" filter) */
+  refresh: (friendIds: string[], userId: string, includePublic?: boolean) => Promise<void>;
 };
 
 const PostsContext = createContext<PostsContextType>({
@@ -83,7 +146,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       if (fetchId !== postsFetchIdRef.current) return;
       hasFetchedRef.current = true;
-      setPosts((data ?? []) as unknown as PostWithProfile[]);
+      setPosts((data ?? []).map(row => mapSupabasePost(row as SupabasePostRow)));
       setHasMore((data ?? []).length === PAGE_SIZE);
     } finally {
       if (fetchId === postsFetchIdRef.current) setLoading(false);
@@ -114,7 +177,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (fetchId !== postsFetchIdRef.current) return;
 
       hasFetchedRef.current = true;
-      setPosts((data ?? []) as unknown as PostWithProfile[]);
+      setPosts((data ?? []).map(row => mapSupabasePost(row as SupabasePostRow)));
       setHasMore((data ?? []).length === PAGE_SIZE);
     } finally {
       if (fetchId === postsFetchIdRef.current) {
@@ -141,7 +204,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (fetchId !== postsFetchIdRef.current) return;
 
       hasFetchedRef.current = true;
-      setPosts((data ?? []) as unknown as PostWithProfile[]);
+      setPosts((data ?? []).map(row => mapSupabasePost(row as SupabasePostRow)));
       setHasMore((data ?? []).length === PAGE_SIZE);
     } catch (err) {
       if (__DEV__) console.error('Failed to fetch public posts:', err);
@@ -175,7 +238,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return;
         }
 
-        const newPosts = (data ?? []) as unknown as PostWithProfile[];
+        const newPosts = (data ?? []).map(row => mapSupabasePost(row as SupabasePostRow));
         setPosts((prev) => [...prev, ...newPosts]);
         setHasMore(newPosts.length === PAGE_SIZE);
       } else {
@@ -194,7 +257,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           return;
         }
 
-        const newPosts = (data ?? []) as unknown as PostWithProfile[];
+        const newPosts = (data ?? []).map(row => mapSupabasePost(row as SupabasePostRow));
         setPosts((prev) => [...prev, ...newPosts]);
         setHasMore(newPosts.length === PAGE_SIZE);
       }
