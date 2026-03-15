@@ -1,6 +1,12 @@
 /**
  * NotificationsScreen.tsx
  *
+ * NOTE: This file is over 600 lines. Future refactoring candidates:
+ * - Extract useNotificationsList hook (fetch, pagination, markAsRead, bulk delete, select mode)
+ * - Extract NotificationItem component (row rendering with avatar/icon, text, and action buttons)
+ * - Extract useFriendRequestActions hook (accept/decline, shared with FriendsScreen)
+ * - Move normFromUser/normPost helpers to a shared lib/notificationUtils.ts
+ *
  * Notification center - reactions, comments, friend requests, tags.
  *
  * Key responsibilities:

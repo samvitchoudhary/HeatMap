@@ -1,6 +1,12 @@
 /**
  * FeedCard.tsx
  *
+ * NOTE: This file is over 600 lines. Future refactoring candidates:
+ * - Extract useDoubleTapHeart hook (tap detection, heart animation values, flash animation)
+ * - Extract useReactionToggle hook (upsert/delete reaction with optimistic updates + notifications)
+ * - Extract HeartOverlay component (animated heart burst with scale, rotate, fade)
+ * - Extract CategoryBadge component (dot + label pill, reusable across FeedCard and CardStack)
+ *
  * Individual post card in the Feed tab.
  *
  * Key responsibilities:

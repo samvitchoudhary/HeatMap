@@ -1,6 +1,12 @@
 /**
  * ProfileScreen.tsx
  *
+ * NOTE: This file is over 700 lines. Future refactoring candidates:
+ * - Extract useProfilePosts hook (fetchMyPosts, loadMoreProfilePosts, merge tagged posts)
+ * - Extract pickAndUploadAvatar utility (ImagePicker, blob conversion, storage upload, profile update)
+ * - Extract ProfileSkeleton component (shared with FriendProfileScreen's skeleton)
+ * - Extract ProfilePostGrid component (3-column grid with tag banners, shared with FriendProfileScreen)
+ *
  * User's own profile - avatar, stats, recent posts grid, edit, logout.
  *
  * Key responsibilities:

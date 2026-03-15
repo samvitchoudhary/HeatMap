@@ -1,6 +1,13 @@
 /**
  * CardStack.tsx
  *
+ * NOTE: This file is over 1200 lines. Future refactoring candidates:
+ * - Extract useReactions hook (fetchReactions, handleDoubleTapHeart, handleReactionToggle, optimistic updates)
+ * - Extract CardImage component (image loading, double-tap heart animation, error state)
+ * - Extract DotIndicator component (pagination dots with active state)
+ * - Extract useCardStackAnimations hook (entry/close animations, pan responder, shake animation)
+ * - Move SWIPE_THRESHOLD, VELOCITY_THRESHOLD, and card dimension constants to lib/cardConstants.ts
+ *
  * Swipeable card stack overlay for viewing posts (from map clusters or profile gallery).
  *
  * Key responsibilities:
@@ -1204,14 +1211,6 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     ...theme.shadows.card,
   },
-  stackCardThird: {
-    zIndex: 1,
-    transform: [{ scale: 0.94 }, { translateY: 16 }],
-    opacity: 0.8,
-  },
-  stackCardSecond: {
-    zIndex: 2,
-  },
   stackCardTop: {
     zIndex: 3,
     transform: [{ translateY: 0 }],
@@ -1219,13 +1218,6 @@ const styles = StyleSheet.create({
   cardImage: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
-  },
-  indicator: {
-    position: 'absolute',
-    bottom: 48,
-    fontSize: theme.fontSize.xs,
-    fontWeight: '400',
-    color: theme.colors.textTertiary,
   },
   dotIndicatorRow: {
     flexDirection: 'row',

@@ -1,6 +1,12 @@
 /**
  * CommentSheet.tsx
  *
+ * NOTE: This file is over 600 lines. Future refactoring candidates:
+ * - Extract useComments hook (fetchComments, handlePostComment, threading via buildThreadedComments)
+ * - Extract CommentItem component (top-level comment and reply rendering)
+ * - Extract CommentInputBar component (reply banner, text input, send button)
+ * - Extract useFlipAnimation hook (flipAnimation, interpolation, flipToBack/flipToFront)
+ *
  * Flip-card component: front = post content, back = comments list with reply support.
  *
  * Key responsibilities:
@@ -624,57 +630,6 @@ const styles = StyleSheet.create({
   loader: {
     marginTop: theme.spacing.md,
   },
-  emptyText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
-    marginTop: theme.spacing.sm,
-  },
-  commentContent: {
-    flex: 1,
-  },
-  commenterName: {
-    fontSize: theme.fontSize.md,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  commentText: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: '400',
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  commentTime: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: '400',
-    color: theme.colors.textTertiary,
-  },
-  replyButton: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    marginTop: 2,
-  },
-  replyRow: {
-    marginLeft: 40,
-    marginBottom: theme.listRowGap,
-  },
-  replyingTo: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    marginBottom: 2,
-  },
-  commenterNameReply: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  commentTextReply: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
   replyBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -688,26 +643,6 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.sm,
     color: theme.colors.text,
     flex: 1,
-  },
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingTop: theme.spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-    gap: theme.spacing.sm,
-  },
-  input: {
-    flex: 1,
-    borderRadius: theme.borderRadius.full,
-  },
-  primaryCommentButton: {
-    backgroundColor: theme.colors.light,
-    width: theme.button.primaryHeight,
-    height: theme.button.primaryHeight,
-    borderRadius: theme.button.borderRadius,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   postButtonDisabled: {
     opacity: 0.5,

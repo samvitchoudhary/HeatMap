@@ -1,6 +1,13 @@
 /**
  * HomeScreen.tsx
  *
+ * NOTE: This file is over 1300 lines. Future refactoring candidates:
+ * - Extract usePlacesSearch hook (searchText, searchResults, searchPlaces, getPlaceDetails, dropdown animation)
+ * - Extract useFabMenu hook (FAB expand/collapse animations, camera/gallery handlers)
+ * - Extract MapSearchBar component (expanded search bar, dropdown list, place selection)
+ * - Move getDistanceMeters, LIGHT_MAP_STYLE, and map constants to a shared lib/geo.ts
+ * - Extract FAB overlay + sub-buttons into a FloatingActionMenu component
+ *
  * Map tab - heatmap, clusters, search, FAB for camera/gallery.
  *
  * Key responsibilities:
@@ -1197,28 +1204,6 @@ const styles = StyleSheet.create({
     padding: 0,
     height: 44,
     minHeight: 44,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background,
-    borderWidth: 0,
-    borderRadius: theme.borderRadius.full,
-    height: theme.inputHeight,
-    paddingHorizontal: theme.screenPadding,
-    gap: theme.spacing.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  searchIcon: {
-    marginRight: theme.spacing.xs,
-  },
-  searchInput: {
-    flex: 1,
-    padding: 0,
   },
   dropdownBackdrop: {
     position: 'absolute',

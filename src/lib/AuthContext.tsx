@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!mounted) return;
 
         if (sessionError) {
-          console.error('Failed to get session:', sessionError);
+          if (__DEV__) console.error('Failed to get session:', sessionError);
           setSession(null);
           setProfile(null);
           return;
@@ -89,14 +89,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             await fetchProfile(s.user.id);
           } catch (err) {
-            console.error('Profile fetch error:', err);
+            if (__DEV__) console.error('Profile fetch error:', err);
             if (mounted) setProfile(null);
           }
         } else {
           setProfile(null);
         }
       } catch (err) {
-        console.error('Auth init error:', err);
+        if (__DEV__) console.error('Auth init error:', err);
         if (mounted) {
           setSession(null);
           setProfile(null);
@@ -120,7 +120,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setProfile(null);
         }
       } catch (err) {
-        console.error('Auth state change error:', err);
+        if (__DEV__) console.error('Auth state change error:', err);
       }
       setLoading(false);
     });
@@ -135,7 +135,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const timeout = setTimeout(() => {
       setLoading((prev) => {
         if (prev) {
-          console.error('Auth loading timed out after 10 seconds');
+          if (__DEV__) console.error('Auth loading timed out after 10 seconds');
           return false;
         }
         return prev;

@@ -1,6 +1,13 @@
 /**
  * UploadScreen.tsx
  *
+ * NOTE: This file is over 1000 lines. Future refactoring candidates:
+ * - Extract useLocationDetection hook (requestLocationPermission, reverseGeocode, detectVenue)
+ * - Extract usePostUpload hook (compression, storage upload, post insert, tag insert, notifications)
+ * - Extract TagFriendsModal component (search, friend list, selection state)
+ * - Extract CategoryPicker component (horizontal chip ScrollView)
+ * - Move reverseGeocode and uploadImageToStorage utilities to shared lib files
+ *
  * Photo upload flow - venue, caption, friend tagging.
  *
  * Key responsibilities:

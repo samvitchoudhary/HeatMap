@@ -1,6 +1,11 @@
 /**
  * FriendsScreen.tsx
  *
+ * NOTE: This file is over 500 lines. Future refactoring candidates:
+ * - Extract useProfileSearch hook (debounced search, searchText, searchProfiles, loading state)
+ * - Extract useFriendshipActions hook (addFriend, acceptRequest, shared with FriendProfileScreen)
+ * - Extract FriendshipButton component (Add / Accept / Pending / Friends button variants)
+ *
  * Friends list and user search.
  *
  * Key responsibilities:
@@ -476,9 +481,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: theme.borderRadius.lg,
     padding: theme.spacing.md,
     maxHeight: 300,
-  },
-  searchLoader: {
-    padding: theme.spacing.lg,
   },
   searchEmpty: {
     padding: theme.spacing.lg,

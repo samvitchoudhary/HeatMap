@@ -1,6 +1,12 @@
 /**
  * FriendProfileScreen.tsx
  *
+ * NOTE: This file is over 700 lines. Future refactoring candidates:
+ * - Extract useFriendProfile hook (profile/posts/friendship fetch orchestration)
+ * - Extract useFriendshipActions hook (addFriend, acceptRequest, removeFriend + notifications)
+ * - Extract ProfilePostGrid component (3-column grid with tag banners, shared with ProfileScreen)
+ * - Extract ProfileHeader component (avatar, stats row, friendship button — shared with ProfileScreen)
+ *
  * View another user's profile - avatar, stats, posts, add friend.
  *
  * Key responsibilities:
@@ -693,12 +699,6 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     marginBottom: theme.spacing.lg,
     textAlign: 'left',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: GRID_GAP,
-    backgroundColor: theme.colors.background,
   },
   gridRow: {
     gap: GRID_GAP,
