@@ -285,6 +285,8 @@ export function CommentSheet({
             }
             activeOpacity={0.7}
             hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            accessibilityLabel="Reply"
+            accessibilityRole="button"
           >
             <Text style={styles.cardBackReplyButton}>Reply</Text>
           </TouchableOpacity>
@@ -371,6 +373,8 @@ export function CommentSheet({
                 onPress={flipToFront}
                 hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
                 activeOpacity={0.7}
+                accessibilityLabel="Back to photo"
+                accessibilityRole="button"
               >
                 <Feather name="image" size={20} color={theme.colors.textSecondary} />
               </TouchableOpacity>
@@ -396,6 +400,8 @@ export function CommentSheet({
                       disabled={loadingMore}
                       style={styles.loadMoreButton}
                       activeOpacity={0.7}
+                      accessibilityLabel="Load earlier comments"
+                      accessibilityRole="button"
                     >
                       {loadingMore ? (
                         <ActivityIndicator size="small" color={theme.colors.primary} />
@@ -427,6 +433,8 @@ export function CommentSheet({
                     onPress={() => setReplyTarget(null)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     activeOpacity={0.7}
+                    accessibilityLabel="Cancel reply"
+                    accessibilityRole="button"
                   >
                     <Feather name="x" size={16} color={theme.colors.textTertiary} />
                   </TouchableOpacity>
@@ -451,6 +459,8 @@ export function CommentSheet({
                   onPress={handlePostComment}
                   disabled={!inputText.trim() || posting}
                   activeOpacity={0.8}
+                  accessibilityLabel="Send comment"
+                  accessibilityRole="button"
                 >
                   {posting ? (
                     <ActivityIndicator size="small" color={theme.colors.primary} />

@@ -74,6 +74,10 @@ function ReactionButton({
       ]}
       onPress={onPress}
       activeOpacity={0.8}
+      hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+      accessibilityLabel={`${emoji} reaction`}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
     >
       <Animated.View
         style={[

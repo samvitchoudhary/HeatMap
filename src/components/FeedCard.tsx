@@ -385,7 +385,7 @@ const FeedCardInner = function FeedCard({
                   <Feather name="image" size={24} color={theme.colors.textTertiary} />
                 </View>
               ) : (
-                <TouchableWithoutFeedback onPress={handleDoubleTap}>
+                <TouchableWithoutFeedback onPress={handleDoubleTap} accessibilityLabel="Double tap to like" accessibilityRole="button">
                   <View style={styles.photo}>
                     <SmoothImage
                       source={{ uri: post.image_url }}
@@ -436,6 +436,9 @@ const FeedCardInner = function FeedCard({
                   style={styles.expandButton}
                   onPress={() => onExpandPhoto(post.image_url)}
                   activeOpacity={0.7}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  accessibilityLabel="View full photo"
+                  accessibilityRole="button"
                 >
                   <Feather name="maximize-2" size={16} color="#FFF" />
                 </TouchableOpacity>
@@ -445,6 +448,8 @@ const FeedCardInner = function FeedCard({
                   style={styles.deleteButton}
                   onPress={handleDeletePress}
                   activeOpacity={0.7}
+                  accessibilityLabel="Delete post"
+                  accessibilityRole="button"
                 >
                   <Feather name="trash-2" size={16} color={theme.colors.red} />
                 </TouchableOpacity>
@@ -456,6 +461,8 @@ const FeedCardInner = function FeedCard({
                   onPress={() => onProfilePress(post.user_id)}
                   activeOpacity={0.7}
                   hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  accessibilityLabel={`View ${displayName}'s profile`}
+                  accessibilityRole="button"
                 >
                   <Text style={styles.infoDisplayName} numberOfLines={1}>
                     {displayName}
@@ -477,6 +484,8 @@ const FeedCardInner = function FeedCard({
                   }
                 }}
                 activeOpacity={0.7}
+                accessibilityLabel={`View ${venueName} on map`}
+                accessibilityRole="button"
                 disabled={
                   !onVenuePress ||
                   typeof post.latitude !== 'number' ||
@@ -533,7 +542,7 @@ const FeedCardInner = function FeedCard({
                   cardStackBar
                 />
               </View>
-              <Pressable style={styles.commentButton} onPress={onCommentPress}>
+              <Pressable style={styles.commentButton} onPress={onCommentPress} accessibilityLabel="View comments" accessibilityRole="button">
                 {({ pressed }) => (
                   <>
                     <Feather

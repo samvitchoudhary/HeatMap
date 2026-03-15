@@ -119,6 +119,8 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
       onLongPress={onLongPress}
       delayLongPress={400}
       activeOpacity={0.7}
+      accessibilityLabel="View post"
+      accessibilityRole="button"
     >
       {hasError ? (
         <View style={[styles.gridCellEmpty, styles.gridImagePlaceholder]}>
@@ -468,6 +470,9 @@ export function ProfileScreen() {
           zIndex: 10,
         }}
         activeOpacity={0.7}
+        hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+        accessibilityLabel="Settings"
+        accessibilityRole="button"
       >
         <Feather name="settings" size={20} color={theme.colors.text} />
       </TouchableOpacity>
@@ -499,6 +504,8 @@ export function ProfileScreen() {
             onPress={handleChangeAvatar}
             disabled={uploadingAvatar}
             activeOpacity={0.8}
+            accessibilityLabel="Change profile photo"
+            accessibilityRole="button"
           >
             <View style={styles.avatarContainer}>
               <Avatar uri={avatarUrl ?? null} size={80} profilePlaceholder />
@@ -519,7 +526,7 @@ export function ProfileScreen() {
             <Text style={styles.statsNumber}>{postsCount}</Text>
             <Text style={styles.statsLabel}> posts  </Text>
             <Text style={styles.statsDivider}> |  </Text>
-            <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.statTouchable} onPress={handleFriendsPress} activeOpacity={0.7} accessibilityLabel={`${friendsCount} friends`} accessibilityRole="button">
               <Text style={[styles.statsNumber, styles.statsNumberTappable]}>{friendsCount}</Text>
               <Text style={[styles.statsLabel, styles.statsLabelTappable]}> friends</Text>
             </TouchableOpacity>
@@ -565,6 +572,8 @@ export function ProfileScreen() {
               style={styles.viewAllButton}
               onPress={handleViewAllPosts}
               activeOpacity={0.6}
+              accessibilityLabel="View all posts"
+              accessibilityRole="button"
             >
               <Feather name="grid" size={16} color={theme.colors.primary} />
               <Text style={styles.viewAllText}>View All Posts</Text>

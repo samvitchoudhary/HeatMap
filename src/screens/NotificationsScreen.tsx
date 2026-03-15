@@ -330,6 +330,8 @@ export function NotificationsScreen() {
         onLongPress={() => handleLongPress(item.id)}
         delayLongPress={400}
         activeOpacity={0.7}
+        accessibilityLabel={`${bold} ${rest}`}
+        accessibilityRole="button"
       >
         {selectMode && (
           <View
@@ -360,6 +362,8 @@ export function NotificationsScreen() {
                 onPress={() => handleAcceptFriendRequest(item)}
                 disabled={loading}
                 activeOpacity={0.8}
+                accessibilityLabel="Accept friend request"
+                accessibilityRole="button"
               >
                 {loading ? (
                   <ActivityIndicator size="small" color={theme.colors.textOnPrimary} />
@@ -372,6 +376,8 @@ export function NotificationsScreen() {
                 onPress={() => handleDeclineFriendRequest(item)}
                 disabled={loading}
                 activeOpacity={0.8}
+                accessibilityLabel="Decline friend request"
+                accessibilityRole="button"
               >
                 <Text style={styles.declineBtnText}>Decline</Text>
               </TouchableOpacity>
@@ -427,6 +433,8 @@ export function NotificationsScreen() {
                   setSelectedIds(new Set());
                 }}
                 activeOpacity={0.7}
+                accessibilityLabel="Cancel selection"
+                accessibilityRole="button"
               >
                 <Text style={styles.selectModeCancel}>Cancel</Text>
               </TouchableOpacity>
@@ -434,6 +442,8 @@ export function NotificationsScreen() {
               <TouchableOpacity
                 onPress={handleBulkDeleteNotifications}
                 activeOpacity={0.7}
+                accessibilityLabel="Delete selected notifications"
+                accessibilityRole="button"
               >
                 <Text style={styles.selectModeDelete}>
                   Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}

@@ -131,6 +131,8 @@ export function SettingsScreen() {
                 ]}
                 onPress={row.onPress}
                 activeOpacity={0.6}
+                accessibilityLabel={row.label}
+                accessibilityRole="button"
               >
                 <View
                   style={[

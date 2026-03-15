@@ -547,6 +547,8 @@ export function UploadScreen() {
             style={styles.photoOptionTop}
             onPress={handleTakePhoto}
             activeOpacity={0.7}
+            accessibilityLabel="Take photo"
+            accessibilityRole="button"
           >
             <Feather name="camera" size={48} color={theme.colors.primary} />
             <Text style={[styles.photoOptionLabel, styles.photoOptionLabelDark]}>Take Photo</Text>
@@ -555,6 +557,8 @@ export function UploadScreen() {
             style={styles.photoOptionBottom}
             onPress={handleChooseFromLibrary}
             activeOpacity={0.7}
+            accessibilityLabel="Choose from library"
+            accessibilityRole="button"
           >
             <Feather name="image" size={48} color={theme.colors.secondary} />
             <Text style={[styles.photoOptionLabel, styles.photoOptionLabelDark]}>Choose from Library</Text>
@@ -606,6 +610,8 @@ export function UploadScreen() {
             style={styles.venueField}
             activeOpacity={0.7}
             disabled={isDetectingLocation}
+            accessibilityLabel="Add location"
+            accessibilityRole="button"
           >
             <Feather name="map-pin" size={16} color={theme.colors.textSecondary} style={styles.venueIcon} />
             <View style={styles.venueTextWrap}>
@@ -662,6 +668,9 @@ export function UploadScreen() {
                     borderWidth: 1,
                     borderColor: isSelected ? cat.color : theme.colors.border,
                   }}
+                  accessibilityLabel={`${cat.label} category`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
                 >
                   {isSelected && (
                     <View
@@ -692,6 +701,8 @@ export function UploadScreen() {
             style={styles.tagFriendsRow}
             onPress={() => setShowTagPicker(true)}
             activeOpacity={0.7}
+            accessibilityLabel="Tag friends"
+            accessibilityRole="button"
           >
             <Feather name="user-plus" size={18} color={theme.colors.textSecondary} />
             <Text style={styles.tagFriendsLabel}>Tag Friends</Text>
@@ -710,6 +721,8 @@ export function UploadScreen() {
                       setTaggedFriends((prev) => prev.filter((f) => f.id !== friend.id))
                     }
                     activeOpacity={0.7}
+                    accessibilityLabel={`Remove ${friend.display_name}`}
+                    accessibilityRole="button"
                   >
                     <Feather name="x" size={14} color={theme.colors.textSecondary} />
                   </TouchableOpacity>
@@ -723,6 +736,8 @@ export function UploadScreen() {
             onPress={editMode ? handleUpdatePost : handlePost}
             disabled={isPosting}
             activeOpacity={0.8}
+            accessibilityLabel={editMode ? 'Save changes' : 'Post'}
+            accessibilityRole="button"
           >
             {isPosting ? (
               <ActivityIndicator color={theme.colors.textOnPrimary} />
@@ -738,6 +753,8 @@ export function UploadScreen() {
             onPress={handleCancel}
             disabled={isPosting}
             activeOpacity={0.8}
+            accessibilityLabel="Cancel"
+            accessibilityRole="button"
           >
             <Text style={styles.secondaryButtonText}>Cancel</Text>
           </TouchableOpacity>
@@ -760,6 +777,8 @@ export function UploadScreen() {
               onPress={() => setShowTagPicker(false)}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               activeOpacity={0.7}
+              accessibilityLabel="Close"
+              accessibilityRole="button"
             >
               <Feather name="x" size={24} color={theme.colors.text} />
             </TouchableOpacity>
@@ -806,6 +825,9 @@ export function UploadScreen() {
                         }
                       }}
                       activeOpacity={0.7}
+                      accessibilityLabel={`${isTagged ? 'Remove' : 'Tag'} ${friend.display_name}`}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isTagged }}
                     >
                       <Avatar uri={friend.avatar_url} size={24} />
                       <View style={styles.pickerRowText}>
@@ -830,6 +852,8 @@ export function UploadScreen() {
             style={styles.pickerDoneBtn}
             onPress={() => setShowTagPicker(false)}
             activeOpacity={0.8}
+            accessibilityLabel="Done"
+            accessibilityRole="button"
           >
             <Text style={styles.pickerDoneText}>Done</Text>
           </TouchableOpacity>

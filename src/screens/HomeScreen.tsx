@@ -860,6 +860,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           style={[styles.searchCircle, { top: insets.top + 12, left: 16 }]}
           onPress={() => setSearchExpanded(true)}
           activeOpacity={0.8}
+          accessibilityLabel="Search locations"
+          accessibilityRole="button"
         >
           <Feather name="search" size={20} color={theme.colors.text} />
         </TouchableOpacity>
@@ -901,6 +903,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
               }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               activeOpacity={0.7}
+              accessibilityLabel="Clear search"
+              accessibilityRole="button"
             >
               <Feather name="x" size={18} color={theme.colors.textSecondary} />
             </TouchableOpacity>
@@ -946,6 +950,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
                         style={styles.dropdownItem}
                         onPress={() => handleSelectPlace(place)}
                         activeOpacity={0.7}
+                        accessibilityLabel={place.name}
+                        accessibilityRole="button"
                       >
                         <Feather name="map-pin" size={16} color={theme.colors.textSecondary} />
                         <View style={styles.dropdownItemText}>
@@ -976,6 +982,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           ]}
           onPress={() => setShowFilterSheet(true)}
           activeOpacity={0.8}
+          accessibilityLabel={hasActiveFilters ? 'Filters active' : 'Filter posts'}
+          accessibilityRole="button"
         >
           <Feather
             name="sliders"
@@ -990,6 +998,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           style={[styles.recenterButton, { bottom: insets.bottom + 90 }]}
           onPress={handleRecenter}
           activeOpacity={0.8}
+          accessibilityLabel="Center on my location"
+          accessibilityRole="button"
         >
           <Feather name="navigation" size={20} color={theme.colors.primary} />
         </TouchableOpacity>
@@ -1040,6 +1050,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
               style={styles.fabSubButton}
               onPress={handleFabCamera}
               activeOpacity={0.7}
+              accessibilityLabel="Take photo"
+              accessibilityRole="button"
             >
               <Feather name="camera" size={22} color={theme.colors.primary} />
             </TouchableOpacity>
@@ -1067,6 +1079,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
               style={styles.fabSubButton}
               onPress={handleFabGallery}
               activeOpacity={0.7}
+              accessibilityLabel="Choose from gallery"
+              accessibilityRole="button"
             >
               <Feather name="image" size={22} color={theme.colors.primary} />
             </TouchableOpacity>
@@ -1076,6 +1090,8 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
             style={[styles.fabButton, theme.shadows.button as object]}
             onPress={handleFabToggle}
             activeOpacity={0.8}
+            accessibilityLabel="Create new post"
+            accessibilityRole="button"
           >
             <Animated.View
               style={{

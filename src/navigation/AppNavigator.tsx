@@ -269,6 +269,9 @@ function CustomTabBar(props: {
               onPress={onPress}
               activeOpacity={0.7}
               style={styles.tabButton}
+              accessibilityRole="tab"
+              accessibilityLabel={`${config?.name ?? route.name} tab`}
+              accessibilityState={{ selected: isFocused }}
             >
               <TabIcon name={config?.icon ?? 'circle'} focused={isFocused} />
               {badge !== undefined && (

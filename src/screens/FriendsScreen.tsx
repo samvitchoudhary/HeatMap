@@ -219,6 +219,8 @@ export function FriendsScreen() {
           style={[styles.searchBtn, styles.acceptSearchBtn]}
           activeOpacity={0.8}
           onPress={() => item.friendshipId && handleAccept(item.friendshipId)}
+          accessibilityLabel="Accept friend request"
+          accessibilityRole="button"
         >
           <Feather name="user-check" size={16} color={theme.colors.textOnPrimary} />
           <Text style={[styles.searchBtnText, styles.searchBtnTextWhite, { marginLeft: 6 }]}>Accept</Text>
@@ -231,6 +233,8 @@ export function FriendsScreen() {
           style={[styles.searchBtn, styles.addSearchBtn]}
           activeOpacity={0.8}
           onPress={() => handleAddFriend(item.id)}
+          accessibilityLabel="Add friend"
+          accessibilityRole="button"
         >
           <Feather name="user-plus" size={16} color={theme.colors.textOnPrimary} />
           <Text style={[styles.searchBtnText, styles.searchBtnTextWhite, { marginLeft: 6 }]}>Add</Text>
@@ -313,6 +317,8 @@ export function FriendsScreen() {
                     userId: item.other_user?.id ?? '',
                   });
                 }}
+                accessibilityLabel={item.other_user?.display_name ?? 'Friend'}
+                accessibilityRole="button"
               >
                 <View style={styles.avatarWrap}>
                   <Avatar uri={item.other_user?.avatar_url ?? null} size={40} />
@@ -365,6 +371,8 @@ export function FriendsScreen() {
                       });
                     }}
                     activeOpacity={0.7}
+                    accessibilityLabel={`View ${item.display_name}'s profile`}
+                    accessibilityRole="button"
                   >
                     <View style={styles.avatarWrap}>
                       <Avatar uri={item.avatar_url ?? null} size={40} />

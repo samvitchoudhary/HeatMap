@@ -287,7 +287,7 @@ const CardImage = React.memo(function CardImage({
   return (
     <View style={s.cardImageWrap}>
       {onDoubleTap ? (
-        <TouchableWithoutFeedback onPress={handleDoubleTap}>{imageContent}</TouchableWithoutFeedback>
+        <TouchableWithoutFeedback onPress={handleDoubleTap} accessibilityLabel="Double tap to like" accessibilityRole="button">{imageContent}</TouchableWithoutFeedback>
       ) : (
         imageContent
       )}
@@ -839,6 +839,9 @@ export function CardStack({
                 style={styles.expandButton}
                 onPress={() => setViewerImage(post.image_url)}
                 activeOpacity={0.7}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                accessibilityLabel="View full photo"
+                accessibilityRole="button"
               >
                 <Feather name="maximize-2" size={18} color="#FFF" />
               </TouchableOpacity>
@@ -848,6 +851,8 @@ export function CardStack({
                 style={styles.deleteButton}
                 onPress={() => handleDeletePost(post)}
                 activeOpacity={0.7}
+                accessibilityLabel="Delete post"
+                accessibilityRole="button"
               >
                 <Feather name="trash-2" size={16} color={theme.colors.red} />
               </TouchableOpacity>
@@ -859,6 +864,8 @@ export function CardStack({
                 onPress={() => onProfilePress(post.user_id)}
                 activeOpacity={0.7}
                 hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                accessibilityLabel={`View ${post.profiles?.display_name ?? 'user'}'s profile`}
+                accessibilityRole="button"
               >
                 <Text style={styles.infoDisplayName} numberOfLines={1}>
                   {post.profiles?.display_name ?? 'Deleted User'}
@@ -922,7 +929,7 @@ export function CardStack({
                 cardStackBar
               />
             </View>
-            <Pressable style={styles.commentButton} onPress={onCommentPress}>
+            <Pressable style={styles.commentButton} onPress={onCommentPress} accessibilityLabel="View comments" accessibilityRole="button">
               {({ pressed }) => (
                 <>
                   <Feather
@@ -977,6 +984,8 @@ export function CardStack({
         onPress={handleClose}
         hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
         activeOpacity={0.7}
+        accessibilityLabel="Close"
+        accessibilityRole="button"
       >
         <Feather name="x" size={22} color={theme.colors.text} />
       </TouchableOpacity>
