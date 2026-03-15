@@ -6,7 +6,7 @@
  * Uses Supabase Realtime instead of polling for live badge updates.
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
@@ -108,8 +108,14 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [userId, refreshUnreadCount]);
 
+  const value = useMemo(() => ({
+    unreadCount,
+    refreshUnreadCount,
+    markAllRead,
+  }), [unreadCount, refreshUnreadCount, markAllRead]);
+
   return (
-    <NotificationsContext.Provider value={{ unreadCount, refreshUnreadCount, markAllRead }}>
+    <NotificationsContext.Provider value={value}>
       {children}
     </NotificationsContext.Provider>
   );

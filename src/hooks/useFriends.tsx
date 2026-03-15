@@ -6,7 +6,7 @@
  * Provides: friendIds, friends list, loading state, refresh function.
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 
 type FriendProfile = {
@@ -91,8 +91,15 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
     refresh();
   }, [refresh]);
 
+  const value = useMemo(() => ({
+    friendIds,
+    friends,
+    loading,
+    refresh,
+  }), [friendIds, friends, loading, refresh]);
+
   return (
-    <FriendsContext.Provider value={{ friendIds, friends, loading, refresh }}>
+    <FriendsContext.Provider value={value}>
       {children}
     </FriendsContext.Provider>
   );

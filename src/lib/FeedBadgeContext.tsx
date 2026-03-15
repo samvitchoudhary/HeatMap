@@ -9,7 +9,7 @@
  * - Exposes hasNewPosts for tab badge, markFeedSeen to clear on feed view
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 import { useFriends } from '../hooks';
@@ -142,7 +142,12 @@ export function FeedBadgeProvider({ children }: { children: React.ReactNode }) {
     };
   }, [userId, friendIds]);
 
-  const value: FeedBadgeContextValue = { hasNewPosts, markFeedSeen, lastSeenAt };
+  const value = useMemo<FeedBadgeContextValue>(() => ({
+    hasNewPosts,
+    markFeedSeen,
+    lastSeenAt,
+  }), [hasNewPosts, markFeedSeen, lastSeenAt]);
+
   return (
     <FeedBadgeContext.Provider value={value}>{children}</FeedBadgeContext.Provider>
   );

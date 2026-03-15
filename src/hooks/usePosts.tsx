@@ -6,7 +6,7 @@
  * When a post is created, deleted, or reacted to, all screens see the update.
  */
 
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import type { PostWithProfile } from '../types';
 
@@ -123,61 +123,26 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  const fetchPublicPosts = useCallback(async (friendIds: string[], userId: string) => {
+  const fetchPublicPosts = useCallback(async (_friendIds: string[], _userId: string) => {
     const fetchId = ++postsFetchIdRef.current;
     fetchModeRef.current = 'public';
-    const excludeIds = [userId, ...friendIds];
 
     try {
-      const friendQuery = supabase
+      const { data, error } = await supabase
         .from('posts')
         .select(POST_SELECT)
-        .in('user_id', [userId, ...friendIds])
         .order('created_at', { ascending: false })
         .limit(PAGE_SIZE);
 
-      const excludeStr = `("${excludeIds.join('","')}")`;
-      const publicQuery = supabase
-        .from('posts')
-        .select(POST_SELECT)
-        .not('user_id', 'in', excludeStr)
-        .order('created_at', { ascending: false })
-        .limit(PAGE_SIZE);
-
-      const [friendResult, publicResult] = await Promise.allSettled([
-        friendQuery,
-        publicQuery,
-      ]);
-
+      if (error) {
+        if (__DEV__) console.error('Failed to fetch public posts:', error);
+        return;
+      }
       if (fetchId !== postsFetchIdRef.current) return;
 
-      const friendPosts =
-        friendResult.status === 'fulfilled' ? (friendResult.value.data ?? []) : [];
-      const publicRaw =
-        publicResult.status === 'fulfilled' ? (publicResult.value.data ?? []) : [];
-      const publicPosts = publicRaw.filter(
-        (p: { profiles?: { is_private?: boolean } }) => p.profiles?.is_private !== true
-      );
-
-      const allPosts: typeof friendPosts = [...friendPosts];
-      const existingIds = new Set(friendPosts.map((p: { id: string }) => p.id));
-      for (const post of publicPosts) {
-        if (!existingIds.has(post.id)) {
-          allPosts.push(post);
-          existingIds.add(post.id);
-        }
-      }
-
-      allPosts.sort(
-        (a: { created_at: string }, b: { created_at: string }) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-
       hasFetchedRef.current = true;
-      setPosts(allPosts as unknown as PostWithProfile[]);
-      setHasMore(
-        friendPosts.length === PAGE_SIZE || publicRaw.length === PAGE_SIZE
-      );
+      setPosts((data ?? []) as unknown as PostWithProfile[]);
+      setHasMore((data ?? []).length === PAGE_SIZE);
     } catch (err) {
       if (__DEV__) console.error('Failed to fetch public posts:', err);
     } finally {
@@ -198,49 +163,21 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const mode = fetchModeRef.current;
 
       if (mode === 'public') {
-        const excludeIds = [userId, ...friendIds];
-        const excludeStr = `("${excludeIds.join('","')}")`;
+        const { data, error } = await supabase
+          .from('posts')
+          .select(POST_SELECT)
+          .lt('created_at', lastPost.created_at)
+          .order('created_at', { ascending: false })
+          .limit(PAGE_SIZE);
 
-        const [friendResult, publicResult] = await Promise.allSettled([
-          supabase
-            .from('posts')
-            .select(POST_SELECT)
-            .in('user_id', [userId, ...friendIds])
-            .lt('created_at', lastPost.created_at)
-            .order('created_at', { ascending: false })
-            .limit(PAGE_SIZE),
-          supabase
-            .from('posts')
-            .select(POST_SELECT)
-            .not('user_id', 'in', excludeStr)
-            .lt('created_at', lastPost.created_at)
-            .order('created_at', { ascending: false })
-            .limit(PAGE_SIZE),
-        ]);
-
-        const friendPosts =
-          friendResult.status === 'fulfilled' ? (friendResult.value.data ?? []) : [];
-        const publicRaw =
-          publicResult.status === 'fulfilled' ? (publicResult.value.data ?? []) : [];
-        const publicPosts = publicRaw.filter(
-          (p: { profiles?: { is_private?: boolean } }) => p.profiles?.is_private !== true
-        );
-
-        const existingIds = new Set(posts.map((p) => p.id));
-        const newPosts: typeof friendPosts = [];
-        for (const p of [...friendPosts, ...publicPosts]) {
-          if (!existingIds.has(p.id)) {
-            newPosts.push(p);
-            existingIds.add(p.id);
-          }
+        if (error) {
+          if (__DEV__) console.error('Failed to load more public posts:', error);
+          return;
         }
-        newPosts.sort(
-          (a: { created_at: string }, b: { created_at: string }) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-        );
 
-        setPosts((prev) => [...prev, ...(newPosts as unknown as PostWithProfile[])]);
-        setHasMore(friendPosts.length === PAGE_SIZE || publicRaw.length === PAGE_SIZE);
+        const newPosts = (data ?? []) as unknown as PostWithProfile[];
+        setPosts((prev) => [...prev, ...newPosts]);
+        setHasMore(newPosts.length === PAGE_SIZE);
       } else {
         const userIds = mode === 'own' ? [userId] : [userId, ...friendIds];
 
@@ -293,23 +230,23 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     [fetchAllPosts, fetchPublicPosts]
   );
 
+  const value = useMemo(() => ({
+    posts,
+    loading,
+    hasMore,
+    loadingMore,
+    fetchOwnPosts,
+    fetchAllPosts,
+    fetchPublicPosts,
+    loadMorePosts,
+    addPost,
+    updatePost,
+    removePost,
+    refresh,
+  }), [posts, loading, hasMore, loadingMore, fetchOwnPosts, fetchAllPosts, fetchPublicPosts, loadMorePosts, addPost, updatePost, removePost, refresh]);
+
   return (
-    <PostsContext.Provider
-      value={{
-        posts,
-        loading,
-        hasMore,
-        loadingMore,
-        fetchOwnPosts,
-        fetchAllPosts,
-        fetchPublicPosts,
-        loadMorePosts,
-        addPost,
-        updatePost,
-        removePost,
-        refresh,
-      }}
-    >
+    <PostsContext.Provider value={value}>
       {children}
     </PostsContext.Provider>
   );
