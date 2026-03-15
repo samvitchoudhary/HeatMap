@@ -5,6 +5,12 @@
  * Change values here instead of hunting through individual files.
  */
 
+/** Basic email format check — catches obvious mistakes (no @, no dot) */
+export function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email.trim());
+}
+
 export const CONFIG = {
   // Pagination
   POSTS_PAGE_SIZE: 50,

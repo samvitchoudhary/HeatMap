@@ -30,7 +30,7 @@ import { supabase } from '../lib/supabase';
 import { useToast } from '../lib/ToastContext';
 import { StyledTextInput } from '../components/StyledTextInput';
 import { theme } from '../lib/theme';
-import { CONFIG } from '../lib/config';
+import { CONFIG, isValidEmail } from '../lib/config';
 
 type SignUpNavigationProp = NativeStackNavigationProp<RootStackParamList, 'SignUp'>;
 
@@ -52,7 +52,11 @@ export function SignUpScreen() {
     }
 
     if (!email.trim()) {
-      Alert.alert('Error', 'Please enter your email.');
+      Alert.alert('Error', 'Please enter an email address.');
+      return;
+    }
+    if (!isValidEmail(email)) {
+      Alert.alert('Error', 'Please enter a valid email address.');
       return;
     }
 

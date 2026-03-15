@@ -22,7 +22,7 @@ import { Feather } from '@expo/vector-icons';
 import { theme } from '../lib/theme';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
-import { CONFIG } from '../lib/config';
+import { CONFIG, isValidEmail } from '../lib/config';
 
 export function AccountSettingsScreen() {
   const insets = useSafeAreaInsets();
@@ -108,6 +108,11 @@ export function AccountSettingsScreen() {
       await refreshProfile();
 
       if (email.trim() !== (session?.user?.email ?? '')) {
+        if (!isValidEmail(email)) {
+          Alert.alert('Error', 'Please enter a valid email address.');
+          setSaving(false);
+          return;
+        }
         setSaving(false);
         setShowEmailReauth(true);
         return;
@@ -130,6 +135,10 @@ export function AccountSettingsScreen() {
 
     if (!emailChangePassword) {
       Alert.alert('Error', 'Please enter your password.');
+      return;
+    }
+    if (!isValidEmail(email)) {
+      Alert.alert('Error', 'Please enter a valid email address.');
       return;
     }
 

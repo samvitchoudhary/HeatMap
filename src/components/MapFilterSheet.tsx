@@ -159,6 +159,7 @@ export const MapFilterSheet: React.FC<Props> = ({
       animationType="slide"
       transparent
       presentationStyle="overFullScreen"
+      onRequestClose={onClose}
     >
       <Pressable style={styles.overlay} onPress={onClose}>
         <View style={styles.overlaySpacer} />
