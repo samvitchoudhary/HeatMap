@@ -7,8 +7,8 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
 import { CONFIG } from '../lib/config';
+import { fetchAcceptedFriendships, extractFriendProfile } from '../services/friendships.service';
 
 type FriendProfile = {
   id: string;
@@ -52,12 +52,7 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
     lastFetchRef.current = now;
 
     try {
-      const { data, error } = await supabase
-        .from('friendships')
-        .select('requester_id, addressee_id, requester:requester_id(id, username, display_name, avatar_url), addressee:addressee_id(id, username, display_name, avatar_url)')
-        .eq('status', 'accepted')
-        .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-        .limit(CONFIG.FRIENDS_LIMIT);
+      const { data, error } = await fetchAcceptedFriendships(userId, CONFIG.FRIENDS_LIMIT);
 
       if (error) {
         if (__DEV__) console.error('Failed to fetch friends:', error);
@@ -69,13 +64,10 @@ export const FriendsProvider: React.FC<{ userId: string; children: React.ReactNo
       const friendProfiles: FriendProfile[] = [];
       const ids: string[] = [];
 
-      (data ?? []).forEach((f: Record<string, unknown>) => {
-        const requester = Array.isArray(f.requester) ? f.requester[0] : f.requester;
-        const addressee = Array.isArray(f.addressee) ? f.addressee[0] : f.addressee;
-        const friend = f.requester_id === userId ? addressee : requester;
-        const fp = friend as FriendProfile | null | undefined;
+      (data ?? []).forEach((f: any) => {
+        const fp = extractFriendProfile(f, userId);
         if (fp && fp.id) {
-          friendProfiles.push(fp);
+          friendProfiles.push(fp as FriendProfile);
           ids.push(fp.id);
         }
       });

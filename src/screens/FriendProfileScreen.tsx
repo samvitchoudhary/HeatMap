@@ -38,7 +38,13 @@ import { useCardStack } from '../lib/CardStackContext';
 import { useFriends } from '../hooks';
 import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
-import { shouldSendNotification } from '../lib/notifications';
+import {
+  getFriendshipBetween,
+  sendFriendRequest,
+  acceptFriendRequest,
+  removeFriendship,
+  getFriendCount,
+} from '../services/friendships.service';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
@@ -165,15 +171,8 @@ export function FriendProfileScreen() {
           .eq('id', targetUserId)
           .single(),
         myUserId && targetUserId && myUserId !== targetUserId
-          ? supabase
-              .from('friendships')
-              .select('id, status, requester_id, addressee_id')
-              .or(
-                `and(requester_id.eq.${myUserId},addressee_id.eq.${targetUserId}),and(requester_id.eq.${targetUserId},addressee_id.eq.${myUserId})`
-              )
-              .limit(1)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
+          ? getFriendshipBetween(myUserId, targetUserId)
+          : Promise.resolve({ data: null, error: null } as any),
         supabase
           .from('posts')
           .select('*, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))')
@@ -186,11 +185,7 @@ export function FriendProfileScreen() {
           .eq('tagged_user_id', targetUserId)
           .limit(100),
         supabase.from('posts').select('id', { count: 'exact', head: true }).eq('user_id', targetUserId),
-        supabase
-          .from('friendships')
-          .select('id', { count: 'exact', head: true })
-          .eq('status', 'accepted')
-          .or(`requester_id.eq.${targetUserId},addressee_id.eq.${targetUserId}`),
+        getFriendCount(targetUserId),
       ]);
 
       if ((isCancelled && isCancelled()) || fetchId !== friendFetchIdRef.current) return;

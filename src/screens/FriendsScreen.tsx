@@ -38,8 +38,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/ToastContext';
 import { useFriends } from '../hooks';
-import { supabase } from '../lib/supabase';
-import { shouldSendNotification } from '../lib/notifications';
+import {
+  fetchAllFriendships,
+  sendFriendRequest,
+  acceptFriendRequest,
+  searchProfiles,
+} from '../services/friendships.service';
 import { theme } from '../lib/theme';
 import type { Profile, Friendship } from '../types';
 import { Skeleton } from '../components/Skeleton';
@@ -96,11 +100,7 @@ export function FriendsScreen() {
 
   const fetchFriendships = useCallback(async () => {
     if (!userId) return;
-    const { data, error } = await supabase
-      .from('friendships')
-      .select('id, status, requester_id, addressee_id, created_at')
-      .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
-      .limit(500);
+    const { data, error } = await fetchAllFriendships(userId, 500);
     if (error) {
       __DEV__ && console.error('Error fetching friendships:', error);
       return;
@@ -143,12 +143,7 @@ export function FriendsScreen() {
     setSearchLoading(true);
     setSearchResultsVisible(true);
     debounceRef.current = setTimeout(async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, username, display_name, avatar_url')
-        .ilike('username', `%${searchText.trim()}%`)
-        .neq('id', userId)
-        .limit(20);
+      const { data, error } = await searchProfiles(searchText.trim(), userId, 20);
       if (error) {
         __DEV__ && console.error('Error searching profiles:', error);
         setSearchProfiles([]);
@@ -172,24 +167,8 @@ export function FriendsScreen() {
     if (!userId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      const { error } = await supabase.from('friendships').insert({
-        requester_id: userId,
-        addressee_id: addresseeId,
-        status: 'pending',
-      });
+      const { error } = await sendFriendRequest(userId, addresseeId);
       if (error) throw error;
-      try {
-        const ok = await shouldSendNotification(addresseeId, 'friend_request');
-        if (ok) {
-          await supabase.from('notifications').insert({
-            user_id: addresseeId,
-            type: 'friend_request',
-            from_user_id: userId,
-          });
-        }
-      } catch (notifErr) {
-        if (__DEV__) console.error('Friend request notification failed:', notifErr);
-      }
       await fetchFriendships();
     } catch (err) {
       if (__DEV__) console.error('Friend request failed:', err);
@@ -200,10 +179,7 @@ export function FriendsScreen() {
   async function handleAccept(friendshipId: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
-      const { error } = await supabase
-        .from('friendships')
-        .update({ status: 'accepted' })
-        .eq('id', friendshipId);
+      const { error } = await acceptFriendRequest(friendshipId);
       if (error) throw error;
       await Promise.all([fetchFriendships(), refreshFriends()]);
     } catch (err) {
