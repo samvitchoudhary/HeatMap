@@ -10,7 +10,7 @@
  * - Delete post with fade animation; expand photo, navigate to venue/profile
  */
 
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -125,6 +125,7 @@ export function FeedScreen() {
   const { removePost } = usePosts();
   const { markFeedSeen, lastSeenAt } = useFeedBadge();
   const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [displayPosts, setDisplayPosts] = useState<FeedPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -133,6 +134,8 @@ export function FeedScreen() {
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
   const hasInitiallyFetched = useRef(false);
   const feedFetchIdRef = useRef(0);
+  const lastSortRef = useRef(0);
+  const sortTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const PAGE_SIZE = 20;
 
@@ -145,6 +148,12 @@ export function FeedScreen() {
     const margins = 20;
     return photoHeight + infoHeight + barHeight + margins;
   }, [width]);
+
+  const sortPosts = useCallback((postsToSort: FeedPost[]) => {
+    const sorted = [...postsToSort].sort((a, b) => scoreFeedPost(b) - scoreFeedPost(a));
+    setDisplayPosts(sorted);
+    lastSortRef.current = Date.now();
+  }, []);
 
   const fetchPage = useCallback(
     async (cursor: string | null, append: boolean, silent = false) => {
@@ -235,6 +244,48 @@ export function FeedScreen() {
     [profile?.id, friendIds]
   );
 
+  // Debounced sorting: keep feed stable between 30s sort windows
+  useEffect(() => {
+    if (posts.length === 0) {
+      setDisplayPosts([]);
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLastSort = now - lastSortRef.current;
+
+    if (timeSinceLastSort >= 30000 || displayPosts.length === 0) {
+      // First load or 30s passed – sort immediately
+      sortPosts(posts);
+    } else {
+      // Merge new data into existing order without re-sorting
+      setDisplayPosts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newPosts = posts.filter((p) => !existingIds.has(p.id));
+        const updatedExisting = prev
+          .map((p) => posts.find((fp) => fp.id === p.id))
+          .filter(Boolean) as FeedPost[];
+        return [...newPosts, ...updatedExisting];
+      });
+
+      // Schedule a re-sort when the 30s window expires
+      if (sortTimeoutRef.current) clearTimeout(sortTimeoutRef.current);
+      const remaining = Math.max(0, 30000 - timeSinceLastSort);
+      sortTimeoutRef.current = setTimeout(() => {
+        sortPosts(posts);
+      }, remaining);
+    }
+  }, [posts, displayPosts.length, sortPosts]);
+
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (sortTimeoutRef.current) {
+        clearTimeout(sortTimeoutRef.current);
+      }
+    };
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       return () => {
@@ -245,6 +296,10 @@ export function FeedScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // On tab focus: force a fresh sort and refresh data
+      if (posts.length > 0) {
+        sortPosts(posts);
+      }
       const isInitial = !hasInitiallyFetched.current;
       hasInitiallyFetched.current = true;
       if (isInitial) {
@@ -252,7 +307,7 @@ export function FeedScreen() {
       } else {
         fetchPage(null, false, true);
       }
-    }, [fetchPage])
+    }, [fetchPage, sortPosts, posts.length])
   );
 
   async function handleRefresh() {
@@ -324,10 +379,6 @@ export function FeedScreen() {
     if (lastPost) fetchPage(lastPost.created_at, true);
   }
 
-  const sortedPosts = useMemo(() => {
-    return [...posts].sort((a, b) => scoreFeedPost(b) - scoreFeedPost(a));
-  }, [posts]);
-
   const emptyComponent =
     posts.length === 0 && !loading ? (
       <View style={styles.emptyState}>
@@ -359,7 +410,7 @@ export function FeedScreen() {
         </View>
       ) : (
         <FlatList
-          data={sortedPosts}
+          data={displayPosts}
           keyExtractor={(item) => item.id}
           getItemLayout={(_, index) => ({
             length: FEED_CARD_HEIGHT,
