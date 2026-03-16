@@ -61,6 +61,8 @@ import { useFriends, usePosts } from '../hooks';
 import type { Profile, PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
 import { StyledTextInput } from '../components/StyledTextInput';
+import { useMapSearch, type PlacePrediction } from '../hooks/useMapSearch';
+import { useFabMenu } from '../hooks/useFabMenu';
 
 type HomeScreenProps = {
   profile: Profile | null;
@@ -135,12 +137,6 @@ const PostDot = React.memo(({ color }: { color: string }) => (
 
 PostDot.displayName = 'PostDot';
 
-type PlacePrediction = {
-  placeId: string;
-  name: string;
-  description: string;
-};
-
 /** Haversine distance in meters between two lat/lon points */
 function getDistanceMeters(
   lat1: number,
@@ -175,12 +171,6 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const currentRegionRef = useRef(INITIAL_MAP_REGION);
   const regionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [currentRegion, setCurrentRegion] = useState(INITIAL_MAP_REGION);
-  const [searchText, setSearchText] = useState('');
-  const [searchResults, setSearchResults] = useState<PlacePrediction[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchExpanded, setSearchExpanded] = useState(false);
   const [showFilterSheet, setShowFilterSheet] = useState(false);
   const [filters, setFilters] = useState<MapFilters>(DEFAULT_FILTERS);
   const mapRef = useRef<MapView>(null);
@@ -188,22 +178,41 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
   const loadingOpacity = useRef(new Animated.Value(1)).current;
   const dropdownOpacity = useRef(new Animated.Value(0)).current;
   const dropdownTranslateY = useRef(new Animated.Value(-12)).current;
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchInputRef = useRef<React.ComponentRef<typeof StyledTextInput>>(null);
 
   const hasInitiallyFetched = useRef(false);
   const [hasCompletedInitialLoad, setHasCompletedInitialLoad] = useState(false);
   const [friendPostsFetched, setFriendPostsFetched] = useState(false);
 
-  const [fabExpanded, setFabExpanded] = useState(false);
-  const fabIconRotate = useRef(new Animated.Value(0)).current;
-  const fabOverlayOpacity = useRef(new Animated.Value(0)).current;
-  const fabCameraTranslateY = useRef(new Animated.Value(0)).current;
-  const fabCameraOpacity = useRef(new Animated.Value(0)).current;
-  const fabCameraScale = useRef(new Animated.Value(0.5)).current;
-  const fabGalleryTranslateY = useRef(new Animated.Value(0)).current;
-  const fabGalleryOpacity = useRef(new Animated.Value(0)).current;
-  const fabGalleryScale = useRef(new Animated.Value(0.5)).current;
+  const {
+    searchText,
+    setSearchText,
+    searchResults,
+    searchLoading,
+    showDropdown,
+    searchExpanded,
+    expandSearch,
+    collapseSearch,
+    clearSearch,
+    selectPlace,
+    dismissDropdown,
+  } = useMapSearch(GOOGLE_MAPS_API_KEY);
+
+  const {
+    fabExpanded,
+    toggleFab,
+    dismissFab,
+    resetFabToClosed,
+    runOpenAnimation,
+    fabIconRotate,
+    fabOverlayOpacity,
+    fabCameraTranslateY,
+    fabCameraOpacity,
+    fabCameraScale,
+    fabGalleryTranslateY,
+    fabGalleryOpacity,
+    fabGalleryScale,
+  } = useFabMenu();
 
   useEffect(() => {
     if (postsLoading === false) setHasCompletedInitialLoad(true);
@@ -260,107 +269,11 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
   }, [showDropdown, dropdownOpacity, dropdownTranslateY]);
 
-  const runOpenAnimation = useCallback(() => {
-    Animated.parallel([
-      Animated.timing(fabIconRotate, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.timing(fabOverlayOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.spring(fabCameraTranslateY, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
-      Animated.timing(fabCameraOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.spring(fabCameraScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
-      Animated.spring(fabGalleryTranslateY, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
-      Animated.timing(fabGalleryOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      Animated.spring(fabGalleryScale, { toValue: 1, friction: 6, tension: 80, useNativeDriver: true }),
-    ]).start();
-  }, [
-    fabIconRotate,
-    fabOverlayOpacity,
-    fabCameraTranslateY,
-    fabCameraOpacity,
-    fabCameraScale,
-    fabGalleryTranslateY,
-    fabGalleryOpacity,
-    fabGalleryScale,
-  ]);
-
-  const resetFabToClosed = useCallback(() => {
-    // Stop any running animations first
-    fabIconRotate.stopAnimation();
-    fabOverlayOpacity.stopAnimation();
-    fabCameraTranslateY.stopAnimation();
-    fabCameraOpacity.stopAnimation();
-    fabCameraScale.stopAnimation();
-    fabGalleryTranslateY.stopAnimation();
-    fabGalleryOpacity.stopAnimation();
-    fabGalleryScale.stopAnimation();
-
-    // Then reset all values
-    setFabExpanded(false);
-    fabIconRotate.setValue(0);
-    fabOverlayOpacity.setValue(0);
-    fabCameraTranslateY.setValue(0);
-    fabCameraOpacity.setValue(0);
-    fabCameraScale.setValue(0.5);
-    fabGalleryTranslateY.setValue(0);
-    fabGalleryOpacity.setValue(0);
-    fabGalleryScale.setValue(0.5);
-  }, [
-    fabIconRotate,
-    fabOverlayOpacity,
-    fabCameraTranslateY,
-    fabCameraOpacity,
-    fabCameraScale,
-    fabGalleryTranslateY,
-    fabGalleryOpacity,
-    fabGalleryScale,
-  ]);
-
-  const runCloseAnimation = useCallback(
-    (onComplete?: () => void) => {
-      Animated.parallel([
-        Animated.timing(fabIconRotate, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(fabOverlayOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(fabCameraTranslateY, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(fabCameraOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(fabCameraScale, { toValue: 0.5, duration: 200, useNativeDriver: true }),
-        Animated.timing(fabGalleryTranslateY, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(fabGalleryOpacity, { toValue: 0, duration: 200, useNativeDriver: true }),
-        Animated.timing(fabGalleryScale, { toValue: 0.5, duration: 200, useNativeDriver: true }),
-      ]).start(() => {
-        setFabExpanded(false);
-        onComplete?.();
-      });
-    },
-    [
-      fabIconRotate,
-      fabOverlayOpacity,
-      fabCameraTranslateY,
-      fabCameraOpacity,
-      fabCameraScale,
-      fabGalleryTranslateY,
-      fabGalleryOpacity,
-      fabGalleryScale,
-    ]
-  );
-
   useEffect(() => {
     if (fabExpanded) {
       runOpenAnimation();
     }
   }, [fabExpanded, runOpenAnimation]);
-
-  const handleFabToggle = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (fabExpanded) {
-      runCloseAnimation();
-    } else {
-      setFabExpanded(true);
-    }
-  }, [fabExpanded, runCloseAnimation]);
-
-  const handleFabOverlayPress = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    runCloseAnimation();
-  }, [runCloseAnimation]);
 
   const handleFabCamera = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -530,61 +443,6 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     [filteredPosts]
   );
 
-  async function searchPlaces(query: string): Promise<PlacePrediction[]> {
-    if (!query.trim() || !GOOGLE_MAPS_API_KEY) return [];
-    try {
-      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&key=${GOOGLE_MAPS_API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-        if (__DEV__) console.error('Places API error:', data.status);
-        return [];
-      }
-      type PlacesPrediction = {
-        place_id?: string;
-        description?: string;
-        structured_formatting?: { main_text?: string; secondary_text?: string };
-      };
-      return ((data.predictions as PlacesPrediction[]) || []).map((prediction) => ({
-        placeId: prediction.place_id ?? '',
-        name: prediction.structured_formatting?.main_text ?? prediction.description ?? '',
-        description: prediction.structured_formatting?.secondary_text ?? prediction.description ?? '',
-      }));
-    } catch (error) {
-      if (__DEV__) console.error('Places API fetch error:', error);
-      return [];
-    }
-  }
-
-  async function getPlaceDetails(placeId: string): Promise<{ latitude: number; longitude: number } | null> {
-    if (!GOOGLE_MAPS_API_KEY) return null;
-    try {
-      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=geometry&key=${GOOGLE_MAPS_API_KEY}`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (data.status !== 'OK' || !data.result?.geometry?.location) {
-        if (__DEV__) console.error('Place Details API error:', data.status);
-        return null;
-      }
-      return {
-        latitude: data.result.geometry.location.lat,
-        longitude: data.result.geometry.location.lng,
-      };
-    } catch (error) {
-      if (__DEV__) console.error('Place Details API fetch error:', error);
-      return null;
-    }
-  }
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-        debounceRef.current = null;
-      }
-    };
-  }, []);
-
   useEffect(() => {
     if (searchExpanded) {
       const timer = setTimeout(() => searchInputRef.current?.focus(), 100);
@@ -592,32 +450,9 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
     }
   }, [searchExpanded]);
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!searchText.trim()) {
-      setSearchResults([]);
-      setSearchLoading(false);
-      setShowDropdown(false);
-      return;
-    }
-    setSearchLoading(true);
-    setShowDropdown(true);
-    debounceRef.current = setTimeout(async () => {
-      const results = await searchPlaces(searchText);
-      setSearchResults(results);
-      setSearchLoading(false);
-    }, 500);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [searchText]);
-
-  const handleSelectPlace = useCallback(async (place: PlacePrediction) => {
-    Keyboard.dismiss();
-    setSearchText('');
-    setShowDropdown(false);
-    setSearchExpanded(false);
-    const coords = await getPlaceDetails(place.placeId);
+  const handleSelectPlace = useCallback(
+    async (place: PlacePrediction) => {
+      const coords = await selectPlace(place);
     if (coords && mapRef.current) {
       mapRef.current.animateToRegion(
         {
@@ -629,15 +464,15 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
         1000
       );
     }
-  }, []);
+    },
+    [selectPlace]
+  );
 
   const handleMapPress = useCallback(() => {
     Keyboard.dismiss();
-    setSearchExpanded(false);
-    if (showDropdown) {
-      setShowDropdown(false);
-    }
-  }, [showDropdown]);
+    collapseSearch();
+    dismissDropdown();
+  }, [collapseSearch, dismissDropdown]);
 
   const hasActiveFilters = !filtersAreDefault(filters);
 
@@ -858,7 +693,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
       {showMapControls && !searchExpanded && (
         <TouchableOpacity
           style={[styles.searchCircle, { top: insets.top + 12, left: 16 }]}
-          onPress={() => setSearchExpanded(true)}
+          onPress={expandSearch}
           activeOpacity={0.8}
           accessibilityLabel="Search locations"
           accessibilityRole="button"
@@ -887,20 +722,10 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
               placeholder="Search a location..."
               value={searchText}
               onChangeText={setSearchText}
-              onFocus={() => {
-                setSearchFocused(true);
-                searchText.trim() && setShowDropdown(true);
-              }}
-              onBlur={() => setSearchFocused(false)}
               returnKeyType="search"
             />
             <TouchableOpacity
-              onPress={() => {
-                setSearchText('');
-                setShowDropdown(false);
-                setSearchExpanded(false);
-                Keyboard.dismiss();
-              }}
+              onPress={clearSearch}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               activeOpacity={0.7}
               accessibilityLabel="Clear search"
@@ -914,10 +739,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
             <>
               <Pressable
                 style={styles.dropdownBackdrop}
-                onPress={() => {
-                  Keyboard.dismiss();
-                  setShowDropdown(false);
-                }}
+                onPress={dismissDropdown}
               />
               <Animated.View
                 style={[
@@ -1010,7 +832,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
           {fabExpanded && (
             <Pressable
               style={[StyleSheet.absoluteFill, styles.fabOverlayPressable]}
-              onPress={handleFabOverlayPress}
+              onPress={dismissFab}
             >
               <Animated.View
                 style={[
@@ -1088,7 +910,7 @@ export function HomeScreen({ profile, route }: HomeScreenProps) {
 
           <TouchableOpacity
             style={[styles.fabButton, theme.shadows.button as object]}
-            onPress={handleFabToggle}
+            onPress={toggleFab}
             activeOpacity={0.8}
             accessibilityLabel="Create new post"
             accessibilityRole="button"
