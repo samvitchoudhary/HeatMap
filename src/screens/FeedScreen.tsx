@@ -10,7 +10,7 @@
  * - Delete post with fade animation; expand photo, navigate to venue/profile
  */
 
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -30,12 +30,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useFeedBadge } from '../lib/FeedBadgeContext';
 import { useFriends, usePosts } from '../hooks';
-import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
 import { FeedCard, type FeedLatestComment } from '../components/FeedCard';
 import { PhotoViewer } from '../components/PhotoViewer';
 import { Skeleton } from '../components/Skeleton';
+import { useFeed } from '../hooks/useFeed';
 
 /** Feed post with user's reaction emoji and per-emoji counts for the ReactionBar */
 export type FeedPost = PostWithProfile & {
@@ -45,15 +45,6 @@ export type FeedPost = PostWithProfile & {
 
 type FeedScreenNav = MaterialTopTabNavigationProp<MainTabParamList>;
 
-/**
- * Scores a post for feed ranking.
- * Combines recency with engagement (reactions + comments).
- * Recent posts with more engagement appear higher.
- *
- * Score = recencyScore + engagementBonus
- * - recencyScore: 1.0 for posts from last hour, decays over 48 hours
- * - engagementBonus: 0.1 per reaction/comment, capped at 0.5
- */
 const FeedSkeleton = React.memo(() => (
   <View style={feedSkeletonStyles.skeletonFeed}>
     {[1, 2, 3].map((i) => (
@@ -100,22 +91,6 @@ const feedSkeletonStyles = StyleSheet.create({
   },
 });
 
-function scoreFeedPost(post: FeedPost): number {
-  const ageMs = Date.now() - new Date(post.created_at).getTime();
-  const ageHours = ageMs / (1000 * 60 * 60);
-
-  // Recency: 1.0 for brand new, approaches 0 after 48 hours
-  const recencyScore = Math.max(0, 1 - ageHours / 48);
-
-  const reactionCount = post.reaction_count ?? 0;
-  const commentCount = post.comment_count ?? 0;
-
-  // Engagement: small bonus for reactions and comments
-  const engagementBonus = Math.min(0.5, (reactionCount + commentCount) * 0.1);
-
-  return recencyScore + engagementBonus;
-}
-
 export function FeedScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -124,20 +99,20 @@ export function FeedScreen() {
   const { friendIds } = useFriends();
   const { removePost } = usePosts();
   const { markFeedSeen, lastSeenAt } = useFeedBadge();
-  const [posts, setPosts] = useState<FeedPost[]>([]);
-  const [displayPosts, setDisplayPosts] = useState<FeedPost[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
   const [fadingOutId, setFadingOutId] = useState<string | null>(null);
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
   const hasInitiallyFetched = useRef(false);
-  const feedFetchIdRef = useRef(0);
-  const lastSortRef = useRef(0);
-  const sortTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const PAGE_SIZE = 20;
+  const {
+    displayPosts,
+    feedPosts,
+    loading,
+    loadingMore,
+    hasMore,
+    fetchFeed,
+    loadMore,
+    forceSort,
+  } = useFeed(profile?.id, friendIds);
 
   /** Estimated card height for FlatList getItemLayout - improves scroll perf */
   const FEED_CARD_HEIGHT = useMemo(() => {
@@ -149,142 +124,7 @@ export function FeedScreen() {
     return photoHeight + infoHeight + barHeight + margins;
   }, [width]);
 
-  const sortPosts = useCallback((postsToSort: FeedPost[]) => {
-    const sorted = [...postsToSort].sort((a, b) => scoreFeedPost(b) - scoreFeedPost(a));
-    setDisplayPosts(sorted);
-    lastSortRef.current = Date.now();
-  }, []);
-
-  const fetchPage = useCallback(
-    async (cursor: string | null, append: boolean, silent = false) => {
-      const fetchId = ++feedFetchIdRef.current;
-      const userId = profile?.id;
-      if (!userId) {
-        setLoading(false);
-        return;
-      }
-      const hasData = posts.length > 0 || append;
-      if (!silent) {
-        if (!cursor && !hasData) {
-          setLoading(true);
-        } else if (cursor) {
-          setLoadingMore(true);
-        }
-      }
-
-      if (friendIds.length === 0) {
-        if (fetchId !== feedFetchIdRef.current) return;
-        setPosts([]);
-        setHasMore(false);
-        setLoading(false);
-        setLoadingMore(false);
-        return;
-      }
-
-      try {
-        let query = supabase
-          .from('posts')
-          .select(
-            '*, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))'
-          )
-          .neq('user_id', userId)
-          .in('user_id', friendIds)
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE);
-
-        if (cursor) {
-          query = query.lt('created_at', cursor);
-        }
-
-        const { data: postsData, error } = await query;
-
-        if (error) throw error;
-
-        if (fetchId !== feedFetchIdRef.current) return;
-
-        const rawPosts = (postsData ?? []) as PostWithProfile[];
-        const postIds = rawPosts.map((p) => p.id);
-
-        const userReactionsByPost: Record<string, string> = {};
-
-        if (postIds.length > 0) {
-          const { data: userReactions } = await supabase
-            .from('reactions')
-            .select('post_id, emoji')
-            .eq('user_id', userId)
-            .in('post_id', postIds);
-
-          for (const row of userReactions ?? []) {
-            userReactionsByPost[row.post_id as string] = row.emoji as string;
-          }
-        }
-
-        const postsList: FeedPost[] = rawPosts.map((p) => ({
-          ...p,
-          reaction_counts: {},
-          user_reaction: userReactionsByPost[p.id] ?? null,
-        }));
-
-        setHasMore(postsList.length === PAGE_SIZE);
-
-        if (append) {
-          setPosts((prev) => [...prev, ...postsList]);
-        } else {
-          setPosts(postsList);
-        }
-      } catch (err) {
-        if (__DEV__) console.error('Failed to fetch feed:', err);
-      } finally {
-        if (fetchId === feedFetchIdRef.current) {
-          setLoading(false);
-          setLoadingMore(false);
-        }
-      }
-    },
-    [profile?.id, friendIds]
-  );
-
-  // Debounced sorting: keep feed stable between 30s sort windows
-  useEffect(() => {
-    if (posts.length === 0) {
-      setDisplayPosts([]);
-      return;
-    }
-
-    const now = Date.now();
-    const timeSinceLastSort = now - lastSortRef.current;
-
-    if (timeSinceLastSort >= 30000 || displayPosts.length === 0) {
-      // First load or 30s passed – sort immediately
-      sortPosts(posts);
-    } else {
-      // Merge new data into existing order without re-sorting
-      setDisplayPosts((prev) => {
-        const existingIds = new Set(prev.map((p) => p.id));
-        const newPosts = posts.filter((p) => !existingIds.has(p.id));
-        const updatedExisting = prev
-          .map((p) => posts.find((fp) => fp.id === p.id))
-          .filter(Boolean) as FeedPost[];
-        return [...newPosts, ...updatedExisting];
-      });
-
-      // Schedule a re-sort when the 30s window expires
-      if (sortTimeoutRef.current) clearTimeout(sortTimeoutRef.current);
-      const remaining = Math.max(0, 30000 - timeSinceLastSort);
-      sortTimeoutRef.current = setTimeout(() => {
-        sortPosts(posts);
-      }, remaining);
-    }
-  }, [posts, displayPosts.length, sortPosts]);
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (sortTimeoutRef.current) {
-        clearTimeout(sortTimeoutRef.current);
-      }
-    };
-  }, []);
+  // sorting and fetching now handled by useFeed
 
   useFocusEffect(
     useCallback(() => {
@@ -296,23 +136,18 @@ export function FeedScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      // On tab focus: force a fresh sort and refresh data
-      if (posts.length > 0) {
-        sortPosts(posts);
-      }
       const isInitial = !hasInitiallyFetched.current;
       hasInitiallyFetched.current = true;
-      if (isInitial) {
-        fetchPage(null, false);
-      } else {
-        fetchPage(null, false, true);
-      }
-    }, [fetchPage, sortPosts, posts.length])
+      fetchFeed(false);
+      forceSort();
+      return;
+    }, [fetchFeed, forceSort])
   );
 
   async function handleRefresh() {
     setRefreshing(true);
-    await fetchPage(null, false, true);
+    await fetchFeed(false);
+    forceSort();
     setRefreshing(false);
   }
 
@@ -374,9 +209,8 @@ export function FeedScreen() {
   );
 
   function handleEndReached() {
-    if (loadingMore || !hasMore || loading || posts.length === 0) return;
-    const lastPost = posts[posts.length - 1];
-    if (lastPost) fetchPage(lastPost.created_at, true);
+    if (loadingMore || !hasMore || loading || displayPosts.length === 0) return;
+    loadMore();
   }
 
   const emptyComponent =

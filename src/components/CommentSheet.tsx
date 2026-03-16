@@ -16,7 +16,7 @@
  * - Lazy-loads comments when flipped to back (or when initialFlipped)
  */
 
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -33,30 +33,12 @@ import {
 } from 'react-native';
 import type { TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { supabase } from '../lib/supabase';
-import { shouldSendNotification } from '../lib/notifications';
 import { theme } from '../lib/theme';
 import { Avatar } from './Avatar';
 import { SmoothImage } from './SmoothImage';
 import { StyledTextInput } from './StyledTextInput';
 import { timeAgo } from '../lib/timeAgo';
-import { buildThreadedComments } from '../lib/commentUtils';
-
-const COMMENTS_PAGE_SIZE = 30;
-
-type CommentWithProfile = {
-  id: string;
-  post_id: string;
-  user_id: string;
-  content: string;
-  created_at: string;
-  parent_id: string | null;
-  profiles: {
-    display_name: string;
-    username: string;
-    avatar_url: string | null;
-  } | null;
-};
+import { useComments } from '../hooks/useComments';
 
 type ReplyTarget = { id: string; username: string; parentUserId: string };
 
@@ -149,52 +131,25 @@ export function CommentSheet({
     setReplyTarget(null);
     onFlippedChange?.(postId, false);
   }, [flipAnimation, postId, onFlippedChange]);
-  const [comments, setComments] = useState<CommentWithProfile[]>([]);
   const [commentCount, setCommentCount] = useState(initialCommentCount);
-  const [hasMore, setHasMore] = useState(true);
   const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [posting, setPosting] = useState(false);
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const inputRef = useRef<TextInput>(null);
-  const commentsCountRef = useRef(0);
-  commentsCountRef.current = comments.length;
 
-  const fetchComments = useCallback(async (pid: string, isLoadMore = false) => {
-    if (isLoadMore) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
-
-    const from = isLoadMore ? commentsCountRef.current : 0;
-    const to = from + COMMENTS_PAGE_SIZE - 1;
-
-    try {
-      const { data, error } = await supabase
-        .from('comments')
-        .select('id, post_id, user_id, content, created_at, parent_id, profiles:user_id(display_name, username, avatar_url)')
-        .eq('post_id', pid)
-        .order('created_at', { ascending: false })
-        .range(from, to);
-      if (error) throw error;
-      const list = (data ?? []) as CommentWithProfile[];
-      const reversed = [...list].reverse();
-
-      if (isLoadMore) {
-        setComments((prev) => [...reversed, ...prev]);
-      } else {
-        setComments(reversed);
-      }
-      setHasMore(list.length === COMMENTS_PAGE_SIZE);
-    } catch (err) {
-      if (__DEV__) console.error('Failed to fetch comments:', err);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, []);
+  const {
+    comments,
+    threadedComments,
+    loading,
+    loadingMore,
+    hasMore,
+    replyTarget: hookReplyTarget,
+    submitting,
+    fetchComments,
+    loadMore,
+    postComment,
+    startReply,
+    cancelReply,
+  } = useComments(postId, postUserId ?? undefined, userId);
 
   useEffect(() => {
     setCommentCount(initialCommentCount);
@@ -202,64 +157,29 @@ export function CommentSheet({
 
   const handleCommentPress = useCallback(() => {
     setHasMore(true);
-    fetchComments(postId, false);
+    fetchComments(false);
     flipToBack();
-  }, [postId, fetchComments, flipToBack]);
+  }, [fetchComments, flipToBack]);
 
   const handlePostComment = useCallback(async () => {
     const content = inputText.trim();
-    if (!content || !userId || posting) return;
-
-    setPosting(true);
-    try {
-      const { data: newComment, error } = await supabase
-        .from('comments')
-        .insert({
-          post_id: postId,
-          user_id: userId,
-          content,
-          parent_id: replyTarget?.id ?? null,
-        })
-        .select('*, profiles:user_id(display_name, username, avatar_url)')
-        .single();
-      if (error) throw error;
-      const shouldNotify = postUserId && postUserId !== userId && newComment?.id;
-      if (shouldNotify) {
-        try {
-          const ok = await shouldSendNotification(postUserId, 'comment');
-          if (ok) {
-            await supabase.from('notifications').insert({
-              user_id: postUserId,
-              type: 'comment',
-              from_user_id: userId,
-              post_id: postId,
-              comment_id: newComment!.id,
-            });
-          }
-        } catch (notifErr) {
-          if (__DEV__) console.error('Notification insert failed:', notifErr);
-        }
-      }
-      setInputText('');
-      setReplyTarget(null);
-      setComments((prev) => [...prev, newComment as CommentWithProfile]);
-      setCommentCount((c) => c + 1);
-      onCommentPosted?.();
-    } catch (err) {
-      if (__DEV__) console.error('Error posting comment:', err);
+    if (!content) return;
+    const ok = await postComment(content);
+    if (!ok) {
       Alert.alert('Error', 'Could not post comment. Please try again.');
-    } finally {
-      setPosting(false);
+      return;
     }
-  }, [inputText, userId, postId, postUserId, posting, replyTarget, onCommentPosted]);
+    setInputText('');
+    setReplyTarget(null);
+    setCommentCount((c) => c + 1);
+    onCommentPosted?.();
+  }, [inputText, postComment, onCommentPosted]);
 
   useEffect(() => {
     if (replyTarget && flipped) {
       inputRef.current?.focus();
     }
   }, [replyTarget, flipped]);
-
-  const threadedComments = useMemo(() => buildThreadedComments(comments), [comments]);
 
   const renderCommentItem = ({ item }: { item: typeof threadedComments[0] }) =>
     item.type === 'top' ? (
