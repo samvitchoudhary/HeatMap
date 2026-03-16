@@ -38,17 +38,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
 import { useToast } from '../lib/ToastContext';
 import { useFriends } from '../hooks';
-import {
-  fetchAllFriendships,
-  sendFriendRequest,
-  acceptFriendRequest,
-  searchProfiles,
-} from '../services/friendships.service';
+import { fetchAllFriendships, searchProfiles } from '../services/friendships.service';
 import { theme } from '../lib/theme';
 import type { Profile, Friendship } from '../types';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
 import { StyledTextInput } from '../components/StyledTextInput';
+import { useFriendshipActions } from '../hooks/useFriendshipActions';
 
 type FriendshipWithProfile = Friendship & {
   
@@ -97,6 +93,7 @@ export function FriendsScreen() {
       return { ...p, buttonState: 'accept' as const, friendshipId: f.id };
     });
   }, [searchProfiles, friendships, userId]);
+  const { actionLoading, sendRequest, acceptRequest } = useFriendshipActions();
 
   const fetchFriendships = useCallback(async () => {
     if (!userId) return;
@@ -166,25 +163,17 @@ export function FriendsScreen() {
   async function handleAddFriend(addresseeId: string) {
     if (!userId) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      const { error } = await sendFriendRequest(userId, addresseeId);
-      if (error) throw error;
+    const result = await sendRequest(userId, addresseeId);
+    if (result.success) {
       await fetchFriendships();
-    } catch (err) {
-      if (__DEV__) console.error('Friend request failed:', err);
-      Alert.alert('Error', 'Could not send friend request. Please try again.');
     }
   }
 
   async function handleAccept(friendshipId: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      const { error } = await acceptFriendRequest(friendshipId);
-      if (error) throw error;
+    const ok = await acceptRequest(friendshipId);
+    if (ok) {
       await Promise.all([fetchFriendships(), refreshFriends()]);
-    } catch (err) {
-      if (__DEV__) console.error('Accept friend request failed:', err);
-      Alert.alert('Error', 'Could not accept friend request. Please try again.');
     }
   }
 

@@ -32,8 +32,6 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
-import { supabase } from '../lib/supabase';
-import { shouldSendNotification } from '../lib/notifications';
 import { theme } from '../lib/theme';
 import { SmoothImage } from './SmoothImage';
 import { ReactionBar } from './ReactionBar';
@@ -41,6 +39,7 @@ import { CommentSheet } from './CommentSheet';
 import { timeAgo } from '../lib/timeAgo';
 import { getCategoryByKey } from '../lib/categories';
 import { TaggedLine } from './TaggedLine';
+import { usePostReactions } from '../hooks/usePostReactions';
 
 const CARD_MARGIN_H = 20;
 const CARD_MARGIN_V = 10;
@@ -118,42 +117,23 @@ const FeedCardInner = function FeedCard({
     }
   }, [isFadingOut, cardOpacity, onFadeComplete, post.id]);
 
-  const triggerHeartReaction = useCallback(async () => {
+  const {
+    currentReaction,
+    reactionCount,
+    toggleReaction,
+    doubleTapHeart,
+  } = usePostReactions(post.id, post.user_id, userId, initialUserReaction, initialReactionCounts['❤️'] ?? 0);
+
+  useEffect(() => {
+    onReactionChange?.(post.id, { ...initialReactionCounts, ['❤️']: reactionCount }, currentReaction);
+  }, [currentReaction, reactionCount, post.id, initialReactionCounts, onReactionChange]);
+
+  const triggerHeartReaction = useCallback(() => {
     if (!userId) return;
     if (initialUserReaction === '❤️') return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    const previousReaction = initialUserReaction;
-    const previousCounts = { ...initialReactionCounts };
-    const prevCounts = { ...previousCounts };
-    if (initialUserReaction) {
-      prevCounts[initialUserReaction] = Math.max(0, (prevCounts[initialUserReaction] ?? 1) - 1);
-    }
-    prevCounts['❤️'] = (prevCounts['❤️'] ?? 0) + 1;
-    onReactionChange?.(post.id, prevCounts, '❤️');
-
-    try {
-      if (initialUserReaction) {
-        await supabase
-          .from('notifications')
-          .delete()
-          .eq('from_user_id', userId)
-          .eq('post_id', post.id)
-          .eq('type', 'reaction');
-      }
-      const { error } = await supabase
-        .from('reactions')
-        .upsert({ post_id: post.id, user_id: userId, emoji: '❤️' }, { onConflict: 'post_id,user_id' });
-      if (error) throw error;
-      // Notification is now handled via notifications service (sendReactionNotification)
-    } catch (err) {
-      if (__DEV__) console.error('Reaction failed:', err);
-      onReactionChange?.(post.id, previousCounts, previousReaction);
-      Alert.alert('Error', 'Could not save reaction. Please try again.');
-      return;
-    }
-
+    void doubleTapHeart();
     setHeartVisible(true);
     heartScale.setValue(0);
     heartOpacity.setValue(1);
@@ -249,72 +229,11 @@ const FeedCardInner = function FeedCard({
   }, [triggerHeartReaction]);
 
   const handleReactionToggle = useCallback(
-    async (emoji: string) => {
+    (emoji: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      if (!userId) return;
-      const previousReaction = initialUserReaction;
-      const previousCounts = { ...initialReactionCounts };
-
-      let nextCounts: Record<string, number>;
-      let nextReaction: string | null;
-      if (previousReaction === emoji) {
-        nextCounts = { ...previousCounts, [emoji]: Math.max(0, (previousCounts[emoji] ?? 1) - 1) };
-        nextReaction = null;
-        onReactionChange?.(post.id, nextCounts, nextReaction);
-      } else {
-        nextCounts = { ...previousCounts };
-        if (previousReaction) {
-          nextCounts[previousReaction] = Math.max(0, (nextCounts[previousReaction] ?? 1) - 1);
-        }
-        nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
-        nextReaction = emoji;
-        onReactionChange?.(post.id, nextCounts, nextReaction);
-      }
-
-      try {
-        if (previousReaction === emoji) {
-          const { error } = await supabase.from('reactions').delete().eq('post_id', post.id).eq('user_id', userId);
-          if (error) throw error;
-          await supabase
-            .from('notifications')
-            .delete()
-            .eq('from_user_id', userId)
-            .eq('post_id', post.id)
-            .eq('type', 'reaction');
-        } else {
-          if (previousReaction) {
-            await supabase
-              .from('notifications')
-              .delete()
-              .eq('from_user_id', userId)
-              .eq('post_id', post.id)
-              .eq('type', 'reaction');
-          }
-          const { error } = await supabase
-            .from('reactions')
-            .upsert({ post_id: post.id, user_id: userId, emoji }, { onConflict: 'post_id,user_id' });
-          if (error) throw error;
-          if (post.user_id !== userId) {
-            const ok = await shouldSendNotification(post.user_id, 'reaction');
-            if (ok) {
-              const { error: notifErr } = await supabase.from('notifications').insert({
-                user_id: post.user_id,
-                type: 'reaction',
-                from_user_id: userId,
-                post_id: post.id,
-                emoji,
-              });
-              if (notifErr) throw notifErr;
-            }
-          }
-        }
-      } catch (err) {
-        if (__DEV__) console.error('Reaction failed:', err);
-        onReactionChange?.(post.id, previousCounts, previousReaction);
-        Alert.alert('Error', 'Could not save reaction. Please try again.');
-      }
+      void toggleReaction(emoji);
     },
-    [post.id, post.user_id, userId, initialUserReaction, initialReactionCounts, onReactionChange]
+    [toggleReaction]
   );
 
   const handleCommentPosted = useCallback(async () => {

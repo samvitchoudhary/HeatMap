@@ -33,13 +33,13 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../lib/AuthContext';
 import { useNotifications } from '../hooks';
-import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import { Avatar } from '../components/Avatar';
 import { SmoothImage } from '../components/SmoothImage';
 import { Skeleton } from '../components/Skeleton';
 import { timeAgo } from '../lib/timeAgo';
 import type { RootStackNavigationProp } from '../navigation/types';
+import { useFriendshipActions } from '../hooks/useFriendshipActions';
 
 const NOTIFICATIONS_PAGE_SIZE = 30;
 
@@ -94,6 +94,8 @@ export function NotificationsScreen() {
   const notificationsCountRef = useRef(0);
   const notificationsRef = useRef(notifications);
   const notifFetchIdRef = useRef(0);
+  const { actionLoading, acceptRequest, declineRequest } = useFriendshipActions();
+
   notificationsCountRef.current = notifications?.length ?? 0;
   notificationsRef.current = notifications;
 
@@ -259,44 +261,41 @@ export function NotificationsScreen() {
     [selectMode, navigation, markAsRead]
   );
 
-  const handleFriendRequestResponse = useCallback(
-    async (n: NotificationWithRelations, action: 'accepted' | 'declined') => {
+  const handleAcceptFriendRequest = useCallback(
+    async (n: NotificationWithRelations) => {
       if (!userId || n.type !== 'friend_request') return;
       setActionLoadingId(n.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       try {
-        const { data: friendship } = await supabase
-          .from('friendships')
-          .select('id')
-          .eq('requester_id', n.from_user_id)
-          .eq('addressee_id', userId)
-          .eq('status', 'pending')
-          .single();
-        if (friendship) {
-          const { error } = await supabase.from('friendships').update({ status: action }).eq('id', friendship.id);
-          if (error) throw error;
+        // Accept the pending friendship (ID is not present here; service handles lookup)
+        const ok = await acceptRequest(n.id);
+        if (ok) {
+          await markAsRead(n.id);
+          setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
         }
-        await markAsRead(n.id);
-        setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
-      } catch (err) {
-        const verb = action === 'accepted' ? 'accept' : 'decline';
-        if (__DEV__) console.error(`Failed to ${verb} friend request:`, err);
-        Alert.alert('Error', `Could not ${verb} friend request. Please try again.`);
       } finally {
         setActionLoadingId(null);
       }
     },
-    [userId, markAsRead]
-  );
-
-  const handleAcceptFriendRequest = useCallback(
-    (n: NotificationWithRelations) => handleFriendRequestResponse(n, 'accepted'),
-    [handleFriendRequestResponse]
+    [userId, acceptRequest, markAsRead]
   );
 
   const handleDeclineFriendRequest = useCallback(
-    (n: NotificationWithRelations) => handleFriendRequestResponse(n, 'declined'),
-    [handleFriendRequestResponse]
+    async (n: NotificationWithRelations) => {
+      if (!userId || n.type !== 'friend_request') return;
+      setActionLoadingId(n.id);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      try {
+        const ok = await declineRequest(n.id);
+        if (ok) {
+          await markAsRead(n.id);
+          setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
+        }
+      } finally {
+        setActionLoadingId(null);
+      }
+    },
+    [userId, declineRequest, markAsRead]
   );
 
   const getNotificationText = (n: NotificationWithRelations) => {
@@ -317,7 +316,7 @@ export function NotificationsScreen() {
   const renderItem = ({ item }: { item: NotificationWithRelations }) => {
     const { bold, rest } = getNotificationText(item);
     const isFriendRequest = item.type === 'friend_request';
-    const loading = actionLoadingId === item.id;
+    const loading = actionLoadingId === item.id || actionLoading === item.id;
     const isSelected = selectedIds.has(item.id);
 
     return (

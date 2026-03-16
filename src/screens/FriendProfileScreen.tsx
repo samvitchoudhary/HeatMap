@@ -38,19 +38,14 @@ import { useCardStack } from '../lib/CardStackContext';
 import { useFriends } from '../hooks';
 import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
-import {
-  getFriendshipBetween,
-  sendFriendRequest,
-  acceptFriendRequest,
-  removeFriendship,
-  getFriendCount,
-} from '../services/friendships.service';
+import { getFriendshipBetween, getFriendCount } from '../services/friendships.service';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
 import { CardStack } from '../components/CardStack';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
 import { SmoothImage } from '../components/SmoothImage';
+import { useFriendshipActions } from '../hooks/useFriendshipActions';
 
 const GRID_GAP = 2;
 const SCREEN_WIDTH_STATIC = Dimensions.get('window').width;
@@ -131,7 +126,7 @@ export function FriendProfileScreen() {
   const [selectedPosts, setSelectedPosts] = useState<PostWithProfile[] | null>(null);
   const [selectedInitialIndex, setSelectedInitialIndex] = useState(0);
   const [gridImageErrors, setGridImageErrors] = useState<Record<string, boolean>>({});
-  const [actionLoading, setActionLoading] = useState(false);
+  const { actionLoading, sendRequest, acceptRequest, removeFriend, cancelRequest } = useFriendshipActions();
   const friendFetchIdRef = useRef(0);
 
   const mergeAndSetPosts = useCallback(
@@ -276,82 +271,33 @@ export function FriendProfileScreen() {
 
   async function handleAddFriend() {
     if (!myUserId || !targetUserId || actionLoading) return;
-    setActionLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      const { error } = await supabase.from('friendships').insert({
-        requester_id: myUserId,
-        addressee_id: targetUserId,
-        status: 'pending',
-      });
-      if (error) throw error;
-      try {
-        const ok = await shouldSendNotification(targetUserId, 'friend_request');
-        if (ok) {
-          await supabase.from('notifications').insert({
-            user_id: targetUserId,
-            type: 'friend_request',
-            from_user_id: myUserId,
-          });
-        }
-      } catch (notifErr) {
-        if (__DEV__) console.error('Friend request notification failed:', notifErr);
-      }
+    const result = await sendRequest(myUserId, targetUserId);
+    if (result.success) {
       setFriendshipStatus('pending_sent');
-    } catch (err) {
-      if (__DEV__) console.error('Friend request failed:', err);
-      Alert.alert('Error', 'Could not send friend request. Please try again.');
-    } finally {
-      setActionLoading(false);
+      if (result.friendshipId) setFriendshipId(result.friendshipId);
     }
   }
 
   async function handleAcceptRequest() {
     if (!friendshipId || actionLoading) return;
-    setActionLoading(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    try {
-      const { error } = await supabase
-        .from('friendships')
-        .update({ status: 'accepted' })
-        .eq('id', friendshipId);
-      if (error) throw error;
+    const ok = await acceptRequest(friendshipId);
+    if (ok) {
       setFriendshipStatus('friends');
       await runLoadAll();
-    } catch (err) {
-      if (__DEV__) console.error('Accept friend request failed:', err);
-      Alert.alert('Error', 'Could not accept friend request. Please try again.');
-    } finally {
-      setActionLoading(false);
     }
   }
 
-  function handleRemoveFriend() {
+  async function handleRemoveFriend() {
+    if (!friendshipId) return;
     const name = profile?.display_name ?? profile?.username ?? 'this user';
-    Alert.alert('Remove Friend', `Are you sure you want to remove ${name} as a friend?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Remove',
-        style: 'destructive',
-        onPress: async () => {
-          if (!friendshipId) return;
-          try {
-            const { error } = await supabase
-              .from('friendships')
-              .delete()
-              .eq('id', friendshipId);
-            if (error) throw error;
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            setFriendshipStatus('none');
-            setFriendshipId(null);
-            setPosts([]);
-          } catch (err) {
-            if (__DEV__) console.error('Remove friend failed:', err);
-            Alert.alert('Error', 'Could not remove friend. Please try again.');
-          }
-        },
-      },
-    ]);
+    const ok = await removeFriend(friendshipId, name);
+    if (ok) {
+      setFriendshipStatus('none');
+      setFriendshipId(null);
+      setPosts([]);
+    }
   }
 
   function handleThreeDotsPress() {
