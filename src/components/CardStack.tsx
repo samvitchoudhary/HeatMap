@@ -39,7 +39,6 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
-import { shouldSendNotification } from '../lib/notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../lib/theme';
 import { ReactionBar } from './ReactionBar';
@@ -48,6 +47,7 @@ import { PhotoViewer } from './PhotoViewer';
 import { timeAgo } from '../lib/timeAgo';
 import { getCategoryByKey } from '../lib/categories';
 import { TaggedLine } from './TaggedLine';
+import { usePostReactions } from '../hooks/usePostReactions';
 /** Props for CardStack - posts to show, callbacks, optional initial state */
 type CardStackProps = {
   posts: PostWithProfile[];
@@ -327,8 +327,6 @@ export function CardStack({
   const [currentIndex, setCurrentIndex] = useState(safeInitial);
   const [showEndMessage, setShowEndMessage] = useState(false);
   const [viewerImage, setViewerImage] = useState<string | null>(null);
-  const [reactionCounts, setReactionCounts] = useState<Record<string, number>>({});
-  const [userReaction, setUserReaction] = useState<string | null>(null);
   const [imageError, setImageError] = useState<Record<string, boolean>>({});
   const pan = useRef(new Animated.Value(0)).current;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
@@ -342,7 +340,6 @@ export function CardStack({
   const postsLengthRef = useRef(0);
   const postsRef = useRef<PostWithProfile[]>([]);
   const flippedByPostIdRef = useRef<Record<string, boolean>>({});
-  const reactionsCache = useRef<Record<string, { counts: Record<string, number>; userReaction: string | null }>>({});
   const endMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   currentIndexRef.current = currentIndex;
   postsLengthRef.current = posts.length;
@@ -450,50 +447,6 @@ export function CardStack({
     ]).start(() => onClose());
   }, [onClose, overlayOpacity, cardTranslateY, cardScale, cardOpacity]);
 
-  const fetchReactions = useCallback(
-    async (postId: string) => {
-      const cached = reactionsCache.current[postId];
-      if (cached) {
-        setReactionCounts(cached.counts);
-        setUserReaction(cached.userReaction);
-        return;
-      }
-      const userId = session?.user?.id;
-      const { data, error } = await supabase
-        .from('reactions')
-        .select('emoji, user_id')
-        .eq('post_id', postId)
-        .limit(200);
-      if (error) {
-        if (__DEV__) console.error('Error fetching reactions:', error);
-        return;
-      }
-      const counts: Record<string, number> = {};
-      let myReaction: string | null = null;
-      for (const row of data ?? []) {
-        const emoji = row.emoji as string;
-        counts[emoji] = (counts[emoji] ?? 0) + 1;
-        if (row.user_id === userId) {
-          myReaction = emoji;
-        }
-      }
-      reactionsCache.current[postId] = { counts, userReaction: myReaction };
-      setReactionCounts(counts);
-      setUserReaction(myReaction);
-    },
-    [session?.user?.id]
-  );
-
-  useEffect(() => {
-    const post = posts[currentIndex];
-    if (post?.id) {
-      fetchReactions(post.id);
-    } else {
-      setReactionCounts({});
-      setUserReaction(null);
-    }
-  }, [currentIndex, posts, fetchReactions]);
-
   useEffect(() => {
     if (posts.length === 0) {
       flippedByPostIdRef.current = {};
@@ -539,177 +492,7 @@ export function CardStack({
     }).start();
   }, [currentIndex, posts.length, activeDotAnimated]);
 
-  const handleDoubleTapHeartForPost = useCallback(
-    async (post: PostWithProfile) => {
-      const userId = session?.user?.id;
-      if (!post?.id || !userId) return;
-
-      // Always fetch fresh reaction state for this post
-      const { data: existingReactions } = await supabase
-        .from('reactions')
-        .select('emoji')
-        .eq('post_id', post.id)
-        .eq('user_id', userId)
-        .single();
-
-      // If already hearted, skip
-      if (existingReactions?.emoji === '❤️') return;
-
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-      // Optimistic update
-      const prevReaction = userReaction;
-      const prevCounts = { ...reactionCounts };
-      setUserReaction('❤️');
-      setReactionCounts((c) => {
-        const next = { ...c };
-        if (prevReaction) {
-          next[prevReaction] = Math.max(0, (next[prevReaction] ?? 1) - 1);
-        }
-        next['❤️'] = (next['❤️'] ?? 0) + 1;
-        return next;
-      });
-
-      // Delete old notification if changing from another emoji
-      if (existingReactions) {
-        await supabase
-          .from('notifications')
-          .delete()
-          .eq('from_user_id', userId)
-          .eq('post_id', post.id)
-          .eq('type', 'reaction');
-      }
-
-      // Upsert heart reaction (handles both new and changed)
-      const { error } = await supabase
-        .from('reactions')
-        .upsert({ post_id: post.id, user_id: userId, emoji: '❤️' }, { onConflict: 'post_id,user_id' });
-
-      if (error) {
-        if (__DEV__) console.error('Double tap heart error:', error);
-        setUserReaction(prevReaction);
-        setReactionCounts(prevCounts);
-        return;
-      }
-      const newCounts = { ...prevCounts };
-      if (prevReaction) {
-        newCounts[prevReaction] = Math.max(0, (newCounts[prevReaction] ?? 1) - 1);
-      }
-      newCounts['❤️'] = (newCounts['❤️'] ?? 0) + 1;
-      reactionsCache.current[post.id] = { counts: newCounts, userReaction: '❤️' };
-
-      // Send notification (best-effort, don't block UI)
-      if (post.user_id !== userId) {
-        try {
-          const ok = await shouldSendNotification(post.user_id, 'reaction');
-          if (ok) {
-            await supabase.from('notifications').insert({
-              user_id: post.user_id,
-              type: 'reaction',
-              from_user_id: userId,
-              post_id: post.id,
-              emoji: '❤️',
-            });
-          }
-        } catch (notifErr) {
-          if (__DEV__) console.error('Notification insert failed:', notifErr);
-        }
-      }
-    },
-    [session?.user?.id, userReaction, reactionCounts]
-  );
-
-  const handleReactionToggle = useCallback(
-    async (emoji: string) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const post = posts[currentIndex];
-      const userId = session?.user?.id;
-      if (!post?.id || !userId) return;
-
-      const prevReaction = userReaction;
-      const prevCounts = { ...reactionCounts };
-
-        if (prevReaction === emoji) {
-        setUserReaction(null);
-        const nextCounts = { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) };
-        setReactionCounts(nextCounts);
-      } else {
-        setUserReaction(emoji);
-        const nextCounts = { ...prevCounts };
-        if (prevReaction) {
-          nextCounts[prevReaction] = Math.max(0, (nextCounts[prevReaction] ?? 1) - 1);
-        }
-        nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
-        setReactionCounts(nextCounts);
-      }
-
-      if (prevReaction === emoji) {
-        const { error } = await supabase
-          .from('reactions')
-          .delete()
-          .eq('post_id', post.id)
-          .eq('user_id', userId);
-        if (error) {
-          setUserReaction(prevReaction);
-          setReactionCounts(prevCounts);
-          if (__DEV__) console.error('Error deleting reaction:', error);
-          Alert.alert('Error', 'Could not remove reaction. Please try again.');
-          return;
-        }
-        await supabase
-          .from('notifications')
-          .delete()
-          .eq('from_user_id', userId)
-          .eq('post_id', post.id)
-          .eq('type', 'reaction');
-        const nextCounts = { ...prevCounts, [emoji]: Math.max(0, (prevCounts[emoji] ?? 1) - 1) };
-        reactionsCache.current[post.id] = { counts: nextCounts, userReaction: null };
-      } else {
-        if (prevReaction) {
-          await supabase
-            .from('notifications')
-            .delete()
-            .eq('from_user_id', userId)
-            .eq('post_id', post.id)
-            .eq('type', 'reaction');
-        }
-        const { error } = await supabase
-          .from('reactions')
-          .upsert({ post_id: post.id, user_id: userId, emoji }, { onConflict: 'post_id,user_id' });
-        if (error) {
-          setUserReaction(prevReaction);
-          setReactionCounts(prevCounts);
-          if (__DEV__) console.error('Error inserting reaction:', error);
-          Alert.alert('Error', 'Could not save reaction. Please try again.');
-          return;
-        }
-        const nextCounts = { ...prevCounts };
-        if (prevReaction) {
-          nextCounts[prevReaction] = Math.max(0, (nextCounts[prevReaction] ?? 1) - 1);
-        }
-        nextCounts[emoji] = (nextCounts[emoji] ?? 0) + 1;
-        reactionsCache.current[post.id] = { counts: nextCounts, userReaction: emoji };
-        const shouldNotify = post.user_id !== userId;
-        if (shouldNotify) {
-          try {
-            const ok = await shouldSendNotification(post.user_id, 'reaction');
-            if (ok) {
-              await supabase.from('notifications').insert({
-                user_id: post.user_id,
-                type: 'reaction',
-                from_user_id: userId,
-                post_id: post.id,
-                emoji,
-              });
-            }
-          } catch (notifErr) {
-            if (__DEV__) console.error('Notification insert failed:', notifErr);
-          }
-        }
-      }
-    },
-    [currentIndex, posts, session?.user?.id, userReaction, reactionCounts]
-  );
+  // Reactions are now handled per-card via usePostReactions in StackCard.
 
   const handleFlippedChange = useCallback((postId: string, flipped: boolean) => {
     flippedByPostIdRef.current[postId] = flipped;
@@ -822,160 +605,45 @@ export function CardStack({
 
   const renderCard = useCallback(
     (post: PostWithProfile, isCurrent: boolean) => (
-    <CommentSheet
-      key={post.id}
-      postId={post.id}
-      post={{ image_url: post.image_url, venue_name: post.venue_name }}
-      postUserId={post.user_id}
-      userId={session?.user?.id}
-      cardHeight={cardHeight}
-      cardWidth={cardWidth}
-      cardBorderRadius={CARD_BORDER_RADIUS}
-      onFlippedChange={handleFlippedChange}
-      initialFlipped={post.id === initialFlippedPostId}
-      initialCommentCount={post.comment_count ?? 0}
-    >
-      {({ onCommentPress, commentCount }) => (
-        <View style={styles.cardFront}>
-          <View style={styles.photoSection}>
-            <CardImage
-              post={post}
-              imageError={imageError}
-              setImageError={setImageError}
-              s={cardImageStyles}
-              onDoubleTap={() => handleDoubleTapHeartForPost(post)}
-            />
-            {!imageError[post.id] && (
-              <TouchableOpacity
-                style={styles.expandButton}
-                onPress={() => setViewerImage(post.image_url)}
-                activeOpacity={0.7}
-                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                accessibilityLabel="View full photo"
-                accessibilityRole="button"
-              >
-                <Feather name="maximize-2" size={18} color={theme.colors.white} />
-              </TouchableOpacity>
-            )}
-            {post.user_id === currentUserId && (
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={() => handleDeletePost(post)}
-                activeOpacity={0.7}
-                accessibilityLabel="Delete post"
-                accessibilityRole="button"
-              >
-                <Feather name="trash-2" size={16} color={theme.colors.red} />
-              </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.infoSection}>
-            {onProfilePress && post.user_id !== currentUserId ? (
-              <TouchableOpacity
-                onPress={() => onProfilePress(post.user_id)}
-                activeOpacity={0.7}
-                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                accessibilityLabel={`View ${post.profiles?.display_name ?? 'user'}'s profile`}
-                accessibilityRole="button"
-              >
-                <Text style={styles.infoDisplayName} numberOfLines={1}>
-                  {post.profiles?.display_name ?? 'Deleted User'}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={styles.infoDisplayName} numberOfLines={1}>
-                {post.user_id === currentUserId ? 'You' : (post.profiles?.display_name ?? 'Deleted User')}
-              </Text>
-            )}
-            <TaggedLine tags={post.post_tags} onProfilePress={onProfilePress} />
-            <View style={styles.infoVenueRow}>
-              <Feather name="map-pin" size={12} color={theme.colors.primary} />
-              <Text style={styles.infoVenueText} numberOfLines={1}>
-                {post.venue_name ?? 'Unknown location'}
-              </Text>
-            </View>
-            {post.caption?.trim() ? (
-              <Text style={styles.infoCaption} numberOfLines={1}>
-                {post.caption}
-              </Text>
-            ) : null}
-            {(() => {
-              const cat = getCategoryByKey(post.category ?? 'misc');
-              if (!cat) return null;
-              return (
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: cat.color + '15',
-                    paddingHorizontal: 8,
-                    paddingVertical: 3,
-                    borderRadius: 10,
-                    alignSelf: 'flex-start',
-                    marginTop: 4,
-                  }}
-                >
-                  <View
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: cat.color,
-                      marginRight: 4,
-                    }}
-                  />
-                  <Text style={{ fontSize: 11, fontWeight: '600', color: cat.color }}>{cat.label}</Text>
-                </View>
-              );
-            })()}
-            <Text style={styles.infoTimestamp}>{timeAgo(post.created_at)}</Text>
-          </View>
-          {isCurrent && <DotIndicator total={len} current={currentIndex} activeDotAnimated={activeDotAnimated} />}
-          <View style={styles.bottomBar}>
-            <View style={styles.reactionsSection}>
-              <ReactionBar
-                counts={isCurrent ? reactionCounts : {}}
-                userReaction={isCurrent ? userReaction : null}
-                onEmojiPress={handleReactionToggle}
-                cardStackBar
-              />
-            </View>
-            <Pressable style={styles.commentButton} onPress={onCommentPress} accessibilityLabel="View comments" accessibilityRole="button">
-              {({ pressed }) => (
-                <>
-                  <Feather
-                    name="message-circle"
-                    size={20}
-                    color={pressed ? theme.colors.primary : theme.colors.textSecondary}
-                  />
-                  <Text style={styles.commentCountText}>{commentCount}</Text>
-                </>
-              )}
-            </Pressable>
-          </View>
-        </View>
-      )}
-    </CommentSheet>
-  ),
-  [
-    imageError,
-    cardImageStyles,
-    handleDoubleTapHeartForPost,
-    setViewerImage,
-    currentUserId,
-    handleDeletePost,
-    onProfilePress,
-    handleFlippedChange,
-    initialFlippedPostId,
-    reactionCounts,
-    userReaction,
-    handleReactionToggle,
-    currentIndex,
-    posts.length,
-    activeDotAnimated,
-    session?.user?.id,
-  ]
-);
+      <StackCard
+        key={post.id}
+        post={post}
+        isCurrent={isCurrent}
+        cardHeight={cardHeight}
+        cardWidth={cardWidth}
+        cardBorderRadius={CARD_BORDER_RADIUS}
+        imageError={imageError}
+        setImageError={setImageError}
+        cardImageStyles={cardImageStyles}
+        currentUserId={currentUserId}
+        len={len}
+        currentIndex={currentIndex}
+        activeDotAnimated={activeDotAnimated}
+        initialFlippedPostId={initialFlippedPostId}
+        onFlippedChange={handleFlippedChange}
+        onDeletePost={handleDeletePost}
+        onProfilePress={onProfilePress}
+        setViewerImage={setViewerImage}
+        sessionUserId={session?.user?.id}
+      />
+    ),
+    [
+      cardHeight,
+      cardWidth,
+      cardImageStyles,
+      imageError,
+      currentUserId,
+      len,
+      currentIndex,
+      activeDotAnimated,
+      initialFlippedPostId,
+      handleFlippedChange,
+      handleDeletePost,
+      onProfilePress,
+      setViewerImage,
+      session?.user?.id,
+    ]
+  );
 
   return (
     <KeyboardAvoidingView
@@ -1065,6 +733,217 @@ export function CardStack({
         />
       )}
     </KeyboardAvoidingView>
+  );
+}
+
+type StackCardProps = {
+  post: PostWithProfile;
+  isCurrent: boolean;
+  cardHeight: number;
+  cardWidth: number;
+  cardBorderRadius: number;
+  imageError: Record<string, boolean>;
+  setImageError: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  cardImageStyles: CardImageStyles;
+  currentUserId: string | undefined;
+  len: number;
+  currentIndex: number;
+  activeDotAnimated: Animated.Value;
+  initialFlippedPostId?: string;
+  onFlippedChange: (postId: string, flipped: boolean) => void;
+  onDeletePost: (post: PostWithProfile) => void;
+  onProfilePress?: (userId: string) => void;
+  setViewerImage: (url: string | null) => void;
+  sessionUserId: string | undefined;
+};
+
+function StackCard({
+  post,
+  isCurrent,
+  cardHeight,
+  cardWidth,
+  cardBorderRadius,
+  imageError,
+  setImageError,
+  cardImageStyles,
+  currentUserId,
+  len,
+  currentIndex,
+  activeDotAnimated,
+  initialFlippedPostId,
+  onFlippedChange,
+  onDeletePost,
+  onProfilePress,
+  setViewerImage,
+  sessionUserId,
+}: StackCardProps) {
+  const initialUserReaction = (post as any).user_reaction ?? null;
+  const initialReactionCount = (post as any).reaction_count ?? 0;
+
+  const { currentReaction, reactionCount, toggleReaction, doubleTapHeart } = usePostReactions(
+    post.id,
+    post.user_id,
+    currentUserId,
+    initialUserReaction,
+    initialReactionCount
+  );
+
+  const counts = currentReaction ? { [currentReaction]: reactionCount } : {};
+
+  const handleDoubleTapHeart = useCallback(() => {
+    if (!currentUserId) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void doubleTapHeart();
+  }, [currentUserId, doubleTapHeart]);
+
+  const handleReactionPress = useCallback(
+    (emoji: string) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void toggleReaction(emoji);
+    },
+    [toggleReaction]
+  );
+
+  return (
+    <CommentSheet
+      key={post.id}
+      postId={post.id}
+      post={{ image_url: post.image_url, venue_name: post.venue_name }}
+      postUserId={post.user_id}
+      userId={sessionUserId}
+      cardHeight={cardHeight}
+      cardWidth={cardWidth}
+      cardBorderRadius={cardBorderRadius}
+      onFlippedChange={onFlippedChange}
+      initialFlipped={post.id === initialFlippedPostId}
+      initialCommentCount={post.comment_count ?? 0}
+    >
+      {({ onCommentPress, commentCount }) => (
+        <View style={styles.cardFront}>
+          <View style={styles.photoSection}>
+            <CardImage
+              post={post}
+              imageError={imageError}
+              setImageError={setImageError}
+              s={cardImageStyles}
+              onDoubleTap={handleDoubleTapHeart}
+            />
+            {!imageError[post.id] && (
+              <TouchableOpacity
+                style={styles.expandButton}
+                onPress={() => setViewerImage(post.image_url)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                accessibilityLabel="View full photo"
+                accessibilityRole="button"
+              >
+                <Feather name="maximize-2" size={18} color={theme.colors.white} />
+              </TouchableOpacity>
+            )}
+            {post.user_id === currentUserId && (
+              <TouchableOpacity
+                style={styles.deleteButton}
+                onPress={() => onDeletePost(post)}
+                activeOpacity={0.7}
+                accessibilityLabel="Delete post"
+                accessibilityRole="button"
+              >
+                <Feather name="trash-2" size={16} color={theme.colors.red} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <View style={styles.infoSection}>
+            {onProfilePress && post.user_id !== currentUserId ? (
+              <TouchableOpacity
+                onPress={() => onProfilePress(post.user_id)}
+                activeOpacity={0.7}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                accessibilityLabel={`View ${post.profiles?.display_name ?? 'user'}'s profile`}
+                accessibilityRole="button"
+              >
+                <Text style={styles.infoDisplayName} numberOfLines={1}>
+                  {post.profiles?.display_name ?? 'Deleted User'}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.infoDisplayName} numberOfLines={1}>
+                {post.user_id === currentUserId ? 'You' : post.profiles?.display_name ?? 'Deleted User'}
+              </Text>
+            )}
+            <TaggedLine tags={post.post_tags} onProfilePress={onProfilePress} />
+            <View style={styles.infoVenueRow}>
+              <Feather name="map-pin" size={12} color={theme.colors.primary} />
+              <Text style={styles.infoVenueText} numberOfLines={1}>
+                {post.venue_name ?? 'Unknown location'}
+              </Text>
+            </View>
+            {post.caption?.trim() ? (
+              <Text style={styles.infoCaption} numberOfLines={1}>
+                {post.caption}
+              </Text>
+            ) : null}
+            {(() => {
+              const cat = getCategoryByKey(post.category ?? 'misc');
+              if (!cat) return null;
+              return (
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: cat.color + '15',
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 10,
+                    alignSelf: 'flex-start',
+                    marginTop: 4,
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      backgroundColor: cat.color,
+                      marginRight: 4,
+                    }}
+                  />
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: cat.color }}>{cat.label}</Text>
+                </View>
+              );
+            })()}
+            <Text style={styles.infoTimestamp}>{timeAgo(post.created_at)}</Text>
+          </View>
+          {isCurrent && <DotIndicator total={len} current={currentIndex} activeDotAnimated={activeDotAnimated} />}
+          <View style={styles.bottomBar}>
+            <View style={styles.reactionsSection}>
+              <ReactionBar
+                counts={isCurrent ? counts : {}}
+                userReaction={isCurrent ? currentReaction : null}
+                onEmojiPress={handleReactionPress}
+                cardStackBar
+              />
+            </View>
+            <Pressable
+              style={styles.commentButton}
+              onPress={onCommentPress}
+              accessibilityLabel="View comments"
+              accessibilityRole="button"
+            >
+              {({ pressed }) => (
+                <>
+                  <Feather
+                    name="message-circle"
+                    size={20}
+                    color={pressed ? theme.colors.primary : theme.colors.textSecondary}
+                  />
+                  <Text style={styles.commentCountText}>{commentCount}</Text>
+                </>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      )}
+    </CommentSheet>
   );
 }
 
