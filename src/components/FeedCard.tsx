@@ -146,19 +146,7 @@ const FeedCardInner = function FeedCard({
         .from('reactions')
         .upsert({ post_id: post.id, user_id: userId, emoji: '❤️' }, { onConflict: 'post_id,user_id' });
       if (error) throw error;
-      if (post.user_id !== userId) {
-        const ok = await shouldSendNotification(post.user_id, 'reaction');
-        if (ok) {
-          const { error: notifErr } = await supabase.from('notifications').insert({
-            user_id: post.user_id,
-            type: 'reaction',
-            from_user_id: userId,
-            post_id: post.id,
-            emoji: '❤️',
-          });
-          if (notifErr) throw notifErr;
-        }
-      }
+      // Notification is now handled via notifications service (sendReactionNotification)
     } catch (err) {
       if (__DEV__) console.error('Reaction failed:', err);
       onReactionChange?.(post.id, previousCounts, previousReaction);
