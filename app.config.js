@@ -10,6 +10,12 @@
  * - newArchEnabled: React Native new architecture
  */
 
+/**
+ * app.config.js
+ *
+ * Expo configuration for HeatMap.
+ */
+
 require('dotenv/config');
 
 module.exports = {
@@ -31,7 +37,8 @@ module.exports = {
       config: {
         googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY,
       },
-      bundleIdentifier: 'com.anonymous.HeatMap',
+      bundleIdentifier: 'com.samvit.heatmap',
+      buildNumber: '1',
     },
     android: {
       adaptiveIcon: {
@@ -46,6 +53,11 @@ module.exports = {
     },
     web: {
       favicon: './assets/favicon.png',
+    },
+    extra: {
+      eas: {
+        projectId: '591c9f50-6fac-4d24-8649-a35349187629',
+      },
     },
   },
 };

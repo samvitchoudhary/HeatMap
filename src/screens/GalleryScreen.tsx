@@ -137,8 +137,8 @@ export function GalleryScreen({ navigation }: Props) {
         return next;
       });
     } else {
-      setSelectedInitialIndex(index);
-      setSelectedPosts(posts);
+      setSelectedPosts([post]);
+      setSelectedInitialIndex(0);
     }
   }
 
@@ -335,7 +335,10 @@ export function GalleryScreen({ navigation }: Props) {
       {selectedPosts !== null && selectedPosts.length > 0 && (
         <CardStack
           posts={selectedPosts}
-          onClose={() => setSelectedPosts(null)}
+          onClose={() => {
+            setSelectedPosts(null);
+            setSelectedInitialIndex(0);
+          }}
           initialIndex={selectedInitialIndex}
           onPostDeleted={(postId) => {
             removePost(postId);

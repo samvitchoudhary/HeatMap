@@ -371,9 +371,8 @@ export function FriendProfileScreen() {
   }
 
   function handlePhotoPress(post: PostWithProfile) {
-    const idx = posts.findIndex((p) => p.id === post.id);
-    setSelectedInitialIndex(idx >= 0 ? idx : 0);
-    setSelectedPosts(posts);
+    setSelectedPosts([post]);
+    setSelectedInitialIndex(0);
   }
 
   const displayName = profile?.display_name ?? 'User';
@@ -591,7 +590,10 @@ export function FriendProfileScreen() {
       {selectedPosts !== null && selectedPosts.length > 0 && (
         <CardStack
           posts={selectedPosts}
-          onClose={() => setSelectedPosts(null)}
+          onClose={() => {
+            setSelectedPosts(null);
+            setSelectedInitialIndex(0);
+          }}
           initialIndex={selectedInitialIndex}
         />
       )}

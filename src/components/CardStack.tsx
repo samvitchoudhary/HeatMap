@@ -349,6 +349,18 @@ export function CardStack({
   postsLengthRef.current = posts.length;
   postsRef.current = posts;
 
+  // Apply initialIndex once when stack opens so swipe starts at the tapped post
+  const hasAppliedInitialRef = useRef(false);
+  useEffect(() => {
+    if (hasAppliedInitialRef.current || posts.length === 0) return;
+    hasAppliedInitialRef.current = true;
+    const safe = Math.min(
+      Math.max(0, initialIndex ?? 0),
+      Math.max(0, posts.length - 1)
+    );
+    setCurrentIndex(safe);
+  }, [posts.length, initialIndex]);
+
   useEffect(() => {
     // Reset all values when card stack opens (in case it was previously closed)
     overlayOpacity.setValue(0);
@@ -735,7 +747,7 @@ export function CardStack({
       },
       onPanResponderRelease: (_, gesture) => {
         const len = postsLengthRef.current;
-        if (len === 0) return;
+        if (len === 0 || len <= 1) return;
         const isFirst = currentIndexRef.current === 0;
         const isLast = currentIndexRef.current === len - 1;
         const swipedLeft = gesture.dx < -SWIPE_THRESHOLD || gesture.vx < -VELOCITY_THRESHOLD;
