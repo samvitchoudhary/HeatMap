@@ -39,7 +39,6 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import type { PostWithProfile } from '../types';
 import { useAuth } from '../lib/AuthContext';
-import { supabase } from '../lib/supabase';
 import { shouldSendNotification } from '../lib/notifications';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../lib/theme';
@@ -424,7 +423,7 @@ export function CardStack({
                 const { error: storageErr } = await supabase.storage.from('posts').remove([imagePath]);
                 if (storageErr) throw storageErr;
               }
-              const { error } = await supabase.from('posts').delete().eq('id', post.id);
+              const { error } = await deletePost(post.id);
               if (error) throw error;
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               onPostDeleted?.(post.id);

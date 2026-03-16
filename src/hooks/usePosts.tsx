@@ -7,18 +7,19 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useRef, useMemo } from 'react';
-import { supabase } from '../lib/supabase';
 import { CONFIG } from '../lib/config';
 import type { PostWithProfile } from '../types';
-
-const POST_SELECT =
-  'id, user_id, image_url, caption, latitude, longitude, venue_name, created_at, category, reaction_count, comment_count, profiles:user_id(username, display_name, avatar_url, is_private), post_tags(tagged_user_id, profiles:tagged_user_id(display_name, username))';
+import {
+  fetchUserPosts,
+  fetchPostsByUsers,
+  fetchAllVisiblePosts,
+} from '../services/posts.service';
 
 const PAGE_SIZE = CONFIG.POSTS_PAGE_SIZE;
 
 /**
  * Shape returned by Supabase post queries with joins.
- * Must match the POST_SELECT columns exactly.
+ * Must match the posts.service POST_SELECT columns exactly.
  * Supabase types foreign-key joins as arrays; at runtime they're single objects.
  */
 type SupabaseProfileJoin = {
@@ -135,12 +136,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const fetchId = ++postsFetchIdRef.current;
     fetchModeRef.current = 'own';
     try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select(POST_SELECT)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(PAGE_SIZE);
+      const { data, error } = await fetchUserPosts(userId, undefined, PAGE_SIZE);
       if (error) {
         if (__DEV__) console.error('Failed to fetch own posts:', error);
         return;
@@ -163,12 +159,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     try {
       const allUserIds = [userId, ...friendIds];
-      const { data, error } = await supabase
-        .from('posts')
-        .select(POST_SELECT)
-        .in('user_id', allUserIds)
-        .order('created_at', { ascending: false })
-        .limit(PAGE_SIZE);
+      const { data, error } = await fetchPostsByUsers(allUserIds, undefined, PAGE_SIZE);
 
       if (error) {
         if (__DEV__) console.error('Failed to fetch posts:', error);
@@ -192,11 +183,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     fetchModeRef.current = 'public';
 
     try {
-      const { data, error } = await supabase
-        .from('posts')
-        .select(POST_SELECT)
-        .order('created_at', { ascending: false })
-        .limit(PAGE_SIZE);
+      const { data, error } = await fetchAllVisiblePosts(undefined, PAGE_SIZE);
 
       if (error) {
         if (__DEV__) console.error('Failed to fetch public posts:', error);
@@ -227,12 +214,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const mode = fetchModeRef.current;
 
       if (mode === 'public') {
-        const { data, error } = await supabase
-          .from('posts')
-          .select(POST_SELECT)
-          .lt('created_at', lastPost.created_at)
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE);
+        const { data, error } = await fetchAllVisiblePosts(lastPost.created_at, PAGE_SIZE);
 
         if (error) {
           if (__DEV__) console.error('Failed to load more public posts:', error);
@@ -245,13 +227,7 @@ export const PostsProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } else {
         const userIds = mode === 'own' ? [userId] : [userId, ...friendIds];
 
-        const { data, error } = await supabase
-          .from('posts')
-          .select(POST_SELECT)
-          .in('user_id', userIds)
-          .lt('created_at', lastPost.created_at)
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE);
+        const { data, error } = await fetchPostsByUsers(userIds, lastPost.created_at, PAGE_SIZE);
 
         if (error) {
           if (__DEV__) console.error('Failed to load more posts:', error);
