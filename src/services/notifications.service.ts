@@ -51,22 +51,70 @@ async function insertNotificationIfAllowed({
   });
 }
 
-/**
- * Send a reaction notification (if prefs allow and not self).
- */
-export async function sendReactionNotification(args: {
+type ReactionNotifArgs = {
   toUserId: string;
   fromUserId: string;
   postId: string;
   emoji: string;
-}) {
-  return insertNotificationIfAllowed({
-    toUserId: args.toUserId,
-    fromUserId: args.fromUserId,
+};
+
+/**
+ * Replace any prior reaction notification from this user on this post, then insert the new one.
+ * Always deletes first (so changing emoji doesn't leave duplicates). Insert only if prefs allow.
+ */
+export async function notifyReaction(args: ReactionNotifArgs) {
+  const { toUserId, fromUserId, postId, emoji } = args;
+
+  if (!toUserId || !fromUserId || toUserId === fromUserId) {
+    return { data: null, error: null };
+  }
+
+  // DELETE must include user_id (recipient) so the row is uniquely targeted and RLS can allow sender deletes
+  const { error: delErr } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('user_id', toUserId)
+    .eq('from_user_id', fromUserId)
+    .eq('post_id', postId)
+    .eq('type', 'reaction');
+
+  if (delErr && __DEV__) console.error('notifyReaction: delete previous reaction notification failed:', delErr);
+
+  const ok = await shouldSendNotification(toUserId, 'reaction');
+  if (!ok) return { data: null, error: null };
+
+  return supabase.from('notifications').insert({
+    user_id: toUserId,
     type: 'reaction',
-    postId: args.postId,
-    emoji: args.emoji,
+    from_user_id: fromUserId,
+    post_id: postId,
+    emoji,
   });
+}
+
+/**
+ * Remove the reaction notification when the user un-reacts (same filters as notifyReaction delete).
+ */
+export async function removeReactionNotification(args: {
+  recipientUserId: string;
+  fromUserId: string;
+  postId: string;
+}) {
+  const { recipientUserId, fromUserId, postId } = args;
+  return supabase
+    .from('notifications')
+    .delete()
+    .eq('user_id', recipientUserId)
+    .eq('from_user_id', fromUserId)
+    .eq('post_id', postId)
+    .eq('type', 'reaction');
+}
+
+/**
+ * @deprecated Use notifyReaction — kept for any external imports; same behavior.
+ */
+export async function sendReactionNotification(args: ReactionNotifArgs) {
+  return notifyReaction(args);
 }
 
 /**

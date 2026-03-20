@@ -15,7 +15,7 @@
  * - Mark as read on focus; refreshUnreadCount from context
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
@@ -80,6 +80,30 @@ function normPost(n: NotificationWithRelations): PostInfo | null {
   };
 }
 
+/**
+ * One logical row per sender+post+type for reactions/comments/tags (ids change when reaction is replaced).
+ * Friend notifications stay unique by id.
+ */
+function dedupeNotifications(notifications: NotificationWithRelations[]): NotificationWithRelations[] {
+  const seen = new Map<string, NotificationWithRelations>();
+
+  for (const n of notifications) {
+    if (n.type === 'reaction' || n.type === 'comment' || n.type === 'tag') {
+      const key = `${n.from_user_id}_${n.post_id}_${n.type}`;
+      const existing = seen.get(key);
+      if (!existing || new Date(n.created_at) > new Date(existing.created_at)) {
+        seen.set(key, n);
+      }
+    } else {
+      seen.set(n.id, n);
+    }
+  }
+
+  return Array.from(seen.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+}
+
 /** Action text after the bold display name (inline in one Text tree). */
 function getNotificationActionText(n: NotificationWithRelations): string {
   switch (n.type) {
@@ -115,6 +139,8 @@ export function NotificationsScreen() {
   const notificationsCountRef = useRef(0);
   const notificationsRef = useRef(notifications);
   const notifFetchIdRef = useRef(0);
+  const notifListRefetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notifListChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const { actionLoading, acceptRequest, declineRequest } = useFriendshipActions();
 
   /** Root stack holds FriendProfile + MainTabs; try two parents then one. */
@@ -165,10 +191,11 @@ export function NotificationsScreen() {
         if (error) throw error;
         if (fetchId !== notifFetchIdRef.current) return;
 
-        const list = (data ?? []) as NotificationWithRelations[];
+        const raw = (data ?? []) as NotificationWithRelations[];
+        const list = dedupeNotifications(raw);
 
         if (isLoadMore) {
-          setNotifications((prev) => [...(prev ?? []), ...list]);
+          setNotifications((prev) => dedupeNotifications([...(prev ?? []), ...list]));
         } else {
           setNotifications(list);
         }
@@ -186,6 +213,46 @@ export function NotificationsScreen() {
     },
     [userId, refreshUnreadCount]
   );
+
+  /** Full list refetch — never append Realtime payloads (avoids stale rows after delete+insert). */
+  const debouncedFetchNotifications = useCallback(() => {
+    if (notifListRefetchDebounceRef.current) clearTimeout(notifListRefetchDebounceRef.current);
+    notifListRefetchDebounceRef.current = setTimeout(() => {
+      notifListRefetchDebounceRef.current = null;
+      void fetchNotifications(false);
+    }, 1500);
+  }, [fetchNotifications]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    notifListChannelRef.current = supabase
+      .channel(`notif-screen-list-${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        () => {
+          debouncedFetchNotifications();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (notifListRefetchDebounceRef.current) {
+        clearTimeout(notifListRefetchDebounceRef.current);
+        notifListRefetchDebounceRef.current = null;
+      }
+      if (notifListChannelRef.current) {
+        supabase.removeChannel(notifListChannelRef.current);
+        notifListChannelRef.current = null;
+      }
+    };
+  }, [userId, debouncedFetchNotifications]);
 
   useFocusEffect(
     useCallback(() => {

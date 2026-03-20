@@ -32,6 +32,8 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
   const [unreadCount, setUnreadCount] = useState(0);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
+  const unreadRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const refreshUnreadCount = useCallback(async () => {
     if (!userId) {
       setUnreadCount(0);
@@ -48,6 +50,15 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
       if (__DEV__) console.error('Failed to fetch unread count:', err);
     }
   }, [userId]);
+
+  /** Re-query count from DB — avoids wrong totals when DELETE+INSERT (e.g. reaction change) fires out of order. */
+  const debouncedRefreshUnreadCount = useCallback(() => {
+    if (unreadRefreshDebounceRef.current) clearTimeout(unreadRefreshDebounceRef.current);
+    unreadRefreshDebounceRef.current = setTimeout(() => {
+      unreadRefreshDebounceRef.current = null;
+      void refreshUnreadCount();
+    }, 500);
+  }, [refreshUnreadCount]);
 
   const markAllRead = useCallback(async () => {
     if (!userId) return;
@@ -84,29 +95,23 @@ export const NotificationsProvider: React.FC<{ children: React.ReactNode }> = ({
           table: 'notifications',
           filter: `user_id=eq.${userId}`,
         },
-        (payload) => {
-          if (payload.eventType === 'INSERT') {
-            setUnreadCount((prev) => prev + 1);
-          } else if (payload.eventType === 'DELETE') {
-            setUnreadCount((prev) => Math.max(0, prev - 1));
-          } else if (payload.eventType === 'UPDATE') {
-            const newRow = payload.new as Record<string, unknown>;
-            const oldRow = payload.old as Record<string, unknown>;
-            if (newRow?.read === true && oldRow?.read === false) {
-              setUnreadCount((prev) => Math.max(0, prev - 1));
-            }
-          }
+        () => {
+          debouncedRefreshUnreadCount();
         }
       )
       .subscribe();
 
     return () => {
+      if (unreadRefreshDebounceRef.current) {
+        clearTimeout(unreadRefreshDebounceRef.current);
+        unreadRefreshDebounceRef.current = null;
+      }
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
       }
     };
-  }, [userId, refreshUnreadCount]);
+  }, [userId, refreshUnreadCount, debouncedRefreshUnreadCount]);
 
   const value = useMemo(() => ({
     unreadCount,

@@ -9,7 +9,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
-import { sendReactionNotification } from '../services/notifications.service';
+import { notifyReaction, removeReactionNotification } from '../services/notifications.service';
 
 function removeEmojiCount(prev: Record<string, number>, emoji: string | null): Record<string, number> {
   if (!emoji) return prev;
@@ -127,12 +127,13 @@ export function usePostReactions(
             .eq('user_id', currentUserId);
 
           if (error) throw error;
-          await supabase
-            .from('notifications')
-            .delete()
-            .eq('from_user_id', currentUserId)
-            .eq('post_id', postId)
-            .eq('type', 'reaction');
+          if (postUserId) {
+            await removeReactionNotification({
+              recipientUserId: postUserId,
+              fromUserId: currentUserId,
+              postId,
+            });
+          }
         } catch {
           if (mountedRef.current) {
             setCurrentReaction(previousReaction);
@@ -151,23 +152,14 @@ export function usePostReactions(
         }
 
         try {
-          if (previousReaction) {
-            await supabase
-              .from('notifications')
-              .delete()
-              .eq('from_user_id', currentUserId)
-              .eq('post_id', postId)
-              .eq('type', 'reaction');
-          }
-
           const { error } = await supabase
             .from('reactions')
             .upsert({ post_id: postId, user_id: currentUserId, emoji }, { onConflict: 'post_id,user_id' });
 
           if (error) throw error;
 
-          if (postUserId && postUserId !== currentUserId) {
-            await sendReactionNotification({
+          if (postUserId) {
+            await notifyReaction({
               toUserId: postUserId,
               fromUserId: currentUserId,
               postId,
@@ -205,23 +197,14 @@ export function usePostReactions(
     setCurrentReaction('❤️');
 
     try {
-      if (previousReaction) {
-        await supabase
-          .from('notifications')
-          .delete()
-          .eq('from_user_id', currentUserId)
-          .eq('post_id', postId)
-          .eq('type', 'reaction');
-      }
-
       const { error } = await supabase
         .from('reactions')
         .upsert({ post_id: postId, user_id: currentUserId, emoji: '❤️' }, { onConflict: 'post_id,user_id' });
 
       if (error) throw error;
 
-      if (postUserId && postUserId !== currentUserId) {
-        await sendReactionNotification({
+      if (postUserId) {
+        await notifyReaction({
           toUserId: postUserId,
           fromUserId: currentUserId,
           postId,
