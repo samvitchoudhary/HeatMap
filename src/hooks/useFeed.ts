@@ -58,7 +58,7 @@ export function useFeed(userId: string | undefined, friendIds: string[]) {
             : undefined;
 
         const { data, error } = await fetchPostsByUsers(
-          [userId, ...friendIds],
+          friendIds,
           cursor,
           CONFIG.FEED_PAGE_SIZE
         );

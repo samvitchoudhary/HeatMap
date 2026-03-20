@@ -1,20 +1,15 @@
 /**
  * FriendsScreen.tsx
  *
- * NOTE: This file is over 500 lines. Future refactoring candidates:
- * - Extract useProfileSearch hook (debounced search, searchText, searchProfiles, loading state)
- * - Extract useFriendshipActions hook (addFriend, acceptRequest, shared with FriendProfileScreen)
- * - Extract FriendshipButton component (Add / Accept / Pending / Friends button variants)
- *
- * Friends list and user search.
+ * Friends list and incoming friend requests.
  *
  * Key responsibilities:
  * - Lists accepted friends with avatars; tap navigates to FriendProfileScreen
- * - Search by username (debounced); Add / Pending / Friends / Accept buttons
- * - Fetches friendships and profiles; handles friend request flow
+ * - Shows pending incoming requests with Accept / Decline
+ * - Use the Search tab to find new users
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { ProfileStackParamList, RootStackNavigationProp } from '../navigation/types';
@@ -22,78 +17,46 @@ import {
   View,
   Text,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   Pressable,
   StyleSheet,
   FlatList,
-  Platform,
-  Alert,
-  ScrollView,
   RefreshControl,
-  Keyboard,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../lib/AuthContext';
-import { useToast } from '../lib/ToastContext';
 import { useFriends } from '../hooks';
-import { fetchAllFriendships, searchProfiles } from '../services/friendships.service';
+import { fetchAllFriendships } from '../services/friendships.service';
 import { theme } from '../lib/theme';
 import type { Profile, Friendship } from '../types';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
-import { StyledTextInput } from '../components/StyledTextInput';
 import { useFriendshipActions } from '../hooks/useFriendshipActions';
 
 type FriendshipWithProfile = Friendship & {
-  
   other_user: Profile;
 };
 
-type SearchResultWithStatus = Profile & {
-  buttonState: 'add' | 'pending' | 'friends' | 'accept';
-  friendshipId?: string;
-};
-
-/** Debounce search input before querying profiles */
-const DEBOUNCE_MS = 500;
-
 type FriendsScreenNav = NativeStackNavigationProp<ProfileStackParamList, 'Friends'>;
+
+function getRequesterFromRow(f: Friendship & { requester?: Profile | Profile[] }): Profile | null {
+  const r = f.requester as Profile | Profile[] | undefined;
+  if (!r) return null;
+  return Array.isArray(r) ? r[0] ?? null : r;
+}
 
 export function FriendsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<FriendsScreenNav>();
   const { session } = useAuth();
-  const { showToast } = useToast();
   const userId = session?.user?.id;
   const { friends: friendsFromContext, loading: friendsLoading, refresh: refreshFriends } = useFriends();
   const [refreshing, setRefreshing] = useState(false);
 
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchText, setSearchText] = useState('');
-  const [searchProfiles, setSearchProfiles] = useState<Profile[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [searchResultsVisible, setSearchResultsVisible] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const [friendships, setFriendships] = useState<Friendship[]>([]);
 
-  const searchResults: SearchResultWithStatus[] = React.useMemo(() => {
-    const list = friendships ?? [];
-    return searchProfiles.map((p) => {
-      const f = list.find(
-        (x) =>
-          (x.requester_id === userId && x.addressee_id === p.id) ||
-          (x.requester_id === p.id && x.addressee_id === userId)
-      );
-      if (!f) return { ...p, buttonState: 'add' as const };
-      if (f.status === 'accepted') return { ...p, buttonState: 'friends' as const, friendshipId: f.id };
-      if (f.requester_id === userId) return { ...p, buttonState: 'pending' as const, friendshipId: f.id };
-      return { ...p, buttonState: 'accept' as const, friendshipId: f.id };
-    });
-  }, [searchProfiles, friendships, userId]);
-  const { actionLoading, sendRequest, acceptRequest } = useFriendshipActions();
+  const { acceptRequest, declineRequest } = useFriendshipActions();
 
   const fetchFriendships = useCallback(async () => {
     if (!userId) return;
@@ -104,6 +67,11 @@ export function FriendsScreen() {
     }
     setFriendships((data ?? []) as Friendship[]);
   }, [userId]);
+
+  const pendingIncoming = React.useMemo(() => {
+    if (!userId) return [];
+    return friendships.filter((f) => f.status === 'pending' && f.addressee_id === userId);
+  }, [friendships, userId]);
 
   const friends: FriendshipWithProfile[] = React.useMemo(() => {
     return friendsFromContext.map((f) => ({
@@ -129,250 +97,161 @@ export function FriendsScreen() {
     }, [fetchFriendships, refreshFriends])
   );
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!searchText.trim() || !userId) {
-      setSearchProfiles([]);
-      setSearchLoading(false);
-      setSearchResultsVisible(false);
-      return;
-    }
-    setSearchLoading(true);
-    setSearchResultsVisible(true);
-    debounceRef.current = setTimeout(async () => {
-      const { data, error } = await searchProfiles(searchText.trim(), userId, 20);
-      if (error) {
-        __DEV__ && console.error('Error searching profiles:', error);
-        setSearchProfiles([]);
-      } else {
-        setSearchProfiles((data ?? []) as Profile[]);
-      }
-      setSearchLoading(false);
-    }, DEBOUNCE_MS);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [searchText, userId]);
-
   async function handleRefresh() {
     setRefreshing(true);
     await Promise.all([refreshFriends(), fetchFriendships()]);
     setRefreshing(false);
   }
 
-  async function handleAddFriend(addresseeId: string) {
-    if (!userId) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const result = await sendRequest(userId, addresseeId);
-    if (result.success) {
-      await fetchFriendships();
-    }
-  }
+  const handleAccept = useCallback(
+    async (friendshipId: string) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const ok = await acceptRequest(friendshipId);
+      if (ok) {
+        await Promise.all([fetchFriendships(), refreshFriends()]);
+      }
+    },
+    [acceptRequest, fetchFriendships, refreshFriends]
+  );
 
-  async function handleAccept(friendshipId: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const ok = await acceptRequest(friendshipId);
-    if (ok) {
-      await Promise.all([fetchFriendships(), refreshFriends()]);
-    }
-  }
+  const handleDecline = useCallback(
+    async (friendshipId: string) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      const ok = await declineRequest(friendshipId);
+      if (ok) {
+        await fetchFriendships();
+      }
+    },
+    [declineRequest, fetchFriendships]
+  );
 
-  function renderSearchResultButton(item: SearchResultWithStatus) {
-    if (item.buttonState === 'accept') {
-      return (
-        <TouchableOpacity
-          style={[styles.searchBtn, styles.acceptSearchBtn]}
-          activeOpacity={0.8}
-          onPress={() => item.friendshipId && handleAccept(item.friendshipId)}
-          accessibilityLabel="Accept friend request"
-          accessibilityRole="button"
-        >
-          <Feather name="user-check" size={16} color={theme.colors.textOnPrimary} />
-          <Text style={[styles.searchBtnText, styles.searchBtnTextWhite, { marginLeft: 6 }]}>Accept</Text>
-        </TouchableOpacity>
-      );
-    }
-    if (item.buttonState === 'add') {
-      return (
-        <TouchableOpacity
-          style={[styles.searchBtn, styles.addSearchBtn]}
-          activeOpacity={0.8}
-          onPress={() => handleAddFriend(item.id)}
-          accessibilityLabel="Add friend"
-          accessibilityRole="button"
-        >
-          <Feather name="user-plus" size={16} color={theme.colors.textOnPrimary} />
-          <Text style={[styles.searchBtnText, styles.searchBtnTextWhite, { marginLeft: 6 }]}>Add</Text>
-        </TouchableOpacity>
-      );
-    }
-    if (item.buttonState === 'pending') {
-      return (
-        <View style={[styles.searchBtn, styles.pendingBtn]}>
-          <Feather name="clock" size={16} color={theme.colors.textTertiary} />
-          <Text style={[styles.searchBtnText, { color: theme.colors.textTertiary, marginLeft: 6 }]}>Pending</Text>
-        </View>
-      );
-    }
+  const openFriendProfile = useCallback((id: string) => {
+    (
+      navigation.getParent()?.getParent?.()?.getParent?.() as RootStackNavigationProp | undefined
+    )?.navigate('FriendProfile', { userId: id });
+  }, [navigation]);
+
+  const ListHeader = React.useMemo(() => {
+    if (pendingIncoming.length === 0) return null;
     return (
-      <View style={[styles.searchBtn, styles.friendsBtn]}>
-        <Feather name="check" size={16} color={theme.colors.green} />
-        <Text style={[styles.searchBtnText, { color: theme.colors.green, marginLeft: 6 }]}>Friends</Text>
+      <View style={styles.requestsSection}>
+        <Text style={styles.sectionTitle}>Friend requests</Text>
+        {pendingIncoming.map((row) => {
+          const req = getRequesterFromRow(row as Friendship & { requester?: Profile | Profile[] });
+          if (!req) return null;
+          return (
+            <View key={row.id} style={styles.requestRow}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.requestMain,
+                  pressed && { backgroundColor: theme.colors.surfaceLight },
+                ]}
+                onPress={() => openFriendProfile(req.id)}
+                accessibilityLabel={`${req.display_name}'s profile`}
+                accessibilityRole="button"
+              >
+                <Avatar uri={req.avatar_url ?? null} size={40} />
+                <View style={styles.requestText}>
+                  <Text style={styles.displayName}>{req.display_name || 'No name'}</Text>
+                  <Text style={styles.username}>@{req.username}</Text>
+                </View>
+              </Pressable>
+              <View style={styles.requestActions}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.acceptBtn]}
+                  onPress={() => handleAccept(row.id)}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Accept friend request"
+                  accessibilityRole="button"
+                >
+                  <Feather name="user-check" size={16} color={theme.colors.textOnPrimary} />
+                  <Text style={styles.actionBtnTextLight}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.declineBtn]}
+                  onPress={() => handleDecline(row.id)}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Decline friend request"
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.actionBtnTextMuted}>Decline</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })}
       </View>
     );
-  }
+  }, [pendingIncoming, openFriendProfile, handleAccept, handleDecline]);
 
   if (!userId) return null;
 
   const bottom = insets.bottom;
 
-  return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-    <View style={[styles.container, { paddingTop: theme.spacing.md, backgroundColor: theme.colors.background }]}>
-      <View style={styles.content}>
-        {friendsLoading ? (
-          <View style={styles.listContent}>
-            {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-              <View key={i} style={styles.friendSkeletonRow}>
-                <Skeleton width={44} height={44} borderRadius={22} />
-                <View style={styles.skeletonTextBlock}>
-                  <Skeleton width={130} height={14} borderRadius={4} />
-                  <Skeleton width={90} height={12} borderRadius={4} style={{ marginTop: 6 }} />
-                </View>
-              </View>
-            ))}
-          </View>
-        ) : friends.length === 0 ? (
-          <View style={styles.emptyCenter}>
-            <Feather name="users" size={40} color={theme.colors.textTertiary} />
-            <Text style={styles.emptyTitle}>No friends yet</Text>
-            <Text style={styles.emptySubtitle}>Search for friends below to get started</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={friends}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={[styles.listContent, { paddingBottom: bottom + 140 }]}
-            showsVerticalScrollIndicator={false}
-            overScrollMode="never"
-            bounces={true}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            removeClippedSubviews={true}
-            windowSize={5}
-            maxToRenderPerBatch={10}
-            initialNumToRender={10}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-                tintColor={theme.colors.text}
-              />
-            }
-            renderItem={({ item }) => (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.friendRow,
-                  pressed && { backgroundColor: theme.colors.surfaceLight },
-                ]}
-                onPress={() => {
-                  (
-                    navigation.getParent()?.getParent?.()?.getParent?.() as RootStackNavigationProp | undefined
-                  )?.navigate('FriendProfile', {
-                    userId: item.other_user?.id ?? '',
-                  });
-                }}
-                accessibilityLabel={item.other_user?.display_name ?? 'Friend'}
-                accessibilityRole="button"
-              >
-                <View style={styles.avatarWrap}>
-                  <Avatar uri={item.other_user?.avatar_url ?? null} size={40} />
-                </View>
-                <View style={styles.searchInfo}>
-                  <Text style={styles.displayName}>
-                    {item.other_user?.display_name || 'No name'}
-                  </Text>
-                  <Text style={styles.username}>
-                    @{item.other_user?.username ?? 'unknown'}
-                  </Text>
-                </View>
-              </Pressable>
-            )}
-          />
-        )}
-      </View>
+  const emptyNoFriends = !friendsLoading && friends.length === 0 && pendingIncoming.length === 0;
 
-      <View style={[styles.searchSection, { paddingBottom: bottom + 70 }]}>
-        {searchResultsVisible && searchText.trim() && (
-          <ScrollView style={styles.searchResults} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} overScrollMode="never">
-            {searchLoading ? (
-              <View style={styles.searchSkeletonList}>
-                {[1, 2, 3, 4].map((i) => (
-                  <View key={i} style={styles.searchRow}>
-                    <View style={styles.avatarWrap}>
-                      <Skeleton width={40} height={40} borderRadius={20} />
-                    </View>
-                    <View style={styles.skeletonTextBlock}>
-                      <Skeleton width={140} height={14} borderRadius={7} />
-                      <View style={{ marginTop: 6 }}>
-                        <Skeleton width={90} height={12} borderRadius={6} />
-                      </View>
-                    </View>
-                  </View>
-                ))}
+  return (
+    <View style={[styles.container, { paddingTop: theme.spacing.md, backgroundColor: theme.colors.background }]}>
+      {friendsLoading ? (
+        <View style={styles.listContent}>
+          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+            <View key={i} style={styles.friendSkeletonRow}>
+              <Skeleton width={44} height={44} borderRadius={22} />
+              <View style={styles.skeletonTextBlock}>
+                <Skeleton width={130} height={14} borderRadius={4} />
+                <Skeleton width={90} height={12} borderRadius={4} style={{ marginTop: 6 }} />
               </View>
-            ) : searchResults.length === 0 ? (
-              <Text style={styles.searchEmpty}>No results found</Text>
-            ) : (
-              searchResults.map((item) => (
-                <View key={item.id} style={styles.searchRow}>
-                  <TouchableOpacity
-                    style={styles.searchRowTouchable}
-                    onPress={() => {
-                      (
-                        navigation.getParent()?.getParent?.()?.getParent?.() as RootStackNavigationProp | undefined
-                      )?.navigate('FriendProfile', {
-                        userId: item.id,
-                      });
-                    }}
-                    activeOpacity={0.7}
-                    accessibilityLabel={`View ${item.display_name}'s profile`}
-                    accessibilityRole="button"
-                  >
-                    <View style={styles.avatarWrap}>
-                      <Avatar uri={item.avatar_url ?? null} size={40} />
-                    </View>
-                    <View style={styles.searchInfo}>
-                      <Text style={styles.displayName}>{item.display_name || 'No name'}</Text>
-                      <Text style={styles.username}>@{item.username}</Text>
-                    </View>
-                  </TouchableOpacity>
-                  {renderSearchResultButton(item)}
-                </View>
-              ))
-            )}
-          </ScrollView>
-        )}
-        <View style={styles.searchInputContainer}>
-          <Feather name="search" size={18} color={theme.colors.textTertiary} style={styles.searchIcon} />
-          <StyledTextInput
-            embedded
-            style={styles.searchInput}
-            placeholder="Add friends by username..."
-            value={searchText}
-            onChangeText={setSearchText}
-            onFocus={() => {
-              setSearchFocused(true);
-              searchText.trim() && setSearchResultsVisible(true);
-            }}
-            onBlur={() => setSearchFocused(false)}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
+            </View>
+          ))}
         </View>
-      </View>
+      ) : emptyNoFriends ? (
+        <View style={styles.emptyCenter}>
+          <Feather name="users" size={40} color={theme.colors.textTertiary} />
+          <Text style={styles.emptyTitle}>No friends yet</Text>
+          <Text style={styles.emptySubtitle}>Use the Search tab to find people and send requests</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={friends}
+          keyExtractor={(item) => item.id}
+          ListHeaderComponent={ListHeader}
+          contentContainerStyle={[styles.listContent, { paddingBottom: bottom + theme.spacing.xl }]}
+          showsVerticalScrollIndicator={false}
+          overScrollMode="never"
+          bounces={true}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          removeClippedSubviews={true}
+          windowSize={5}
+          maxToRenderPerBatch={10}
+          initialNumToRender={10}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={theme.colors.text} />
+          }
+          ListEmptyComponent={
+            pendingIncoming.length > 0 ? (
+              <Text style={styles.noFriendsYetInline}>No friends yet — accept requests above or use Search.</Text>
+            ) : null
+          }
+          renderItem={({ item }) => (
+            <Pressable
+              style={({ pressed }) => [styles.friendRow, pressed && { backgroundColor: theme.colors.surfaceLight }]}
+              onPress={() => openFriendProfile(item.other_user?.id ?? '')}
+              accessibilityLabel={item.other_user?.display_name ?? 'Friend'}
+              accessibilityRole="button"
+            >
+              <View style={styles.avatarWrap}>
+                <Avatar uri={item.other_user?.avatar_url ?? null} size={40} />
+              </View>
+              <View style={styles.searchInfo}>
+                <Text style={styles.displayName}>{item.other_user?.display_name || 'No name'}</Text>
+                <Text style={styles.username}>@{item.other_user?.username ?? 'unknown'}</Text>
+              </View>
+            </Pressable>
+          )}
+        />
+      )}
     </View>
-    </TouchableWithoutFeedback>
   );
 }
 
@@ -380,8 +259,72 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  content: {
+  requestsSection: {
+    paddingHorizontal: theme.screenPadding,
+    paddingBottom: theme.spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.borderLight,
+    marginBottom: theme.spacing.sm,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.sm,
+  },
+  requestRow: {
+    marginBottom: theme.spacing.md,
+  },
+  requestMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderRadius: theme.borderRadius.md,
+  },
+  requestText: {
     flex: 1,
+    marginLeft: theme.spacing.md,
+  },
+  requestActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+    marginLeft: 52,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.md,
+    minHeight: 36,
+    borderRadius: 14,
+  },
+  acceptBtn: {
+    backgroundColor: theme.colors.green,
+  },
+  declineBtn: {
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  actionBtnTextLight: {
+    marginLeft: 6,
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.textOnPrimary,
+  },
+  actionBtnTextMuted: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+  },
+  noFriendsYetInline: {
+    paddingHorizontal: theme.screenPadding,
+    paddingTop: theme.spacing.md,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.textTertiary,
+    textAlign: 'center',
   },
   emptyCenter: {
     flex: 1,
@@ -410,9 +353,6 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     flex: 1,
   },
-  searchSkeletonList: {
-    padding: theme.spacing.md,
-  },
   listContent: {
     padding: theme.screenPadding,
     paddingBottom: theme.spacing.lg,
@@ -440,87 +380,5 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: theme.colors.textSecondary,
     marginTop: 2,
-  },
-  searchSection: {
-    paddingHorizontal: theme.screenPadding,
-    paddingTop: theme.spacing.sm,
-    backgroundColor: theme.colors.background,
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.borderLight,
-  },
-  searchResults: {
-    backgroundColor: theme.colors.surface,
-    borderTopLeftRadius: theme.borderRadius.lg,
-    borderTopRightRadius: theme.borderRadius.lg,
-    padding: theme.spacing.md,
-    maxHeight: 300,
-  },
-  searchEmpty: {
-    padding: theme.spacing.lg,
-    color: theme.colors.textSecondary,
-    textAlign: 'center',
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: theme.listRowGap,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderLight,
-  },
-  searchRowTouchable: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background,
-    borderRadius: theme.borderRadius.full,
-    paddingHorizontal: theme.spacing.md,
-    minHeight: theme.inputHeight,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    shadowColor: theme.colors.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  searchIcon: {
-    marginRight: theme.spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 0,
-  },
-  searchBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.md,
-    minWidth: 80,
-    height: theme.button.secondaryHeight,
-    borderRadius: 14,
-  },
-  addSearchBtn: {
-    backgroundColor: theme.colors.primary,
-  },
-  acceptSearchBtn: {
-    backgroundColor: theme.colors.green,
-  },
-  pendingBtn: {
-    backgroundColor: theme.colors.surface,
-  },
-  friendsBtn: {
-    backgroundColor: theme.colors.surface,
-  },
-  searchBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  searchBtnTextWhite: {
-    color: theme.colors.textOnPrimary,
   },
 });

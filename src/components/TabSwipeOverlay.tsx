@@ -16,7 +16,7 @@ import type { ParamListBase } from '@react-navigation/native';
 import type { MainTabParamList } from '../navigation/types';
 import { useCardStack } from '../lib/CardStackContext';
 
-const TAB_ORDER: (keyof MainTabParamList)[] = ['Map', 'Feed', 'Notifications', 'Profile'];
+const TAB_ORDER: (keyof MainTabParamList)[] = ['Map', 'Feed', 'Search', 'Notifications', 'Profile'];
 /** Width of each swipe-sensitive edge in pixels */
 const EDGE_WIDTH = 20;
 /** Horizontal swipe distance required to trigger tab change */

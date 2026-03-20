@@ -374,15 +374,15 @@ export function CommentSheet({
                 <TouchableOpacity
                   style={[
                     styles.cardBackSendButton,
-                    (!inputText.trim() || posting) && styles.postButtonDisabled,
+                    (!inputText.trim() || submitting) && styles.postButtonDisabled,
                   ]}
                   onPress={handlePostComment}
-                  disabled={!inputText.trim() || posting}
+                  disabled={!inputText.trim() || submitting}
                   activeOpacity={0.8}
                   accessibilityLabel="Send comment"
                   accessibilityRole="button"
                 >
-                  {posting ? (
+                  {submitting ? (
                     <ActivityIndicator size="small" color={theme.colors.primary} />
                   ) : (
                     <Feather name="send" size={16} color={theme.colors.primary} />

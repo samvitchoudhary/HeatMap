@@ -779,16 +779,20 @@ function StackCard({
 }: StackCardProps) {
   const initialUserReaction = (post as any).user_reaction ?? null;
   const initialReactionCount = (post as any).reaction_count ?? 0;
+  const stableStackReactionCounts = useMemo(() => {
+    const rc = (post as any).reaction_counts;
+    if (rc && typeof rc === 'object' && !Array.isArray(rc)) return { ...rc };
+    return {};
+  }, [post.id, (post as any).reaction_counts]);
 
-  const { currentReaction, reactionCount, toggleReaction, doubleTapHeart } = usePostReactions(
+  const { currentReaction, allReactionCounts, toggleReaction, doubleTapHeart } = usePostReactions(
     post.id,
     post.user_id,
     currentUserId,
     initialUserReaction,
-    initialReactionCount
+    initialReactionCount,
+    stableStackReactionCounts
   );
-
-  const counts = currentReaction ? { [currentReaction]: reactionCount } : {};
 
   const handleDoubleTapHeart = useCallback(() => {
     if (!currentUserId) return;
@@ -917,7 +921,7 @@ function StackCard({
           <View style={styles.bottomBar}>
             <View style={styles.reactionsSection}>
               <ReactionBar
-                counts={isCurrent ? counts : {}}
+                counts={isCurrent ? allReactionCounts : {}}
                 userReaction={isCurrent ? currentReaction : null}
                 onEmojiPress={handleReactionPress}
                 cardStackBar

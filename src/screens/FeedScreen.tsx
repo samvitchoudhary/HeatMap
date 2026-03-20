@@ -36,6 +36,7 @@ import { FeedCard, type FeedLatestComment } from '../components/FeedCard';
 import { PhotoViewer } from '../components/PhotoViewer';
 import { Skeleton } from '../components/Skeleton';
 import { useFeed } from '../hooks/useFeed';
+import { deletePost, deletePostImage } from '../services/posts.service';
 
 /** Feed post with user's reaction emoji and per-emoji counts for the ReactionBar */
 export type FeedPost = PostWithProfile & {
@@ -102,6 +103,8 @@ export function FeedScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [fadingOutId, setFadingOutId] = useState<string | null>(null);
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
+  /** Post IDs removed locally after delete animation (useFeed list is refetched on next focus/refresh). */
+  const [removedPostIds, setRemovedPostIds] = useState<Set<string>>(() => new Set());
   const hasInitiallyFetched = useRef(false);
   const {
     displayPosts,
@@ -113,6 +116,11 @@ export function FeedScreen() {
     loadMore,
     forceSort,
   } = useFeed(profile?.id, friendIds);
+
+  const visiblePosts = useMemo(
+    () => displayPosts.filter((p) => !removedPostIds.has(p.id)),
+    [displayPosts, removedPostIds]
+  );
 
   /** Estimated card height for FlatList getItemLayout - improves scroll perf */
   const FEED_CARD_HEIGHT = useMemo(() => {
@@ -147,6 +155,7 @@ export function FeedScreen() {
   async function handleRefresh() {
     setRefreshing(true);
     await fetchFeed(false);
+    setRemovedPostIds(new Set());
     forceSort();
     setRefreshing(false);
   }
@@ -154,12 +163,8 @@ export function FeedScreen() {
   const handleDeletePost = useCallback(
     async (post: PostWithProfile) => {
       try {
-        const imagePath = post.image_url.split('/posts/')[1]?.split('?')[0];
-        if (imagePath) {
-          const { error: storageErr } = await supabase.storage.from('posts').remove([imagePath]);
-          if (storageErr) throw storageErr;
-        }
-        const { error } = await supabase.from('posts').delete().eq('id', post.id);
+        await deletePostImage(post.image_url);
+        const { error } = await deletePost(post.id);
         if (error) throw error;
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setFadingOutId(post.id);
@@ -173,23 +178,19 @@ export function FeedScreen() {
 
   const handleFadeComplete = useCallback((postId: string) => {
     removePost(postId);
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    setRemovedPostIds((prev) => new Set(prev).add(postId));
     setFadingOutId(null);
   }, [removePost]);
 
-  const handleReactionChange = useCallback((postId: string, counts: Record<string, number>, userReaction: string | null) => {
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId ? { ...p, reaction_counts: counts, user_reaction: userReaction } : p
-      )
-    );
-  }, []);
+  const handleReactionChange = useCallback(
+    (_postId: string, _counts: Record<string, number>, _userReaction: string | null) => {},
+    []
+  );
 
-  const handleCommentPosted = useCallback((postId: string, count: number, _latestComment: FeedLatestComment | null) => {
-    setPosts((prev) =>
-      prev.map((p) => (p.id === postId ? { ...p, comment_count: count } : p))
-    );
-  }, []);
+  const handleCommentPosted = useCallback(
+    (_postId: string, _count: number, _latestComment: FeedLatestComment | null) => {},
+    []
+  );
 
   const handleVenuePress = useCallback(
     (latitude: number, longitude: number) => {
@@ -214,7 +215,7 @@ export function FeedScreen() {
   }
 
   const emptyComponent =
-    posts.length === 0 && !loading ? (
+    visiblePosts.length === 0 && !loading ? (
       <View style={styles.emptyState}>
         <Feather name="activity" size={48} color={theme.colors.textTertiary} />
         <Text style={styles.emptyTitle}>No activity yet</Text>
@@ -238,13 +239,13 @@ export function FeedScreen() {
         <Text style={styles.headerTitle}>Activity</Text>
       </View>
 
-      {loading && posts.length === 0 ? (
+      {loading && displayPosts.length === 0 ? (
         <View style={[styles.skeletonWrap, { paddingBottom: insets.bottom + 100 }]}>
           <FeedSkeleton />
         </View>
       ) : (
         <FlatList
-          data={displayPosts}
+          data={visiblePosts}
           keyExtractor={(item) => item.id}
           getItemLayout={(_, index) => ({
             length: FEED_CARD_HEIGHT,

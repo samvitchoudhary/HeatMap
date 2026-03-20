@@ -24,8 +24,13 @@ export type MainTabParamList = {
       }
     | undefined;
   Feed: undefined;
+  Search: undefined;
   Notifications: undefined;
   Profile: undefined;
+};
+
+export type SearchStackParamList = {
+  SearchMain: undefined;
 };
 
 export type RootStackParamList = {

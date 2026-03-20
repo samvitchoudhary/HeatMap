@@ -145,6 +145,24 @@ export async function searchProfiles(query: string, excludeUserId: string, limit
 }
 
 /**
+ * Search profiles by username OR display name (e.g. Search tab).
+ * Wildcard characters in the query are stripped for safety.
+ */
+export async function searchProfilesByName(query: string, excludeUserId: string, limit: number = 20) {
+  const q = query.trim().replace(/[%_]/g, '');
+  if (!q || !excludeUserId) {
+    return supabase.from('profiles').select('id, username, display_name, avatar_url').limit(0);
+  }
+  const pattern = `%${q}%`;
+  return supabase
+    .from('profiles')
+    .select('id, username, display_name, avatar_url')
+    .or(`username.ilike.${pattern},display_name.ilike.${pattern}`)
+    .neq('id', excludeUserId)
+    .limit(limit);
+}
+
+/**
  * Extract the friend profile from a friendship row.
  * Given a friendship row and the current user's ID, returns the OTHER user's profile.
  */

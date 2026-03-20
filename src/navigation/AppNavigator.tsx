@@ -26,6 +26,7 @@ import type {
   MainTabParamList,
   MapStackParamList,
   ProfileStackParamList,
+  SearchStackParamList,
 } from './types';
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import type { Profile } from '../types';
@@ -60,6 +61,7 @@ import { FriendsScreen } from '../screens/FriendsScreen';
 import { ProfileScreen } from '../screens/ProfileScreen';
 import { GalleryScreen } from '../screens/GalleryScreen';
 import { FriendProfileScreen } from '../screens/FriendProfileScreen';
+import { SearchScreen } from '../screens/SearchScreen';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
 import { NotificationSettingsScreen } from '../screens/NotificationSettingsScreen';
@@ -71,6 +73,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createMaterialTopTabNavigator<MainTabParamList>();
 const MapStack = createNativeStackNavigator<MapStackParamList>();
 const ProfileStack = createNativeStackNavigator<ProfileStackParamList>();
+const SearchStack = createNativeStackNavigator<SearchStackParamList>();
 
 const headerScreenOptions = {
   headerStyle: {
@@ -213,6 +216,17 @@ function ProfileStackNavigator() {
 
 const MemoizedProfileStackNavigator = React.memo(ProfileStackNavigator);
 
+/** Search tab stack */
+function SearchStackNavigator() {
+  return (
+    <SearchStack.Navigator screenOptions={{ headerShown: false }}>
+      <SearchStack.Screen name="SearchMain" component={SearchScreen} />
+    </SearchStack.Navigator>
+  );
+}
+
+const MemoizedSearchStackNavigator = React.memo(SearchStackNavigator);
+
 /** Custom tab bar with icons, badge dots (Feed, Notifications), sliding indicator */
 function CustomTabBar(props: {
   state: { index: number; routes: { key: string; name: string }[] };
@@ -225,13 +239,14 @@ function CustomTabBar(props: {
   const { state, navigation, position } = props;
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const tabWidth = width / 4;
+  const tabWidth = width / 5;
   const { unreadCount } = useNotifications();
   const { hasNewPosts } = useFeedBadge();
 
   const tabConfig: { name: keyof MainTabParamList; icon: React.ComponentProps<typeof Feather>['name']; badge?: string | number }[] = [
     { name: 'Map', icon: 'map' },
     { name: 'Feed', icon: 'activity', badge: hasNewPosts ? '' : undefined },
+    { name: 'Search', icon: 'search' },
     { name: 'Notifications', icon: 'bell', badge: unreadCount > 0 ? (unreadCount > 9 ? '9+' : unreadCount) : undefined },
     { name: 'Profile', icon: 'user' },
   ];
@@ -307,7 +322,7 @@ function CustomTabBar(props: {
   );
 }
 
-/** Main tab navigator - Map, Feed, Notifications, Profile */
+/** Main tab navigator - Map, Feed, Search, Notifications, Profile */
 function MainTabs({ profile }: { profile: Profile }) {
   const insets = useSafeAreaInsets();
   const stableProfile = useMemo(
@@ -352,6 +367,13 @@ function MainTabs({ profile }: { profile: Profile }) {
           component={FeedScreen}
           options={{
             tabBarIcon: ({ focused }) => <TabIcon name="activity" focused={focused} />,
+          }}
+        />
+        <Tab.Screen
+          name="Search"
+          component={MemoizedSearchStackNavigator}
+          options={{
+            tabBarIcon: ({ focused }) => <TabIcon name="search" focused={focused} />,
           }}
         />
         <Tab.Screen

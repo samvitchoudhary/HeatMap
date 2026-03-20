@@ -15,7 +15,7 @@
  * - Fade-out animation on delete, expand photo, navigate to venue/profile
  */
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -40,6 +40,7 @@ import { timeAgo } from '../lib/timeAgo';
 import { getCategoryByKey } from '../lib/categories';
 import { TaggedLine } from './TaggedLine';
 import { usePostReactions } from '../hooks/usePostReactions';
+import { supabase } from '../lib/supabase';
 
 const CARD_MARGIN_H = 20;
 const CARD_MARGIN_V = 10;
@@ -93,7 +94,11 @@ const FeedCardInner = function FeedCard({
   const { session } = useAuth();
   const userId = session?.user?.id;
 
-  const initialReactionCounts = post.reaction_counts ?? {};
+  const stableInitialReactionCounts = useMemo(() => {
+    const rc = post.reaction_counts;
+    if (rc && typeof rc === 'object' && !Array.isArray(rc)) return { ...rc };
+    return {};
+  }, [post.id, post.reaction_counts]);
   const initialUserReaction = post.user_reaction ?? null;
   const commentCount = post.comment_count ?? 0;
 
@@ -119,18 +124,25 @@ const FeedCardInner = function FeedCard({
 
   const {
     currentReaction,
-    reactionCount,
+    allReactionCounts,
     toggleReaction,
     doubleTapHeart,
-  } = usePostReactions(post.id, post.user_id, userId, initialUserReaction, initialReactionCounts['❤️'] ?? 0);
+  } = usePostReactions(
+    post.id,
+    post.user_id,
+    userId,
+    initialUserReaction,
+    post.reaction_count ?? 0,
+    stableInitialReactionCounts
+  );
 
   useEffect(() => {
-    onReactionChange?.(post.id, { ...initialReactionCounts, ['❤️']: reactionCount }, currentReaction);
-  }, [currentReaction, reactionCount, post.id, initialReactionCounts, onReactionChange]);
+    onReactionChange?.(post.id, allReactionCounts, currentReaction);
+  }, [currentReaction, allReactionCounts, post.id, onReactionChange]);
 
   const triggerHeartReaction = useCallback(() => {
     if (!userId) return;
-    if (initialUserReaction === '❤️') return;
+    if (currentReaction === '❤️') return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     void doubleTapHeart();
@@ -210,9 +222,8 @@ const FeedCardInner = function FeedCard({
     userId,
     post.id,
     post.user_id,
-    initialUserReaction,
-    initialReactionCounts,
-    onReactionChange,
+    currentReaction,
+    doubleTapHeart,
     heartScale,
     heartOpacity,
     heartTranslateY,
@@ -443,8 +454,8 @@ const FeedCardInner = function FeedCard({
             <View style={styles.bottomBar}>
               <View style={styles.reactionsSection}>
                 <ReactionBar
-                  counts={initialReactionCounts}
-                  userReaction={initialUserReaction}
+                  counts={allReactionCounts}
+                  userReaction={currentReaction}
                   onEmojiPress={handleReactionToggle}
                   cardStackBar
                 />

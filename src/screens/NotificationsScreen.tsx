@@ -40,6 +40,8 @@ import { Skeleton } from '../components/Skeleton';
 import { timeAgo } from '../lib/timeAgo';
 import type { RootStackNavigationProp } from '../navigation/types';
 import { useFriendshipActions } from '../hooks/useFriendshipActions';
+import { supabase } from '../lib/supabase';
+import { markNotificationRead, deleteNotifications } from '../services/notifications.service';
 
 const NOTIFICATIONS_PAGE_SIZE = 30;
 
@@ -184,7 +186,7 @@ export function NotificationsScreen() {
   const markAsRead = useCallback(
     async (notificationId: string) => {
       try {
-        const { error } = await supabase.from('notifications').update({ read: true }).eq('id', notificationId);
+        const { error } = await markNotificationRead(notificationId);
         if (error) throw error;
         setNotifications((prev) =>
           prev ? prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)) : []
@@ -204,7 +206,7 @@ export function NotificationsScreen() {
     setSelectMode(false);
     setSelectedIds(new Set());
     try {
-      const { error } = await supabase.from('notifications').delete().in('id', ids);
+      const { error } = await deleteNotifications(ids);
       if (error) throw error;
       await refreshUnreadCount();
     } catch (err) {
