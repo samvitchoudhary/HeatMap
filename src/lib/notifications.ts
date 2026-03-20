@@ -17,6 +17,8 @@ const KEY_MAP: Record<string, string> = {
   reaction: 'reactions',
   comment: 'comments',
   friend_request: 'friend_requests',
+  /** Uses same prefs bucket as incoming friend requests */
+  friend_accept: 'friend_requests',
   tag: 'tags',
 };
 
@@ -41,7 +43,7 @@ function checkPrefs(prefs: Record<string, boolean>, type: string): boolean {
  */
 export async function shouldSendNotification(
   userId: string,
-  type: 'reaction' | 'comment' | 'friend_request' | 'tag'
+  type: 'reaction' | 'comment' | 'friend_request' | 'friend_accept' | 'tag'
 ): Promise<boolean> {
   try {
     const now = Date.now();

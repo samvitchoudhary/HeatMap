@@ -14,7 +14,7 @@ export const NOTIFICATION_SELECT = `
   id, user_id, type, from_user_id, post_id, comment_id, emoji, read, created_at
 `;
 
-type NotificationType = 'reaction' | 'comment' | 'friend_request' | 'tag';
+type NotificationType = 'reaction' | 'comment' | 'friend_request' | 'friend_accept' | 'tag';
 
 type BaseNotificationArgs = {
   toUserId: string;
@@ -102,6 +102,33 @@ export async function sendFriendRequestNotification(args: {
 }
 
 /**
+ * Notify the original requester that their friend request was accepted.
+ */
+export async function sendFriendAcceptNotification(args: { toUserId: string; fromUserId: string }) {
+  return insertNotificationIfAllowed({
+    toUserId: args.toUserId,
+    fromUserId: args.fromUserId,
+    type: 'friend_accept',
+  });
+}
+
+/**
+ * Remove the pending friend_request notification for the recipient (addressee).
+ * Call after accept or decline so the row does not reappear on refetch.
+ */
+export async function deleteFriendRequestNotificationForPair(
+  recipientUserId: string,
+  requesterUserId: string
+) {
+  return supabase
+    .from('notifications')
+    .delete()
+    .eq('user_id', recipientUserId)
+    .eq('from_user_id', requesterUserId)
+    .eq('type', 'friend_request');
+}
+
+/**
  * Send tag notifications to multiple users.
  * Applies preference and self-notification checks per user.
  */
@@ -140,6 +167,15 @@ export async function markNotificationRead(notificationId: string) {
     .from('notifications')
     .update({ read: true })
     .eq('id', notificationId);
+}
+
+/**
+ * Delete a single notification by primary key (used after friend request accept/decline).
+ * `.select('id')` returns deleted row(s) so callers can verify the delete in __DEV__.
+ */
+export async function deleteNotification(notificationId: string) {
+  if (!notificationId) return { data: null, error: null };
+  return supabase.from('notifications').delete().eq('id', notificationId).select('id');
 }
 
 /**

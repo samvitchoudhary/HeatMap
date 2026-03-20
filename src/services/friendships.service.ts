@@ -9,6 +9,8 @@
 import { supabase } from '../lib/supabase';
 import {
   sendFriendRequestNotification,
+  sendFriendAcceptNotification,
+  deleteFriendRequestNotificationForPair,
 } from './notifications.service';
 
 /** Standard select for friendships with profile joins */
@@ -80,25 +82,75 @@ export async function sendFriendRequest(fromUserId: string, toUserId: string) {
 
 /**
  * Accept a friend request.
- * Optionally a notification for accept can be added later.
+ * Deletes the friend_request notification for the addressee, notifies the requester (friend_accept).
  */
 export async function acceptFriendRequest(friendshipId: string) {
+  const { data: row, error: fetchErr } = await supabase
+    .from('friendships')
+    .select('id, status, requester_id, addressee_id')
+    .eq('id', friendshipId)
+    .single();
+
+  if (fetchErr) return { error: fetchErr };
+  if (!row) return { error: new Error('Friendship not found') as unknown as Error };
+  if (row.status !== 'pending') {
+    return { error: new Error('Friendship is not pending') as unknown as Error };
+  }
+
   const { error } = await supabase
     .from('friendships')
     .update({ status: 'accepted' })
-    .eq('id', friendshipId);
+    .eq('id', friendshipId)
+    .eq('status', 'pending');
 
-  return { error };
+  if (error) return { error };
+
+  const { error: delErr } = await deleteFriendRequestNotificationForPair(
+    row.addressee_id,
+    row.requester_id
+  );
+  if (delErr && __DEV__) console.error('Failed to delete friend_request notification:', delErr);
+
+  await sendFriendAcceptNotification({
+    toUserId: row.requester_id,
+    fromUserId: row.addressee_id,
+  });
+
+  return { error: null };
 }
 
 /**
  * Decline a friend request.
+ * Deletes the friend_request notification for the addressee so it does not reappear on refetch.
  */
 export async function declineFriendRequest(friendshipId: string) {
-  return supabase
+  const { data: row, error: fetchErr } = await supabase
+    .from('friendships')
+    .select('id, status, requester_id, addressee_id')
+    .eq('id', friendshipId)
+    .single();
+
+  if (fetchErr) return { error: fetchErr };
+  if (!row) return { error: new Error('Friendship not found') as unknown as Error };
+  if (row.status !== 'pending') {
+    return { error: new Error('Friendship is not pending') as unknown as Error };
+  }
+
+  const { error } = await supabase
     .from('friendships')
     .update({ status: 'declined' })
-    .eq('id', friendshipId);
+    .eq('id', friendshipId)
+    .eq('status', 'pending');
+
+  if (error) return { error };
+
+  const { error: delErr } = await deleteFriendRequestNotificationForPair(
+    row.addressee_id,
+    row.requester_id
+  );
+  if (delErr && __DEV__) console.error('Failed to delete friend_request notification:', delErr);
+
+  return { error: null };
 }
 
 /**

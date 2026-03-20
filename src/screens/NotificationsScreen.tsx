@@ -26,6 +26,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -34,7 +35,6 @@ import * as Haptics from 'expo-haptics';
 import { useAuth } from '../lib/AuthContext';
 import { useNotifications } from '../hooks';
 import { theme } from '../lib/theme';
-import { Avatar } from '../components/Avatar';
 import { SmoothImage } from '../components/SmoothImage';
 import { Skeleton } from '../components/Skeleton';
 import { timeAgo } from '../lib/timeAgo';
@@ -42,7 +42,8 @@ import type { RootStackNavigationProp } from '../navigation/types';
 import { useToast } from '../lib/ToastContext';
 import { useFriendshipActions } from '../hooks/useFriendshipActions';
 import { supabase } from '../lib/supabase';
-import { markNotificationRead, deleteNotifications } from '../services/notifications.service';
+import { markNotificationRead, deleteNotifications, deleteNotification } from '../services/notifications.service';
+import { getFriendshipBetween } from '../services/friendships.service';
 
 const NOTIFICATIONS_PAGE_SIZE = 30;
 
@@ -52,7 +53,7 @@ type PostInfo = { id: string; image_url: string; latitude: number; longitude: nu
 type NotificationWithRelations = {
   id: string;
   user_id: string;
-  type: 'reaction' | 'comment' | 'friend_request' | 'tag';
+  type: 'reaction' | 'comment' | 'friend_request' | 'friend_accept' | 'tag';
   from_user_id: string;
   post_id: string | null;
   comment_id: string | null;
@@ -79,10 +80,26 @@ function normPost(n: NotificationWithRelations): PostInfo | null {
   };
 }
 
+/** Action text after the bold display name (inline in one Text tree). */
+function getNotificationActionText(n: NotificationWithRelations): string {
+  switch (n.type) {
+    case 'reaction':
+      return `reacted ${n.emoji ?? '❤️'} to your post`;
+    case 'comment':
+      return 'commented on your post';
+    case 'tag':
+      return 'tagged you in a post';
+    case 'friend_accept':
+      return 'accepted your friend request';
+    default:
+      return 'sent you a notification';
+  }
+}
+
 export function NotificationsScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { session } = useAuth();
+  const { session, profile } = useAuth();
   const { refreshUnreadCount, markAllRead } = useNotifications();
   const { showToast } = useToast();
   const userId = session?.user?.id;
@@ -107,6 +124,18 @@ export function NotificationsScreen() {
       (navigation.getParent?.() as RootStackNavigationProp | undefined)
     );
   }, [navigation]);
+
+  const navigateToProfile = useCallback(
+    (targetUserId: string) => {
+      if (!targetUserId) return;
+      if (targetUserId === profile?.id) {
+        showToast("That's you!");
+        return;
+      }
+      getRootStackNav()?.navigate('FriendProfile', { userId: targetUserId });
+    },
+    [getRootStackNav, profile?.id, showToast]
+  );
 
   notificationsCountRef.current = notifications?.length ?? 0;
   notificationsRef.current = notifications;
@@ -266,11 +295,38 @@ export function NotificationsScreen() {
             },
           });
         }
-      } else if (n.type === 'friend_request') {
+      } else if (n.type === 'friend_accept' || n.type === 'friend_request') {
         rootNav?.navigate('FriendProfile', { userId: n.from_user_id });
       }
     },
     [selectMode, getRootStackNav, markAsRead]
+  );
+
+  /** Remove friend_request row from DB by notification id, then local state + badge. */
+  const removeFriendRequestNotification = useCallback(
+    async (notification: NotificationWithRelations) => {
+      if (__DEV__) {
+        console.log('Friend request notification delete:', {
+          notificationId: notification.id,
+          type: notification.type,
+          fromUserId: notification.from_user_id,
+        });
+      }
+      const { data, error: deleteError } = await deleteNotification(notification.id);
+      if (__DEV__) {
+        console.log('Delete notification result:', {
+          error: deleteError,
+          notificationId: notification.id,
+          deletedRows: data,
+        });
+      }
+      if (deleteError) {
+        if (__DEV__) console.error('Failed to delete notification:', deleteError);
+      }
+      setNotifications((prev) => (prev ? prev.filter((x) => x.id !== notification.id) : []));
+      await refreshUnreadCount();
+    },
+    [refreshUnreadCount]
   );
 
   const handleAcceptFriendRequest = useCallback(
@@ -279,17 +335,26 @@ export function NotificationsScreen() {
       setActionLoadingId(n.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       try {
-        // Accept the pending friendship (ID is not present here; service handles lookup)
-        const ok = await acceptRequest(n.id);
+        const { data: friendship, error: fsErr } = await getFriendshipBetween(userId, n.from_user_id);
+        if (fsErr || !friendship?.id) {
+          if (__DEV__) console.error('Failed to resolve friendship for accept:', fsErr);
+          Alert.alert('Error', 'Could not find this friend request.');
+          return;
+        }
+        if (friendship.status !== 'pending') {
+          await removeFriendRequestNotification(n);
+          return;
+        }
+        // Notification id !== friendship id — must use friendship.id for acceptRequest
+        const ok = await acceptRequest(friendship.id);
         if (ok) {
-          await markAsRead(n.id);
-          setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
+          await removeFriendRequestNotification(n);
         }
       } finally {
         setActionLoadingId(null);
       }
     },
-    [userId, acceptRequest, markAsRead]
+    [userId, acceptRequest, removeFriendRequestNotification]
   );
 
   const handleDeclineFriendRequest = useCallback(
@@ -298,219 +363,172 @@ export function NotificationsScreen() {
       setActionLoadingId(n.id);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       try {
-        const ok = await declineRequest(n.id);
+        const { data: friendship, error: fsErr } = await getFriendshipBetween(userId, n.from_user_id);
+        if (fsErr || !friendship?.id) {
+          if (__DEV__) console.error('Failed to resolve friendship for decline:', fsErr);
+          Alert.alert('Error', 'Could not find this friend request.');
+          return;
+        }
+        if (friendship.status !== 'pending') {
+          await removeFriendRequestNotification(n);
+          return;
+        }
+        const ok = await declineRequest(friendship.id);
         if (ok) {
-          await markAsRead(n.id);
-          setNotifications((prev) => (prev ? prev.filter((x) => x.id !== n.id) : []));
+          await removeFriendRequestNotification(n);
         }
       } finally {
         setActionLoadingId(null);
       }
     },
-    [userId, declineRequest, markAsRead]
-  );
-
-  const getNotificationText = (n: NotificationWithRelations) => {
-    const from = normFromUser(n);
-    const name = from?.display_name ?? 'Deleted User';
-    if (n.type === 'reaction') {
-      return { bold: name, rest: ` reacted ${n.emoji ?? '👍'} to your post` };
-    }
-    if (n.type === 'comment') {
-      return { bold: name, rest: ' commented on your post' };
-    }
-    if (n.type === 'tag') {
-      return { bold: name, rest: ' tagged you in a post' };
-    }
-    return { bold: name, rest: ' sent you a friend request' };
-  };
-
-  const handleSenderProfilePress = useCallback(
-    (n: NotificationWithRelations) => {
-      const fromId = n.from_user_id;
-      if (!fromId) return;
-      if (fromId === userId) {
-        showToast("That's you!");
-        return;
-      }
-      getRootStackNav()?.navigate('FriendProfile', { userId: fromId });
-    },
-    [getRootStackNav, userId, showToast]
+    [userId, declineRequest, removeFriendRequestNotification]
   );
 
   const renderItem = ({ item }: { item: NotificationWithRelations }) => {
-    const { bold, rest } = getNotificationText(item);
     const isFriendRequest = item.type === 'friend_request';
     const loading = actionLoadingId === item.id || actionLoading === item.id;
     const isSelected = selectedIds.has(item.id);
+    const displayName = normFromUser(item)?.display_name ?? 'User';
+    const avatarUri = normFromUser(item)?.avatar_url ?? null;
+    const postThumb = normPost(item)?.image_url;
+    const unreadStyle = !item.read && styles.rowUnread;
 
-    const rowContent = (
-      <>
-        {selectMode && (
-          <View
-            style={[
-              styles.selectCircle,
-              isSelected && styles.selectCircleSelected,
-            ]}
-          >
-            {isSelected && <Feather name="check" size={14} color={theme.colors.white} />}
-          </View>
-        )}
-        {item.type === 'tag' ? (
-          <View style={styles.tagIconWrap}>
-            <Feather name="tag" size={18} color={theme.colors.primary} />
-          </View>
-        ) : (
-          <Avatar uri={normFromUser(item)?.avatar_url ?? null} size={36} />
-        )}
-        <View style={styles.middle}>
-          <Text style={styles.text} numberOfLines={2}>
-            <Text style={styles.bold}>{bold}</Text>
-            {rest}
-          </Text>
-          {isFriendRequest && (
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.acceptBtn, loading && styles.btnDisabled]}
-                onPress={() => handleAcceptFriendRequest(item)}
-                disabled={loading}
-                activeOpacity={0.8}
-                accessibilityLabel="Accept friend request"
-                accessibilityRole="button"
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color={theme.colors.textOnPrimary} />
-                ) : (
-                  <Text style={styles.acceptBtnText}>Accept</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.declineBtn, loading && styles.btnDisabled]}
-                onPress={() => handleDeclineFriendRequest(item)}
-                disabled={loading}
-                activeOpacity={0.8}
-                accessibilityLabel="Decline friend request"
-                accessibilityRole="button"
-              >
-                <Text style={styles.declineBtnText}>Decline</Text>
-              </TouchableOpacity>
+    const avatarNode = (
+      <TouchableOpacity
+        onPress={() => navigateToProfile(item.from_user_id)}
+        activeOpacity={0.7}
+        accessibilityLabel={`${displayName} profile`}
+        accessibilityRole="button"
+      >
+        <View style={styles.avatarWrap}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={styles.avatarImg} />
+          ) : (
+            <View style={[styles.avatarImg, styles.avatarPlaceholder]}>
+              <Feather name="user" size={20} color={theme.colors.textTertiary} />
             </View>
           )}
         </View>
-        <Text style={styles.timestamp}>{timeAgo(item.created_at)}</Text>
-        {!isFriendRequest && normPost(item)?.image_url && (
-          <SmoothImage
-            source={{ uri: normPost(item)!.image_url }}
-            style={styles.thumbnail}
-            resizeMode="cover"
-          />
-        )}
-      </>
+      </TouchableOpacity>
     );
 
     if (selectMode) {
       return (
         <TouchableOpacity
-          style={[styles.row, !item.read && styles.rowUnread]}
+          style={[
+            isFriendRequest ? styles.rowFriend : styles.rowPost,
+            unreadStyle,
+          ]}
           onPress={() => handleNotificationPress(item)}
           onLongPress={() => handleLongPress(item.id)}
           delayLongPress={400}
           activeOpacity={0.7}
-          accessibilityLabel={`${bold} ${rest}`}
+          accessibilityLabel={
+            isFriendRequest
+              ? `${displayName} sent you a friend request`
+              : `${displayName} ${getNotificationActionText(item)}`
+          }
           accessibilityRole="button"
         >
-          {rowContent}
+          <View style={styles.selectCircleWrap}>
+            <View style={[styles.selectCircle, isSelected && styles.selectCircleSelected]}>
+              {isSelected && <Feather name="check" size={14} color={theme.colors.white} />}
+            </View>
+          </View>
+          {avatarNode}
+          <View style={styles.selectModeTextCol}>
+            <Text style={styles.bodyText} numberOfLines={2}>
+              <Text style={styles.nameBold}>{displayName}</Text>
+              {isFriendRequest
+                ? ' sent you a friend request'
+                : ` ${getNotificationActionText(item)}`}
+            </Text>
+            {isFriendRequest ? (
+              <Text style={styles.timeSub}>{timeAgo(item.created_at)}</Text>
+            ) : null}
+          </View>
+          {!isFriendRequest ? (
+            <Text style={styles.timeRight}>{timeAgo(item.created_at)}</Text>
+          ) : null}
+          <View style={styles.thumbSpacer} />
         </TouchableOpacity>
       );
     }
 
-    // Friend request: one tappable row → sender profile; Accept/Decline stay separate (no post/thumbnail split)
     if (isFriendRequest) {
       return (
-        <View style={[styles.row, styles.rowFriendRequest, !item.read && styles.rowUnread]}>
+        <View style={[styles.rowFriend, unreadStyle]}>
+          {avatarNode}
           <TouchableOpacity
-            style={styles.friendRequestMain}
-            onPress={() => handleNotificationPress(item)}
+            onPress={() => navigateToProfile(item.from_user_id)}
+            style={styles.textColFriend}
             activeOpacity={0.7}
-            accessibilityLabel={`${bold} ${rest}`}
+            accessibilityLabel={`${displayName} sent you a friend request`}
             accessibilityRole="button"
           >
-            <Avatar uri={normFromUser(item)?.avatar_url ?? null} size={36} />
-            <View style={styles.friendRequestTextCol}>
-              <Text style={styles.text} numberOfLines={2}>
-                <Text style={styles.bold}>{bold}</Text>
-                {rest}
-              </Text>
-            </View>
-            <Text style={styles.timestamp}>{timeAgo(item.created_at)}</Text>
+            <Text style={styles.bodyText} numberOfLines={2}>
+              <Text style={styles.nameBold}>{displayName}</Text>
+              {' '}sent you a friend request
+            </Text>
+            <Text style={styles.timeSub}>{timeAgo(item.created_at)}</Text>
           </TouchableOpacity>
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.acceptBtn, loading && styles.btnDisabled]}
-              onPress={() => handleAcceptFriendRequest(item)}
-              disabled={loading}
-              activeOpacity={0.8}
-              accessibilityLabel="Accept friend request"
-              accessibilityRole="button"
-            >
-              {loading ? (
-                <ActivityIndicator size="small" color={theme.colors.textOnPrimary} />
-              ) : (
-                <Text style={styles.acceptBtnText}>Accept</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.declineBtn, loading && styles.btnDisabled]}
-              onPress={() => handleDeclineFriendRequest(item)}
-              disabled={loading}
-              activeOpacity={0.8}
-              accessibilityLabel="Decline friend request"
-              accessibilityRole="button"
-            >
-              <Text style={styles.declineBtnText}>Decline</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            onPress={() => handleAcceptFriendRequest(item)}
+            style={[styles.circleAccept, loading && styles.circleDisabled]}
+            disabled={loading}
+            activeOpacity={0.7}
+            accessibilityLabel="Accept friend request"
+            accessibilityRole="button"
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color={theme.colors.white} />
+            ) : (
+              <Feather name="check" size={18} color={theme.colors.white} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => handleDeclineFriendRequest(item)}
+            style={[styles.circleDecline, loading && styles.circleDisabled]}
+            disabled={loading}
+            activeOpacity={0.7}
+            accessibilityLabel="Decline friend request"
+            accessibilityRole="button"
+          >
+            <Feather name="x" size={16} color={theme.colors.textTertiary} />
+          </TouchableOpacity>
         </View>
       );
     }
 
-    // Reaction / comment / tag: avatar + bold name → profile; action text + time + thumbnail → post
-    const postThumb = normPost(item)?.image_url;
     return (
-      <View style={[styles.row, !item.read && styles.rowUnread]}>
+      <View style={[styles.rowPost, unreadStyle]}>
+        {avatarNode}
         <TouchableOpacity
-          style={styles.senderBlock}
-          onPress={() => handleSenderProfilePress(item)}
-          activeOpacity={0.7}
-          accessibilityLabel={`${bold} profile`}
-          accessibilityRole="button"
-        >
-          {item.type === 'tag' ? (
-            <View style={styles.tagIconWrap}>
-              <Feather name="tag" size={18} color={theme.colors.primary} />
-            </View>
-          ) : (
-            <Avatar uri={normFromUser(item)?.avatar_url ?? null} size={36} />
-          )}
-          <Text style={[styles.text, styles.bold, styles.senderName]} numberOfLines={1}>
-            {bold}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.postTapArea}
           onPress={() => handleNotificationPress(item)}
+          style={styles.textColPost}
           activeOpacity={0.7}
-          accessibilityLabel={rest}
           accessibilityRole="button"
+          accessibilityLabel={`${displayName} ${getNotificationActionText(item)}`}
         >
-          <Text style={[styles.text, styles.restLine]} numberOfLines={2}>
-            {rest}
+          <Text style={styles.bodyText} numberOfLines={2}>
+            <Text
+              style={styles.nameBold}
+              onPress={() => navigateToProfile(item.from_user_id)}
+              suppressHighlighting={false}
+            >
+              {displayName}
+            </Text>
+            {' '}
+            {getNotificationActionText(item)}
           </Text>
-          <Text style={styles.timestamp}>{timeAgo(item.created_at)}</Text>
         </TouchableOpacity>
+        <Text style={styles.timeRight} numberOfLines={1}>
+          {timeAgo(item.created_at)}
+        </Text>
         {postThumb ? (
           <TouchableOpacity
             onPress={() => handleNotificationPress(item)}
+            style={styles.thumbTouch}
             activeOpacity={0.7}
             accessibilityLabel="Open post"
             accessibilityRole="button"
@@ -521,7 +539,9 @@ export function NotificationsScreen() {
               resizeMode="cover"
             />
           </TouchableOpacity>
-        ) : null}
+        ) : (
+          <View style={styles.thumbSpacer} />
+        )}
       </View>
     );
   };
@@ -536,12 +556,12 @@ export function NotificationsScreen() {
         <View style={styles.skeletonWrap}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <View key={i} style={styles.skeletonRow}>
-              <Skeleton width={36} height={36} borderRadius={18} />
+              <Skeleton width={40} height={40} borderRadius={20} />
               <View style={styles.skeletonRowContent}>
                 <Skeleton width="80%" height={14} borderRadius={4} />
                 <Skeleton width="50%" height={12} borderRadius={4} style={{ marginTop: 6 }} />
               </View>
-              <Skeleton width={40} height={40} borderRadius={6} style={{ marginLeft: 8 }} />
+              <Skeleton width={44} height={44} borderRadius={6} style={{ marginLeft: 8 }} />
             </View>
           ))}
         </View>
@@ -658,118 +678,120 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: theme.spacing.xl,
   },
-  tagIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  row: {
+  rowPost: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
     paddingVertical: 12,
+    paddingHorizontal: 16,
     backgroundColor: theme.colors.background,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.borderLight,
+  },
+  rowFriend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: theme.colors.background,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.colors.borderLight,
   },
   rowUnread: {
     backgroundColor: 'rgba(255, 122, 143, 0.08)',
   },
-  senderBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
-    maxWidth: '38%',
-  },
-  senderName: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  postTapArea: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginLeft: theme.spacing.sm,
-    minWidth: 0,
-    gap: 8,
-  },
-  restLine: {
-    flex: 1,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  rowFriendRequest: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-  },
-  friendRequestMain: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-  },
-  friendRequestTextCol: {
-    flex: 1,
-    marginLeft: theme.spacing.sm,
-    minWidth: 0,
-  },
-  middle: {
-    flex: 1,
-    marginLeft: theme.spacing.sm,
-    minWidth: 0,
-  },
-  text: {
-    fontSize: 15,
-    color: theme.colors.text,
-  },
-  bold: {
-    fontWeight: '700',
-  },
-  timestamp: {
-    fontSize: 13,
-    color: theme.colors.textTertiary,
-    marginLeft: theme.spacing.sm,
-  },
-  thumbnail: {
+  avatarWrap: {
     width: 40,
     height: 40,
-    borderRadius: 6,
-    marginLeft: theme.spacing.sm,
-  },
-  actions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.sm,
-    marginTop: theme.spacing.sm,
-  },
-  acceptBtn: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 9999,
-  },
-  acceptBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.textOnPrimary,
-  },
-  declineBtn: {
+    borderRadius: 20,
+    overflow: 'hidden',
     backgroundColor: theme.colors.surface,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 9999,
   },
-  declineBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
+  avatarImg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surface,
+  },
+  avatarPlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textColPost: {
+    flex: 1,
+    marginLeft: 12,
+    minWidth: 0,
+  },
+  textColFriend: {
+    flex: 1,
+    marginLeft: 12,
+    minWidth: 0,
+  },
+  selectModeTextCol: {
+    flex: 1,
+    marginLeft: 12,
+    minWidth: 0,
+  },
+  bodyText: {
+    fontSize: 13,
+    color: theme.colors.text,
+    lineHeight: 18,
+  },
+  nameBold: {
+    fontWeight: '700',
+    fontSize: 13,
+    color: theme.colors.text,
+    lineHeight: 18,
+  },
+  timeRight: {
+    fontSize: 11,
     color: theme.colors.textTertiary,
+    marginLeft: 8,
+    flexShrink: 0,
   },
-  btnDisabled: {
+  timeSub: {
+    fontSize: 11,
+    color: theme.colors.textTertiary,
+    marginTop: 2,
+  },
+  thumbnail: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    backgroundColor: theme.colors.surface,
+  },
+  thumbTouch: {
+    marginLeft: 8,
+  },
+  thumbSpacer: {
+    width: 44,
+    marginLeft: 8,
+  },
+  circleAccept: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  circleDecline: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.colors.transparent,
+    borderWidth: 1.5,
+    borderColor: theme.colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  circleDisabled: {
     opacity: 0.7,
+  },
+  selectCircleWrap: {
+    marginRight: 10,
+    justifyContent: 'center',
   },
   selectModeBar: {
     flexDirection: 'row',
