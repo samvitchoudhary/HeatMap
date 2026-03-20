@@ -23,6 +23,7 @@ import {
   ActivityIndicator,
   Pressable,
   Alert,
+  ActionSheetIOS,
 } from 'react-native';
 import type { TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -42,6 +43,8 @@ type FeedCommentModalProps = {
   userId: string | undefined;
   onClose: () => void;
   onCommentPosted?: () => void;
+  /** Called after a comment is deleted (e.g. sync parent comment count) */
+  onCommentDeleted?: () => void;
   onProfilePress?: (userId: string) => void;
 };
 
@@ -52,12 +55,18 @@ export function FeedCommentModal({
   userId,
   onClose,
   onCommentPosted,
+  onCommentDeleted,
   onProfilePress,
 }: FeedCommentModalProps) {
   const { showToast } = useToast();
   const [inputText, setInputText] = useState('');
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const inputRef = useRef<TextInput>(null);
+
+  const handleCommentDeleted = useCallback(() => {
+    onCommentDeleted?.();
+  }, [onCommentDeleted]);
+
   const {
     comments,
     threadedComments,
@@ -68,7 +77,8 @@ export function FeedCommentModal({
     loadMore,
     postComment,
     submitting,
-  } = useComments(postId, postUserId ?? undefined, userId);
+    deleteComment,
+  } = useComments(postId, postUserId ?? undefined, userId, handleCommentDeleted);
 
   const handlePressProfile = useCallback(
     (targetUserId: string | undefined | null) => {
@@ -80,6 +90,56 @@ export function FeedCommentModal({
       onProfilePress?.(targetUserId);
     },
     [userId, onProfilePress, showToast]
+  );
+
+  const canDeleteComment = useCallback(
+    (comment: { user_id: string }) => {
+      if (!userId) return false;
+      if (comment.user_id === userId) return true;
+      if (postUserId === userId) return true;
+      return false;
+    },
+    [userId, postUserId]
+  );
+
+  const handleLongPressComment = useCallback(
+    (comment: { id: string; user_id: string }) => {
+      if (!canDeleteComment(comment)) return;
+
+      const confirmDelete = () => {
+        Alert.alert(
+          'Delete Comment',
+          'Are you sure you want to delete this comment?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                const ok = await deleteComment(comment.id);
+                if (ok && replyTarget?.id === comment.id) setReplyTarget(null);
+              },
+            },
+          ]
+        );
+      };
+
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ['Delete Comment', 'Cancel'],
+            destructiveButtonIndex: 0,
+            cancelButtonIndex: 1,
+          },
+          (buttonIndex) => {
+            if (buttonIndex === 0) confirmDelete();
+          }
+        );
+      } else {
+        confirmDelete();
+      }
+    },
+    [canDeleteComment, deleteComment, replyTarget]
   );
 
   useEffect(() => {
@@ -169,7 +229,15 @@ export function FeedCommentModal({
                   )}
                   {threadedComments.map((item) =>
                   item.type === 'top' ? (
-                    <View key={item.comment.id} style={styles.commentRow}>
+                    <Pressable
+                      key={item.comment.id}
+                      onLongPress={() => handleLongPressComment(item.comment)}
+                      delayLongPress={500}
+                      style={({ pressed }) => [
+                        styles.commentRow,
+                        pressed && canDeleteComment(item.comment) && { opacity: 0.7 },
+                      ]}
+                    >
                       <View style={styles.commentAvatarWrap}>
                         <TouchableOpacity
                           onPress={() => handlePressProfile(item.comment.user_id)}
@@ -206,9 +274,18 @@ export function FeedCommentModal({
                           <Text style={styles.replyButton}>Reply</Text>
                         </TouchableOpacity>
                       </View>
-                    </View>
+                    </Pressable>
                   ) : (
-                    <View key={item.comment.id} style={[styles.commentRow, styles.replyRow]}>
+                    <Pressable
+                      key={item.comment.id}
+                      onLongPress={() => handleLongPressComment(item.comment)}
+                      delayLongPress={500}
+                      style={({ pressed }) => [
+                        styles.commentRow,
+                        styles.replyRow,
+                        pressed && canDeleteComment(item.comment) && { opacity: 0.7 },
+                      ]}
+                    >
                       <View style={styles.commentAvatarWrap}>
                         <TouchableOpacity
                           onPress={() => handlePressProfile(item.comment.user_id)}
@@ -245,7 +322,7 @@ export function FeedCommentModal({
                         <Text style={styles.commentTextReply}>{item.comment.content}</Text>
                         <Text style={styles.commentTime}>{timeAgo(item.comment.created_at)}</Text>
                       </View>
-                    </View>
+                    </Pressable>
                   )
                 )}
                 </>

@@ -69,6 +69,8 @@ type FeedCardProps = {
   isNew?: boolean;
   onReactionChange?: (postId: string, counts: Record<string, number>, userReaction: string | null) => void;
   onCommentPosted?: (postId: string, count: number, latestComment: FeedLatestComment | null) => void;
+  /** After a comment is deleted (from CommentSheet); parent can sync comment_count / preview */
+  onCommentDeleted?: (postId: string, count: number, latestComment: FeedLatestComment | null) => void;
   onVenuePress?: (latitude: number, longitude: number) => void;
   onProfilePress?: (userId: string) => void;
   onDeletePost?: (post: PostWithProfile) => void;
@@ -82,6 +84,7 @@ const FeedCardInner = function FeedCard({
   isNew,
   onReactionChange,
   onCommentPosted,
+  onCommentDeleted,
   onVenuePress,
   onProfilePress,
   onDeletePost,
@@ -268,6 +271,27 @@ const FeedCardInner = function FeedCard({
     onCommentPosted?.(post.id, newCount, newLatest);
   }, [post.id, commentCount, onCommentPosted]);
 
+  const handleCommentDeleted = useCallback(async () => {
+    const newCount = Math.max(0, commentCount - 1);
+
+    const { data: commentData, error: listError } = await supabase
+      .from('comments')
+      .select('id, content, profiles:user_id(display_name)')
+      .eq('post_id', post.id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const newLatest: FeedLatestComment | null =
+      newCount === 0 || listError || !commentData?.length
+        ? null
+        : {
+            id: commentData[0].id,
+            content: commentData[0].content,
+            profiles: (commentData[0] as { profiles?: { display_name: string } | null }).profiles ?? null,
+          };
+
+    onCommentDeleted?.(post.id, newCount, newLatest);
+  }, [post.id, commentCount, onCommentDeleted]);
+
   const displayName = post.user_id === userId ? 'You' : (post.profiles?.display_name ?? 'Deleted User');
   const venueName = post.venue_name ?? 'Unknown location';
 
@@ -291,6 +315,7 @@ const FeedCardInner = function FeedCard({
         contentSized
         initialCommentCount={commentCount}
         onCommentPosted={handleCommentPosted}
+        onCommentDeleted={handleCommentDeleted}
         onProfilePress={onProfilePress}
       >
         {({ onCommentPress, commentCount: sheetCommentCount }) => (

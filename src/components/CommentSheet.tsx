@@ -30,6 +30,7 @@ import {
   Animated,
   Pressable,
   Alert,
+  ActionSheetIOS,
 } from 'react-native';
 import type { TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -60,6 +61,8 @@ type CommentSheetProps = {
   contentSized?: boolean;
   onFlippedChange?: (postId: string, flipped: boolean) => void;
   onCommentPosted?: () => void;
+  /** Called after a comment is deleted (e.g. sync parent comment count) */
+  onCommentDeleted?: () => void;
   /** When true, start with the card flipped to comments side */
   initialFlipped?: boolean;
   /** Denormalized comment count from the post row — avoids a separate count query */
@@ -80,6 +83,7 @@ export function CommentSheet({
   contentSized = false,
   onFlippedChange,
   onCommentPosted,
+  onCommentDeleted,
   initialFlipped = false,
   initialCommentCount = 0,
   onProfilePress,
@@ -103,15 +107,6 @@ export function CommentSheet({
   const backAnimatedStyle = {
     transform: [{ perspective: 1000 }, { rotateY: backInterpolate }],
   };
-
-  React.useEffect(() => {
-    if (initialFlipped) {
-      flipAnimation.setValue(180);
-      setFlipped(true);
-      onFlippedChange?.(postId, true);
-      fetchComments(postId, false);
-    }
-  }, []);
 
   const flipToBack = useCallback(() => {
     Animated.spring(flipAnimation, {
@@ -140,6 +135,11 @@ export function CommentSheet({
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const inputRef = useRef<TextInput>(null);
 
+  const handleCommentDeleted = useCallback(() => {
+    setCommentCount((c) => Math.max(0, c - 1));
+    onCommentDeleted?.();
+  }, [onCommentDeleted]);
+
   const {
     comments,
     threadedComments,
@@ -153,7 +153,17 @@ export function CommentSheet({
     postComment,
     startReply,
     cancelReply,
-  } = useComments(postId, postUserId ?? undefined, userId);
+    deleteComment,
+  } = useComments(postId, postUserId ?? undefined, userId, handleCommentDeleted);
+
+  useEffect(() => {
+    if (initialFlipped) {
+      flipAnimation.setValue(180);
+      setFlipped(true);
+      onFlippedChange?.(postId, true);
+      fetchComments(false);
+    }
+  }, []);
 
   useEffect(() => {
     setCommentCount(initialCommentCount);
@@ -196,9 +206,66 @@ export function CommentSheet({
     [userId, onProfilePress, showToast]
   );
 
+  const canDeleteComment = useCallback(
+    (comment: { user_id: string }) => {
+      if (!userId) return false;
+      if (comment.user_id === userId) return true;
+      if (postUserId === userId) return true;
+      return false;
+    },
+    [userId, postUserId]
+  );
+
+  const handleLongPressComment = useCallback(
+    (comment: { id: string; user_id: string }) => {
+      if (!canDeleteComment(comment)) return;
+
+      const confirmDelete = () => {
+        Alert.alert(
+          'Delete Comment',
+          'Are you sure you want to delete this comment?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                const ok = await deleteComment(comment.id);
+                if (ok && replyTarget?.id === comment.id) setReplyTarget(null);
+              },
+            },
+          ]
+        );
+      };
+
+      if (Platform.OS === 'ios') {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ['Delete Comment', 'Cancel'],
+            destructiveButtonIndex: 0,
+            cancelButtonIndex: 1,
+          },
+          (buttonIndex) => {
+            if (buttonIndex === 0) confirmDelete();
+          }
+        );
+      } else {
+        confirmDelete();
+      }
+    },
+    [canDeleteComment, deleteComment, replyTarget]
+  );
+
   const renderCommentItem = ({ item }: { item: typeof threadedComments[0] }) =>
     item.type === 'top' ? (
-      <View style={styles.cardBackCommentRow}>
+      <Pressable
+        onLongPress={() => handleLongPressComment(item.comment)}
+        delayLongPress={500}
+        style={({ pressed }) => [
+          styles.cardBackCommentRow,
+          pressed && canDeleteComment(item.comment) && { opacity: 0.7 },
+        ]}
+      >
         <View style={styles.cardBackCommentAvatarWrap}>
           <TouchableOpacity
             onPress={() => handlePressProfile(item.comment.user_id)}
@@ -241,9 +308,17 @@ export function CommentSheet({
             <Text style={styles.cardBackReplyButton}>Reply</Text>
           </TouchableOpacity>
         </View>
-      </View>
+      </Pressable>
     ) : (
-      <View style={[styles.cardBackCommentRow, styles.cardBackReplyRow]}>
+      <Pressable
+        onLongPress={() => handleLongPressComment(item.comment)}
+        delayLongPress={500}
+        style={({ pressed }) => [
+          styles.cardBackCommentRow,
+          styles.cardBackReplyRow,
+          pressed && canDeleteComment(item.comment) && { opacity: 0.7 },
+        ]}
+      >
         <View style={styles.cardBackCommentAvatarWrap}>
           <TouchableOpacity
             onPress={() => handlePressProfile(item.comment.user_id)}
@@ -282,7 +357,7 @@ export function CommentSheet({
           </View>
           <Text style={styles.cardBackCommentText}>{item.comment.content}</Text>
         </View>
-      </View>
+      </Pressable>
     );
 
   const flipWrapperStyle = contentSized
@@ -369,7 +444,7 @@ export function CommentSheet({
                 ListHeaderComponent={
                   hasMore ? (
                     <TouchableOpacity
-                      onPress={() => fetchComments(postId, true)}
+                      onPress={() => loadMore()}
                       disabled={loadingMore}
                       style={styles.loadMoreButton}
                       activeOpacity={0.7}

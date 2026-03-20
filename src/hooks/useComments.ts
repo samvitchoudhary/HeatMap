@@ -6,6 +6,7 @@
  */
 
 import { useState, useCallback, useRef, useMemo } from 'react';
+import { Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { sendCommentNotification } from '../services/notifications.service';
 import { buildThreadedComments } from '../lib/commentUtils';
@@ -33,7 +34,9 @@ const COMMENT_SELECT = `
 export function useComments(
   postId: string,
   postUserId: string | undefined,
-  currentUserId: string | undefined
+  currentUserId: string | undefined,
+  /** Optional: e.g. decrement local comment count in parent UI */
+  onCommentDeleted?: () => void
 ) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,6 +143,26 @@ export function useComments(
     setReplyTarget(null);
   }, []);
 
+  const deleteComment = useCallback(
+    async (commentId: string): Promise<boolean> => {
+      try {
+        const { error } = await supabase.from('comments').delete().eq('id', commentId);
+
+        if (error) throw error;
+
+        setComments((prev) => prev.filter((c) => c.id !== commentId));
+        onCommentDeleted?.();
+
+        return true;
+      } catch (err) {
+        if (__DEV__) console.error('Failed to delete comment:', err);
+        Alert.alert('Error', 'Failed to delete comment. Please try again.');
+        return false;
+      }
+    },
+    [onCommentDeleted]
+  );
+
   return {
     comments,
     threadedComments,
@@ -153,6 +176,7 @@ export function useComments(
     postComment,
     startReply,
     cancelReply,
+    deleteComment,
   };
 }
 
