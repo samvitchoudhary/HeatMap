@@ -35,7 +35,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import type { ProfileStackParamList } from '../navigation/types';
+import type { ProfileStackParamList, RootStackNavigationProp } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
@@ -100,6 +100,7 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
   userId,
   onPress,
   onLongPress,
+  onTaggedByPress,
   hasError,
   onError,
   cellSize,
@@ -108,6 +109,7 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
   userId: string | undefined;
   onPress: () => void;
   onLongPress?: () => void;
+  onTaggedByPress?: (post: PostWithProfile) => void;
   hasError: boolean;
   onError: () => void;
   cellSize: number;
@@ -135,11 +137,17 @@ const GalleryThumbnail = React.memo(function GalleryThumbnail({
             onError={onError}
           />
           {post.user_id !== userId && (
-            <View style={styles.tagBanner}>
+            <TouchableOpacity
+              style={styles.tagBanner}
+              onPress={() => onTaggedByPress?.(post)}
+              activeOpacity={0.7}
+              accessibilityLabel="View tagger profile"
+              accessibilityRole="button"
+            >
               <Text style={styles.tagBannerText} numberOfLines={1}>
                 tagged by @{post.profiles?.username ?? 'deleted'}
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
         </>
       )}
@@ -365,6 +373,26 @@ export function ProfileScreen() {
     setSelectedInitialIndex(0);
   }
 
+  const navigateToFriendProfile = useCallback(
+    (targetUserId: string) => {
+      if (targetUserId === userId) {
+        showToast("That's you!");
+        return;
+      }
+      (navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined)?.navigate('FriendProfile', {
+        userId: targetUserId,
+      });
+    },
+    [navigation, userId, showToast]
+  );
+
+  const handleTaggedByPress = useCallback(
+    (post: PostWithProfile) => {
+      navigateToFriendProfile(post.user_id);
+    },
+    [navigateToFriendProfile]
+  );
+
   function showPostActionMenu(post: PostWithProfile) {
     if (post.user_id !== userId) return;
     if (Platform.OS === 'ios') {
@@ -553,6 +581,7 @@ export function ProfileScreen() {
                     userId={userId}
                     onPress={() => handlePhotoPress(post)}
                     onLongPress={post.user_id === userId ? () => showPostActionMenu(post) : undefined}
+                    onTaggedByPress={handleTaggedByPress}
                     hasError={!!gridImageErrors[post.id]}
                     onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
                     cellSize={gridCellSize}
@@ -597,6 +626,7 @@ export function ProfileScreen() {
             setPostsCount((prev) => Math.max(0, prev - 1));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
           }}
+          onProfilePress={navigateToFriendProfile}
         />
       )}
     </View>
@@ -685,6 +715,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    zIndex: 2,
     backgroundColor: theme.colors.overlayDark,
     paddingVertical: 4,
     paddingHorizontal: 6,

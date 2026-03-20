@@ -291,6 +291,7 @@ const FeedCardInner = function FeedCard({
         contentSized
         initialCommentCount={commentCount}
         onCommentPosted={handleCommentPosted}
+        onProfilePress={onProfilePress}
       >
         {({ onCommentPress, commentCount: sheetCommentCount }) => (
           <>

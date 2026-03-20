@@ -39,6 +39,7 @@ import { SmoothImage } from '../components/SmoothImage';
 import { Skeleton } from '../components/Skeleton';
 import { timeAgo } from '../lib/timeAgo';
 import type { RootStackNavigationProp } from '../navigation/types';
+import { useToast } from '../lib/ToastContext';
 import { useFriendshipActions } from '../hooks/useFriendshipActions';
 import { supabase } from '../lib/supabase';
 import { markNotificationRead, deleteNotifications } from '../services/notifications.service';
@@ -83,6 +84,7 @@ export function NotificationsScreen() {
   const navigation = useNavigation();
   const { session } = useAuth();
   const { refreshUnreadCount, markAllRead } = useNotifications();
+  const { showToast } = useToast();
   const userId = session?.user?.id;
 
   const [notifications, setNotifications] = useState<NotificationWithRelations[] | null>(null);
@@ -97,6 +99,14 @@ export function NotificationsScreen() {
   const notificationsRef = useRef(notifications);
   const notifFetchIdRef = useRef(0);
   const { actionLoading, acceptRequest, declineRequest } = useFriendshipActions();
+
+  /** Root stack holds FriendProfile + MainTabs; try two parents then one. */
+  const getRootStackNav = useCallback((): RootStackNavigationProp | undefined => {
+    return (
+      (navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined) ??
+      (navigation.getParent?.() as RootStackNavigationProp | undefined)
+    );
+  }, [navigation]);
 
   notificationsCountRef.current = notifications?.length ?? 0;
   notificationsRef.current = notifications;
@@ -240,7 +250,7 @@ export function NotificationsScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await markAsRead(n.id);
 
-      const rootNav = navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined;
+      const rootNav = getRootStackNav();
 
       if (n.type === 'reaction' || n.type === 'comment' || n.type === 'tag') {
         const postInfo = normPost(n);
@@ -260,7 +270,7 @@ export function NotificationsScreen() {
         rootNav?.navigate('FriendProfile', { userId: n.from_user_id });
       }
     },
-    [selectMode, navigation, markAsRead]
+    [selectMode, getRootStackNav, markAsRead]
   );
 
   const handleAcceptFriendRequest = useCallback(
@@ -315,25 +325,27 @@ export function NotificationsScreen() {
     return { bold: name, rest: ' sent you a friend request' };
   };
 
+  const handleSenderProfilePress = useCallback(
+    (n: NotificationWithRelations) => {
+      const fromId = n.from_user_id;
+      if (!fromId) return;
+      if (fromId === userId) {
+        showToast("That's you!");
+        return;
+      }
+      getRootStackNav()?.navigate('FriendProfile', { userId: fromId });
+    },
+    [getRootStackNav, userId, showToast]
+  );
+
   const renderItem = ({ item }: { item: NotificationWithRelations }) => {
     const { bold, rest } = getNotificationText(item);
     const isFriendRequest = item.type === 'friend_request';
     const loading = actionLoadingId === item.id || actionLoading === item.id;
     const isSelected = selectedIds.has(item.id);
 
-    return (
-      <TouchableOpacity
-        style={[
-          styles.row,
-          !item.read && !selectMode && styles.rowUnread,
-        ]}
-        onPress={() => handleNotificationPress(item)}
-        onLongPress={() => handleLongPress(item.id)}
-        delayLongPress={400}
-        activeOpacity={0.7}
-        accessibilityLabel={`${bold} ${rest}`}
-        accessibilityRole="button"
-      >
+    const rowContent = (
+      <>
         {selectMode && (
           <View
             style={[
@@ -393,7 +405,124 @@ export function NotificationsScreen() {
             resizeMode="cover"
           />
         )}
-      </TouchableOpacity>
+      </>
+    );
+
+    if (selectMode) {
+      return (
+        <TouchableOpacity
+          style={[styles.row, !item.read && styles.rowUnread]}
+          onPress={() => handleNotificationPress(item)}
+          onLongPress={() => handleLongPress(item.id)}
+          delayLongPress={400}
+          activeOpacity={0.7}
+          accessibilityLabel={`${bold} ${rest}`}
+          accessibilityRole="button"
+        >
+          {rowContent}
+        </TouchableOpacity>
+      );
+    }
+
+    // Friend request: one tappable row → sender profile; Accept/Decline stay separate (no post/thumbnail split)
+    if (isFriendRequest) {
+      return (
+        <View style={[styles.row, styles.rowFriendRequest, !item.read && styles.rowUnread]}>
+          <TouchableOpacity
+            style={styles.friendRequestMain}
+            onPress={() => handleNotificationPress(item)}
+            activeOpacity={0.7}
+            accessibilityLabel={`${bold} ${rest}`}
+            accessibilityRole="button"
+          >
+            <Avatar uri={normFromUser(item)?.avatar_url ?? null} size={36} />
+            <View style={styles.friendRequestTextCol}>
+              <Text style={styles.text} numberOfLines={2}>
+                <Text style={styles.bold}>{bold}</Text>
+                {rest}
+              </Text>
+            </View>
+            <Text style={styles.timestamp}>{timeAgo(item.created_at)}</Text>
+          </TouchableOpacity>
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[styles.acceptBtn, loading && styles.btnDisabled]}
+              onPress={() => handleAcceptFriendRequest(item)}
+              disabled={loading}
+              activeOpacity={0.8}
+              accessibilityLabel="Accept friend request"
+              accessibilityRole="button"
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color={theme.colors.textOnPrimary} />
+              ) : (
+                <Text style={styles.acceptBtnText}>Accept</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.declineBtn, loading && styles.btnDisabled]}
+              onPress={() => handleDeclineFriendRequest(item)}
+              disabled={loading}
+              activeOpacity={0.8}
+              accessibilityLabel="Decline friend request"
+              accessibilityRole="button"
+            >
+              <Text style={styles.declineBtnText}>Decline</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
+    // Reaction / comment / tag: avatar + bold name → profile; action text + time + thumbnail → post
+    const postThumb = normPost(item)?.image_url;
+    return (
+      <View style={[styles.row, !item.read && styles.rowUnread]}>
+        <TouchableOpacity
+          style={styles.senderBlock}
+          onPress={() => handleSenderProfilePress(item)}
+          activeOpacity={0.7}
+          accessibilityLabel={`${bold} profile`}
+          accessibilityRole="button"
+        >
+          {item.type === 'tag' ? (
+            <View style={styles.tagIconWrap}>
+              <Feather name="tag" size={18} color={theme.colors.primary} />
+            </View>
+          ) : (
+            <Avatar uri={normFromUser(item)?.avatar_url ?? null} size={36} />
+          )}
+          <Text style={[styles.text, styles.bold, styles.senderName]} numberOfLines={1}>
+            {bold}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.postTapArea}
+          onPress={() => handleNotificationPress(item)}
+          activeOpacity={0.7}
+          accessibilityLabel={rest}
+          accessibilityRole="button"
+        >
+          <Text style={[styles.text, styles.restLine]} numberOfLines={2}>
+            {rest}
+          </Text>
+          <Text style={styles.timestamp}>{timeAgo(item.created_at)}</Text>
+        </TouchableOpacity>
+        {postThumb ? (
+          <TouchableOpacity
+            onPress={() => handleNotificationPress(item)}
+            activeOpacity={0.7}
+            accessibilityLabel="Open post"
+            accessibilityRole="button"
+          >
+            <SmoothImage
+              source={{ uri: postThumb }}
+              style={styles.thumbnail}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
+        ) : null}
+      </View>
     );
   };
 
@@ -548,6 +677,45 @@ const styles = StyleSheet.create({
   },
   rowUnread: {
     backgroundColor: 'rgba(255, 122, 143, 0.08)',
+  },
+  senderBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
+    maxWidth: '38%',
+  },
+  senderName: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  postTapArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginLeft: theme.spacing.sm,
+    minWidth: 0,
+    gap: 8,
+  },
+  restLine: {
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  rowFriendRequest: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+  },
+  friendRequestMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+  },
+  friendRequestTextCol: {
+    flex: 1,
+    marginLeft: theme.spacing.sm,
+    minWidth: 0,
   },
   middle: {
     flex: 1,

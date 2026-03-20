@@ -23,11 +23,12 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import type { ProfileStackParamList } from '../navigation/types';
+import type { ProfileStackParamList, RootStackNavigationProp } from '../navigation/types';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '../lib/AuthContext';
 import { useCardStack } from '../lib/CardStackContext';
 import { usePosts } from '../hooks';
+import { useToast } from '../lib/ToastContext';
 import { supabase } from '../lib/supabase';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
@@ -45,9 +46,23 @@ type Props = NativeStackScreenProps<ProfileStackParamList, 'Gallery'>;
 export function GalleryScreen({ navigation }: Props) {
   const { profile, session } = useAuth();
   const { removePost } = usePosts();
+  const { showToast } = useToast();
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({});
   const { setCardStackOpen } = useCardStack();
   const userId = profile?.id ?? session?.user?.id;
+
+  const navigateToFriendProfile = useCallback(
+    (targetUserId: string) => {
+      if (targetUserId === userId) {
+        showToast("That's you!");
+        return;
+      }
+      (navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined)?.navigate('FriendProfile', {
+        userId: targetUserId,
+      });
+    },
+    [navigation, userId, showToast]
+  );
 
   const PAGE_SIZE = 30;
   const [posts, setPosts] = useState<PostWithProfile[]>([]);
@@ -345,6 +360,7 @@ export function GalleryScreen({ navigation }: Props) {
             setPosts((prev) => prev.filter((p) => p.id !== postId));
             setSelectedPosts((prev) => (prev ? prev.filter((p) => p.id !== postId) : null));
           }}
+          onProfilePress={navigateToFriendProfile}
         />
       )}
     </View>

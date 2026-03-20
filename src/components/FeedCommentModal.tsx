@@ -31,6 +31,7 @@ import { Avatar } from './Avatar';
 import { StyledTextInput } from './StyledTextInput';
 import { timeAgo } from '../lib/timeAgo';
 import { useComments } from '../hooks/useComments';
+import { useToast } from '../lib/ToastContext';
 
 type ReplyTarget = { id: string; username: string; parentUserId: string };
 
@@ -41,6 +42,7 @@ type FeedCommentModalProps = {
   userId: string | undefined;
   onClose: () => void;
   onCommentPosted?: () => void;
+  onProfilePress?: (userId: string) => void;
 };
 
 export function FeedCommentModal({
@@ -50,7 +52,9 @@ export function FeedCommentModal({
   userId,
   onClose,
   onCommentPosted,
+  onProfilePress,
 }: FeedCommentModalProps) {
+  const { showToast } = useToast();
   const [inputText, setInputText] = useState('');
   const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const inputRef = useRef<TextInput>(null);
@@ -63,7 +67,20 @@ export function FeedCommentModal({
     fetchComments,
     loadMore,
     postComment,
+    submitting,
   } = useComments(postId, postUserId ?? undefined, userId);
+
+  const handlePressProfile = useCallback(
+    (targetUserId: string | undefined | null) => {
+      if (!targetUserId) return;
+      if (userId && targetUserId === userId) {
+        showToast("That's you!");
+        return;
+      }
+      onProfilePress?.(targetUserId);
+    },
+    [userId, onProfilePress, showToast]
+  );
 
   useEffect(() => {
     if (visible && postId) {
@@ -154,12 +171,25 @@ export function FeedCommentModal({
                   item.type === 'top' ? (
                     <View key={item.comment.id} style={styles.commentRow}>
                       <View style={styles.commentAvatarWrap}>
-                        <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={28} />
+                        <TouchableOpacity
+                          onPress={() => handlePressProfile(item.comment.user_id)}
+                          activeOpacity={0.7}
+                          accessibilityLabel="View profile"
+                          accessibilityRole="button"
+                        >
+                          <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={28} />
+                        </TouchableOpacity>
                       </View>
                       <View style={styles.commentContent}>
-                        <Text style={styles.commenterName}>
-                          {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
-                        </Text>
+                        <TouchableOpacity
+                          onPress={() => handlePressProfile(item.comment.user_id)}
+                          activeOpacity={0.7}
+                          style={styles.commentNameTap}
+                        >
+                          <Text style={styles.commenterName}>
+                            {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
+                          </Text>
+                        </TouchableOpacity>
                         <Text style={styles.commentText}>{item.comment.content}</Text>
                         <Text style={styles.commentTime}>{timeAgo(item.comment.created_at)}</Text>
                         <TouchableOpacity
@@ -180,15 +210,38 @@ export function FeedCommentModal({
                   ) : (
                     <View key={item.comment.id} style={[styles.commentRow, styles.replyRow]}>
                       <View style={styles.commentAvatarWrap}>
-                        <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={24} />
+                        <TouchableOpacity
+                          onPress={() => handlePressProfile(item.comment.user_id)}
+                          activeOpacity={0.7}
+                          accessibilityLabel="View profile"
+                          accessibilityRole="button"
+                        >
+                          <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={24} />
+                        </TouchableOpacity>
                       </View>
                       <View style={styles.commentContent}>
-                        <Text style={styles.replyingTo}>
-                          replying to {item.parentUserId === userId ? 'You' : `@${item.parentUsername}`}
-                        </Text>
-                        <Text style={styles.commenterNameReply}>
-                          {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
-                        </Text>
+                        <View style={styles.replyingToRow}>
+                          <Text style={styles.replyingTo}>replying to </Text>
+                          {item.parentUserId === userId ? (
+                            <Text style={styles.replyingTo}>You</Text>
+                          ) : (
+                            <TouchableOpacity
+                              onPress={() => handlePressProfile(item.parentUserId)}
+                              activeOpacity={0.7}
+                            >
+                              <Text style={styles.replyingTo}>@{item.parentUsername}</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => handlePressProfile(item.comment.user_id)}
+                          activeOpacity={0.7}
+                          style={styles.commentNameTap}
+                        >
+                          <Text style={styles.commenterNameReply}>
+                            {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
+                          </Text>
+                        </TouchableOpacity>
                         <Text style={styles.commentTextReply}>{item.comment.content}</Text>
                         <Text style={styles.commentTime}>{timeAgo(item.comment.created_at)}</Text>
                       </View>
@@ -201,9 +254,19 @@ export function FeedCommentModal({
 
             {replyTarget && (
               <View style={styles.replyBanner}>
-                <Text style={styles.replyBannerText} numberOfLines={1}>
-                  Replying to {replyTarget.parentUserId === userId ? 'You' : `@${replyTarget.username}`}
-                </Text>
+                <View style={styles.replyBannerRow}>
+                  <Text style={styles.replyBannerText}>Replying to </Text>
+                  {replyTarget.parentUserId === userId ? (
+                    <Text style={styles.replyBannerText}>You</Text>
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => handlePressProfile(replyTarget.parentUserId)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.replyBannerText}>@{replyTarget.username}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 <TouchableOpacity
                   onPress={() => setReplyTarget(null)}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -227,13 +290,13 @@ export function FeedCommentModal({
               <TouchableOpacity
                 style={[
                   styles.sendButton,
-                  (!inputText.trim() || posting) && styles.sendButtonDisabled,
+                  (!inputText.trim() || submitting) && styles.sendButtonDisabled,
                 ]}
                 onPress={handlePostComment}
-                disabled={!inputText.trim() || posting}
+                disabled={!inputText.trim() || submitting}
                 activeOpacity={0.8}
               >
-                {posting ? (
+                {submitting ? (
                   <ActivityIndicator size="small" color={theme.colors.textOnLight} />
                 ) : (
                   <Feather name="send" size={18} color={theme.colors.textOnLight} />
@@ -310,6 +373,15 @@ const styles = StyleSheet.create({
   commentContent: {
     flex: 1,
   },
+  commentNameTap: {
+    alignSelf: 'flex-start',
+  },
+  replyingToRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
   commenterName: {
     fontSize: theme.fontSize.md,
     fontWeight: '600',
@@ -362,10 +434,16 @@ const styles = StyleSheet.create({
     padding: 8,
     marginBottom: theme.spacing.sm,
   },
+  replyBannerRow: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginRight: 8,
+  },
   replyBannerText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.textSecondary,
-    flex: 1,
   },
   inputRow: {
     flexDirection: 'row',

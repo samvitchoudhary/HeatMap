@@ -37,6 +37,7 @@ import { PhotoViewer } from '../components/PhotoViewer';
 import { Skeleton } from '../components/Skeleton';
 import { useFeed } from '../hooks/useFeed';
 import { deletePost, deletePostImage } from '../services/posts.service';
+import { useToast } from '../lib/ToastContext';
 
 /** Feed post with user's reaction emoji and per-emoji counts for the ReactionBar */
 export type FeedPost = PostWithProfile & {
@@ -100,6 +101,7 @@ export function FeedScreen() {
   const { friendIds } = useFriends();
   const { removePost } = usePosts();
   const { markFeedSeen, lastSeenAt } = useFeedBadge();
+  const { showToast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
   const [fadingOutId, setFadingOutId] = useState<string | null>(null);
   const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
@@ -200,13 +202,17 @@ export function FeedScreen() {
   );
 
   const handleProfilePress = useCallback(
-    (userId: string) => {
-      (navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined)?.navigate(
-        'FriendProfile',
-        { userId }
-      );
+    (targetUserId: string) => {
+      if (targetUserId === profile?.id) {
+        showToast("That's you!");
+        return;
+      }
+      const rootNav =
+        (navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined) ??
+        (navigation.getParent?.() as RootStackNavigationProp | undefined);
+      rootNav?.navigate('FriendProfile', { userId: targetUserId });
     },
-    [navigation]
+    [navigation, profile?.id, showToast]
   );
 
   function handleEndReached() {

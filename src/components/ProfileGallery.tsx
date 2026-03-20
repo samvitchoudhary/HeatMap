@@ -21,6 +21,7 @@ const GalleryThumbnail = memo(function GalleryThumbnail({
   userId,
   onPress,
   onLongPress,
+  onTaggedByPress,
   hasError,
   onError,
 }: {
@@ -28,6 +29,7 @@ const GalleryThumbnail = memo(function GalleryThumbnail({
   userId: string | undefined;
   onPress: () => void;
   onLongPress: () => void;
+  onTaggedByPress?: (post: PostWithProfile) => void;
   hasError: boolean;
   onError: () => void;
 }) {
@@ -51,11 +53,17 @@ const GalleryThumbnail = memo(function GalleryThumbnail({
             onError={onError}
           />
           {post.user_id !== userId && (
-            <View style={styles.tagBanner}>
+            <TouchableOpacity
+              style={styles.tagBanner}
+              onPress={() => onTaggedByPress?.(post)}
+              activeOpacity={0.7}
+              accessibilityLabel="View tagger profile"
+              accessibilityRole="button"
+            >
               <Text style={styles.tagBannerText} numberOfLines={1}>
                 tagged by @{post.profiles?.username ?? 'deleted'}
               </Text>
-            </View>
+            </TouchableOpacity>
           )}
         </>
       )}
@@ -69,6 +77,7 @@ type ProfileGalleryProps = {
   gridImageErrors: Record<string, boolean>;
   onPostPress: (post: PostWithProfile) => void;
   onLongPressDelete: (post: PostWithProfile) => void;
+  onTaggedByPress?: (post: PostWithProfile) => void;
   onError: (postId: string) => void;
   hasMorePosts: boolean;
   onViewAll: () => void;
@@ -80,6 +89,7 @@ export const ProfileGallery = memo(function ProfileGallery({
   gridImageErrors,
   onPostPress,
   onLongPressDelete,
+  onTaggedByPress,
   onError,
   hasMorePosts,
   onViewAll,
@@ -109,6 +119,7 @@ export const ProfileGallery = memo(function ProfileGallery({
                 userId={userId}
                 onPress={() => onPostPress(post)}
                 onLongPress={() => onLongPressDelete(post)}
+                onTaggedByPress={onTaggedByPress}
                 hasError={!!gridImageErrors[post.id]}
                 onError={() => onError(post.id)}
               />
@@ -158,6 +169,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    zIndex: 2,
     backgroundColor: theme.colors.overlayDark,
     paddingVertical: 4,
     paddingHorizontal: 6,

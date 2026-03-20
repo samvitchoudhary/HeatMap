@@ -41,6 +41,7 @@ import { supabase } from '../lib/supabase';
 import { getFriendshipBetween, getFriendCount } from '../services/friendships.service';
 import { theme } from '../lib/theme';
 import type { PostWithProfile } from '../types';
+import type { RootStackNavigationProp } from '../navigation/types';
 import { CardStack } from '../components/CardStack';
 import { Skeleton } from '../components/Skeleton';
 import { Avatar } from '../components/Avatar';
@@ -316,6 +317,19 @@ export function FriendProfileScreen() {
     setSelectedInitialIndex(0);
   }
 
+  const navigateToFriendProfile = useCallback(
+    (uid: string) => {
+      if (uid === myUserId) {
+        showToast("That's you!");
+        return;
+      }
+      (navigation.getParent()?.getParent?.() as RootStackNavigationProp | undefined)?.navigate('FriendProfile', {
+        userId: uid,
+      });
+    },
+    [navigation, myUserId, showToast]
+  );
+
   const displayName = profile?.display_name ?? 'User';
   const username = profile?.username ?? 'username';
   const avatarUrl = profile?.avatar_url;
@@ -508,11 +522,17 @@ export function FriendProfileScreen() {
                           onError={() => setGridImageErrors((prev) => ({ ...prev, [post.id]: true }))}
                         />
                         {post.user_id !== targetUserId && (
-                          <View style={styles.tagBanner}>
+                          <TouchableOpacity
+                            style={styles.tagBanner}
+                            onPress={() => navigateToFriendProfile(post.user_id)}
+                            activeOpacity={0.7}
+                            accessibilityLabel="View tagger profile"
+                            accessibilityRole="button"
+                          >
                             <Text style={styles.tagBannerText} numberOfLines={1}>
                               tagged by @{post.profiles?.username ?? 'deleted'}
                             </Text>
-                          </View>
+                          </TouchableOpacity>
                         )}
                       </>
                     )}
@@ -536,6 +556,7 @@ export function FriendProfileScreen() {
             setSelectedInitialIndex(0);
           }}
           initialIndex={selectedInitialIndex}
+          onProfilePress={navigateToFriendProfile}
         />
       )}
     </View>
@@ -659,6 +680,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
+    zIndex: 2,
     backgroundColor: theme.colors.overlayDark,
     paddingVertical: 4,
     paddingHorizontal: 6,

@@ -39,6 +39,7 @@ import { SmoothImage } from './SmoothImage';
 import { StyledTextInput } from './StyledTextInput';
 import { timeAgo } from '../lib/timeAgo';
 import { useComments } from '../hooks/useComments';
+import { useToast } from '../lib/ToastContext';
 
 type ReplyTarget = { id: string; username: string; parentUserId: string };
 
@@ -63,6 +64,8 @@ type CommentSheetProps = {
   initialFlipped?: boolean;
   /** Denormalized comment count from the post row — avoids a separate count query */
   initialCommentCount?: number;
+  /** Navigate to a user's profile (comment authors, @mentions) */
+  onProfilePress?: (userId: string) => void;
   children: (props: { onCommentPress: () => void; commentCount: number }) => React.ReactNode;
 };
 
@@ -79,8 +82,10 @@ export function CommentSheet({
   onCommentPosted,
   initialFlipped = false,
   initialCommentCount = 0,
+  onProfilePress,
   children,
 }: CommentSheetProps) {
+  const { showToast } = useToast();
   const [flipped, setFlipped] = useState(initialFlipped);
   const flipAnimation = useRef(new Animated.Value(initialFlipped ? 180 : 0)).current;
 
@@ -104,7 +109,6 @@ export function CommentSheet({
       flipAnimation.setValue(180);
       setFlipped(true);
       onFlippedChange?.(postId, true);
-      setHasMore(true);
       fetchComments(postId, false);
     }
   }, []);
@@ -156,7 +160,6 @@ export function CommentSheet({
   }, [postId, initialCommentCount]);
 
   const handleCommentPress = useCallback(() => {
-    setHasMore(true);
     fetchComments(false);
     flipToBack();
   }, [fetchComments, flipToBack]);
@@ -181,17 +184,44 @@ export function CommentSheet({
     }
   }, [replyTarget, flipped]);
 
+  const handlePressProfile = useCallback(
+    (targetUserId: string | undefined | null) => {
+      if (!targetUserId) return;
+      if (userId && targetUserId === userId) {
+        showToast("That's you!");
+        return;
+      }
+      onProfilePress?.(targetUserId);
+    },
+    [userId, onProfilePress, showToast]
+  );
+
   const renderCommentItem = ({ item }: { item: typeof threadedComments[0] }) =>
     item.type === 'top' ? (
       <View style={styles.cardBackCommentRow}>
         <View style={styles.cardBackCommentAvatarWrap}>
-          <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={24} />
+          <TouchableOpacity
+            onPress={() => handlePressProfile(item.comment.user_id)}
+            activeOpacity={0.7}
+            accessibilityLabel="View profile"
+            accessibilityRole="button"
+          >
+            <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={24} />
+          </TouchableOpacity>
         </View>
         <View style={styles.cardBackCommentContent}>
           <View style={styles.cardBackCommentHeader}>
-            <Text style={styles.cardBackCommenterName}>
-              {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
-            </Text>
+            <TouchableOpacity
+              onPress={() => handlePressProfile(item.comment.user_id)}
+              activeOpacity={0.7}
+              style={styles.cardBackCommentNameTap}
+              accessibilityLabel="View profile"
+              accessibilityRole="button"
+            >
+              <Text style={styles.cardBackCommenterName}>
+                {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
+              </Text>
+            </TouchableOpacity>
             <Text style={styles.cardBackCommentTime}>{timeAgo(item.comment.created_at)}</Text>
           </View>
           <Text style={styles.cardBackCommentText}>{item.comment.content}</Text>
@@ -215,16 +245,39 @@ export function CommentSheet({
     ) : (
       <View style={[styles.cardBackCommentRow, styles.cardBackReplyRow]}>
         <View style={styles.cardBackCommentAvatarWrap}>
-          <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={20} />
+          <TouchableOpacity
+            onPress={() => handlePressProfile(item.comment.user_id)}
+            activeOpacity={0.7}
+            accessibilityLabel="View profile"
+            accessibilityRole="button"
+          >
+            <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={20} />
+          </TouchableOpacity>
         </View>
         <View style={styles.cardBackCommentContent}>
-          <Text style={styles.cardBackReplyingTo}>
-            replying to {item.parentUserId === userId ? 'You' : `@${item.parentUsername}`}
-          </Text>
+          <View style={styles.cardBackReplyingToRow}>
+            <Text style={styles.cardBackReplyingTo}>replying to </Text>
+            {item.parentUserId === userId ? (
+              <Text style={styles.cardBackReplyingTo}>You</Text>
+            ) : (
+              <TouchableOpacity
+                onPress={() => handlePressProfile(item.parentUserId)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.cardBackReplyingTo}>@{item.parentUsername}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           <View style={styles.cardBackCommentHeader}>
-            <Text style={styles.cardBackCommenterName}>
-              {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
-            </Text>
+            <TouchableOpacity
+              onPress={() => handlePressProfile(item.comment.user_id)}
+              activeOpacity={0.7}
+              style={styles.cardBackCommentNameTap}
+            >
+              <Text style={styles.cardBackCommenterName}>
+                {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
+              </Text>
+            </TouchableOpacity>
             <Text style={styles.cardBackCommentTime}>{timeAgo(item.comment.created_at)}</Text>
           </View>
           <Text style={styles.cardBackCommentText}>{item.comment.content}</Text>
@@ -346,9 +399,19 @@ export function CommentSheet({
             >
               {replyTarget && (
                 <View style={styles.replyBanner}>
-                  <Text style={styles.replyBannerText} numberOfLines={1}>
-                    Replying to {replyTarget.parentUserId === userId ? 'You' : `@${replyTarget.username}`}
-                  </Text>
+                  <View style={styles.replyBannerRow}>
+                    <Text style={styles.replyBannerText}>Replying to </Text>
+                    {replyTarget.parentUserId === userId ? (
+                      <Text style={styles.replyBannerText}>You</Text>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => handlePressProfile(replyTarget.parentUserId)}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={styles.replyBannerText}>@{replyTarget.username}</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <TouchableOpacity
                     onPress={() => setReplyTarget(null)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -500,6 +563,15 @@ const styles = StyleSheet.create({
   cardBackCommentContent: {
     flex: 1,
   },
+  cardBackCommentNameTap: {
+    flexShrink: 1,
+  },
+  cardBackReplyingToRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
   cardBackCommentHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -568,6 +640,13 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.sm,
     padding: 8,
     marginBottom: theme.spacing.sm,
+  },
+  replyBannerRow: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    marginRight: 8,
   },
   replyBannerText: {
     fontSize: theme.fontSize.sm,

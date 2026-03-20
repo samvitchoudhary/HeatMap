@@ -48,6 +48,7 @@ import { timeAgo } from '../lib/timeAgo';
 import { getCategoryByKey } from '../lib/categories';
 import { TaggedLine } from './TaggedLine';
 import { usePostReactions } from '../hooks/usePostReactions';
+import { useToast } from '../lib/ToastContext';
 /** Props for CardStack - posts to show, callbacks, optional initial state */
 type CardStackProps = {
   posts: PostWithProfile[];
@@ -777,6 +778,7 @@ function StackCard({
   setViewerImage,
   sessionUserId,
 }: StackCardProps) {
+  const { showToast } = useToast();
   const initialUserReaction = (post as any).user_reaction ?? null;
   const initialReactionCount = (post as any).reaction_count ?? 0;
   const stableStackReactionCounts = useMemo(() => {
@@ -821,6 +823,7 @@ function StackCard({
       onFlippedChange={onFlippedChange}
       initialFlipped={post.id === initialFlippedPostId}
       initialCommentCount={post.comment_count ?? 0}
+      onProfilePress={onProfilePress}
     >
       {({ onCommentPress, commentCount }) => (
         <View style={styles.cardFront}>
@@ -869,9 +872,21 @@ function StackCard({
                   {post.profiles?.display_name ?? 'Deleted User'}
                 </Text>
               </TouchableOpacity>
+            ) : post.user_id === currentUserId ? (
+              <TouchableOpacity
+                onPress={() => showToast("That's you!")}
+                activeOpacity={0.7}
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                accessibilityLabel="Your post"
+                accessibilityRole="button"
+              >
+                <Text style={styles.infoDisplayName} numberOfLines={1}>
+                  You
+                </Text>
+              </TouchableOpacity>
             ) : (
               <Text style={styles.infoDisplayName} numberOfLines={1}>
-                {post.user_id === currentUserId ? 'You' : post.profiles?.display_name ?? 'Deleted User'}
+                {post.profiles?.display_name ?? 'Deleted User'}
               </Text>
             )}
             <TaggedLine tags={post.post_tags} onProfilePress={onProfilePress} />
