@@ -1,8 +1,8 @@
 /**
  * commentUtils.ts
  *
- * Shared comment threading logic used by CommentSheet and FeedCommentModal.
- * Uses Map-based O(n) lookup instead of .find() inside a loop.
+ * Comment threading helpers (not currently wired in the app — flat comment lists only).
+ * Kept for future reply/threading. Uses Map-based O(n) lookup instead of .find() inside a loop.
  */
 
 export type CommentWithProfile = {

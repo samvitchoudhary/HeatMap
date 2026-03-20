@@ -4,8 +4,8 @@
  * Modal for viewing and posting comments on a feed post.
  *
  * Key responsibilities:
- * - Full-screen modal with threaded comments list
- * - Post new comments, reply to existing (with @mention)
+ * - Full-screen modal with flat comments list
+ * - Post new comments
  * - Used when user taps comment count from FeedCard (Feed screen)
  */
 
@@ -31,10 +31,8 @@ import { theme } from '../lib/theme';
 import { Avatar } from './Avatar';
 import { StyledTextInput } from './StyledTextInput';
 import { timeAgo } from '../lib/timeAgo';
-import { useComments } from '../hooks/useComments';
+import { useComments, type Comment } from '../hooks/useComments';
 import { useToast } from '../lib/ToastContext';
-
-type ReplyTarget = { id: string; username: string; parentUserId: string };
 
 type FeedCommentModalProps = {
   visible: boolean;
@@ -60,7 +58,6 @@ export function FeedCommentModal({
 }: FeedCommentModalProps) {
   const { showToast } = useToast();
   const [inputText, setInputText] = useState('');
-  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   const handleCommentDeleted = useCallback(() => {
@@ -69,7 +66,6 @@ export function FeedCommentModal({
 
   const {
     comments,
-    threadedComments,
     loading,
     loadingMore,
     hasMore,
@@ -116,8 +112,7 @@ export function FeedCommentModal({
               text: 'Delete',
               style: 'destructive',
               onPress: async () => {
-                const ok = await deleteComment(comment.id);
-                if (ok && replyTarget?.id === comment.id) setReplyTarget(null);
+                await deleteComment(comment.id);
               },
             },
           ]
@@ -139,14 +134,12 @@ export function FeedCommentModal({
         confirmDelete();
       }
     },
-    [canDeleteComment, deleteComment, replyTarget]
+    [canDeleteComment, deleteComment]
   );
 
   useEffect(() => {
     if (visible && postId) {
       fetchComments(false);
-    } else if (!visible) {
-      setReplyTarget(null);
     }
   }, [visible, postId, fetchComments]);
 
@@ -159,15 +152,8 @@ export function FeedCommentModal({
       return;
     }
     setInputText('');
-    setReplyTarget(null);
     onCommentPosted?.();
   }, [inputText, postComment, onCommentPosted]);
-
-  useEffect(() => {
-    if (replyTarget && visible) {
-      inputRef.current?.focus();
-    }
-  }, [replyTarget, visible]);
 
   return (
     <Modal
@@ -227,132 +213,45 @@ export function FeedCommentModal({
                       )}
                     </TouchableOpacity>
                   )}
-                  {threadedComments.map((item) =>
-                  item.type === 'top' ? (
+                  {comments.map((item: Comment) => (
                     <Pressable
-                      key={item.comment.id}
-                      onLongPress={() => handleLongPressComment(item.comment)}
+                      key={item.id}
+                      onLongPress={() => handleLongPressComment(item)}
                       delayLongPress={500}
                       style={({ pressed }) => [
                         styles.commentRow,
-                        pressed && canDeleteComment(item.comment) && { opacity: 0.7 },
+                        pressed && canDeleteComment(item) && { opacity: 0.7 },
                       ]}
                     >
                       <View style={styles.commentAvatarWrap}>
                         <TouchableOpacity
-                          onPress={() => handlePressProfile(item.comment.user_id)}
+                          onPress={() => handlePressProfile(item.user_id)}
                           activeOpacity={0.7}
                           accessibilityLabel="View profile"
                           accessibilityRole="button"
                         >
-                          <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={28} />
+                          <Avatar uri={item.profiles?.avatar_url ?? null} size={28} />
                         </TouchableOpacity>
                       </View>
                       <View style={styles.commentContent}>
                         <TouchableOpacity
-                          onPress={() => handlePressProfile(item.comment.user_id)}
+                          onPress={() => handlePressProfile(item.user_id)}
                           activeOpacity={0.7}
                           style={styles.commentNameTap}
                         >
                           <Text style={styles.commenterName}>
-                            {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
+                            {item.user_id === userId ? 'You' : (item.profiles?.display_name ?? 'Deleted User')}
                           </Text>
                         </TouchableOpacity>
-                        <Text style={styles.commentText}>{item.comment.content}</Text>
-                        <Text style={styles.commentTime}>{timeAgo(item.comment.created_at)}</Text>
-                        <TouchableOpacity
-                          onPress={() =>
-                            setReplyTarget({
-                              id: item.comment.id,
-                              username: item.comment.profiles?.username ?? 'deleted',
-                              parentUserId: item.comment.user_id,
-                            })
-                          }
-                          activeOpacity={0.7}
-                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                        >
-                          <Text style={styles.replyButton}>Reply</Text>
-                        </TouchableOpacity>
+                        <Text style={styles.commentText}>{item.content}</Text>
+                        <Text style={styles.commentTime}>{timeAgo(item.created_at)}</Text>
                       </View>
                     </Pressable>
-                  ) : (
-                    <Pressable
-                      key={item.comment.id}
-                      onLongPress={() => handleLongPressComment(item.comment)}
-                      delayLongPress={500}
-                      style={({ pressed }) => [
-                        styles.commentRow,
-                        styles.replyRow,
-                        pressed && canDeleteComment(item.comment) && { opacity: 0.7 },
-                      ]}
-                    >
-                      <View style={styles.commentAvatarWrap}>
-                        <TouchableOpacity
-                          onPress={() => handlePressProfile(item.comment.user_id)}
-                          activeOpacity={0.7}
-                          accessibilityLabel="View profile"
-                          accessibilityRole="button"
-                        >
-                          <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={24} />
-                        </TouchableOpacity>
-                      </View>
-                      <View style={styles.commentContent}>
-                        <View style={styles.replyingToRow}>
-                          <Text style={styles.replyingTo}>replying to </Text>
-                          {item.parentUserId === userId ? (
-                            <Text style={styles.replyingTo}>You</Text>
-                          ) : (
-                            <TouchableOpacity
-                              onPress={() => handlePressProfile(item.parentUserId)}
-                              activeOpacity={0.7}
-                            >
-                              <Text style={styles.replyingTo}>@{item.parentUsername}</Text>
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                        <TouchableOpacity
-                          onPress={() => handlePressProfile(item.comment.user_id)}
-                          activeOpacity={0.7}
-                          style={styles.commentNameTap}
-                        >
-                          <Text style={styles.commenterNameReply}>
-                            {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
-                          </Text>
-                        </TouchableOpacity>
-                        <Text style={styles.commentTextReply}>{item.comment.content}</Text>
-                        <Text style={styles.commentTime}>{timeAgo(item.comment.created_at)}</Text>
-                      </View>
-                    </Pressable>
-                  )
-                )}
+                  ))}
                 </>
               )}
             </ScrollView>
 
-            {replyTarget && (
-              <View style={styles.replyBanner}>
-                <View style={styles.replyBannerRow}>
-                  <Text style={styles.replyBannerText}>Replying to </Text>
-                  {replyTarget.parentUserId === userId ? (
-                    <Text style={styles.replyBannerText}>You</Text>
-                  ) : (
-                    <TouchableOpacity
-                      onPress={() => handlePressProfile(replyTarget.parentUserId)}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.replyBannerText}>@{replyTarget.username}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-                <TouchableOpacity
-                  onPress={() => setReplyTarget(null)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  activeOpacity={0.7}
-                >
-                  <Feather name="x" size={16} color={theme.colors.textTertiary} />
-                </TouchableOpacity>
-              </View>
-            )}
             <View style={styles.inputRow}>
               <StyledTextInput
                 ref={inputRef}
@@ -453,12 +352,6 @@ const styles = StyleSheet.create({
   commentNameTap: {
     alignSelf: 'flex-start',
   },
-  replyingToRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
   commenterName: {
     fontSize: theme.fontSize.md,
     fontWeight: '600',
@@ -475,52 +368,6 @@ const styles = StyleSheet.create({
     fontSize: theme.fontSize.xs,
     fontWeight: '400',
     color: theme.colors.textTertiary,
-  },
-  replyButton: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    marginTop: 2,
-  },
-  replyRow: {
-    marginLeft: 40,
-    marginBottom: theme.listRowGap,
-  },
-  replyingTo: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
-    marginBottom: 2,
-  },
-  commenterNameReply: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  commentTextReply: {
-    fontSize: 13,
-    fontWeight: '400',
-    color: theme.colors.text,
-    marginBottom: 2,
-  },
-  replyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: theme.colors.surfaceLight,
-    borderRadius: theme.borderRadius.sm,
-    padding: 8,
-    marginBottom: theme.spacing.sm,
-  },
-  replyBannerRow: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  replyBannerText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.textSecondary,
   },
   inputRow: {
     flexDirection: 'row',

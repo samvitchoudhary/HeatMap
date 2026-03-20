@@ -2,16 +2,16 @@
  * CommentSheet.tsx
  *
  * NOTE: This file is over 600 lines. Future refactoring candidates:
- * - Extract useComments hook (fetchComments, handlePostComment, threading via buildThreadedComments)
- * - Extract CommentItem component (top-level comment and reply rendering)
- * - Extract CommentInputBar component (reply banner, text input, send button)
+ * - Extract useComments hook (fetchComments, handlePostComment)
+ * - Extract CommentItem component
+ * - Extract CommentInputBar component (text input, send button)
  * - Extract useFlipAnimation hook (flipAnimation, interpolation, flipToBack/flipToFront)
  *
- * Flip-card component: front = post content, back = comments list with reply support.
+ * Flip-card component: front = post content, back = flat comments list.
  *
  * Key responsibilities:
  * - 3D flip animation (rotateY) between front (photo/info) and back (comments)
- * - Fetches and displays threaded comments, supports reply-to
+ * - Fetches and displays comments (flat, chronological)
  * - Used inside CardStack and FeedCard - provides onCommentPress + commentCount to children
  * - Lazy-loads comments when flipped to back (or when initialFlipped)
  */
@@ -39,10 +39,8 @@ import { Avatar } from './Avatar';
 import { SmoothImage } from './SmoothImage';
 import { StyledTextInput } from './StyledTextInput';
 import { timeAgo } from '../lib/timeAgo';
-import { useComments } from '../hooks/useComments';
+import { useComments, type Comment } from '../hooks/useComments';
 import { useToast } from '../lib/ToastContext';
-
-type ReplyTarget = { id: string; username: string; parentUserId: string };
 
 type PostInfo = {
   image_url: string;
@@ -127,12 +125,10 @@ export function CommentSheet({
       useNativeDriver: true,
     }).start();
     setFlipped(false);
-    setReplyTarget(null);
     onFlippedChange?.(postId, false);
   }, [flipAnimation, postId, onFlippedChange]);
   const [commentCount, setCommentCount] = useState(initialCommentCount);
   const [inputText, setInputText] = useState('');
-  const [replyTarget, setReplyTarget] = useState<ReplyTarget | null>(null);
   const inputRef = useRef<TextInput>(null);
 
   const handleCommentDeleted = useCallback(() => {
@@ -142,17 +138,13 @@ export function CommentSheet({
 
   const {
     comments,
-    threadedComments,
     loading,
     loadingMore,
     hasMore,
-    replyTarget: hookReplyTarget,
     submitting,
     fetchComments,
     loadMore,
     postComment,
-    startReply,
-    cancelReply,
     deleteComment,
   } = useComments(postId, postUserId ?? undefined, userId, handleCommentDeleted);
 
@@ -183,16 +175,9 @@ export function CommentSheet({
       return;
     }
     setInputText('');
-    setReplyTarget(null);
     setCommentCount((c) => c + 1);
     onCommentPosted?.();
   }, [inputText, postComment, onCommentPosted]);
-
-  useEffect(() => {
-    if (replyTarget && flipped) {
-      inputRef.current?.focus();
-    }
-  }, [replyTarget, flipped]);
 
   const handlePressProfile = useCallback(
     (targetUserId: string | undefined | null) => {
@@ -230,8 +215,7 @@ export function CommentSheet({
               text: 'Delete',
               style: 'destructive',
               onPress: async () => {
-                const ok = await deleteComment(comment.id);
-                if (ok && replyTarget?.id === comment.id) setReplyTarget(null);
+                await deleteComment(comment.id);
               },
             },
           ]
@@ -253,112 +237,47 @@ export function CommentSheet({
         confirmDelete();
       }
     },
-    [canDeleteComment, deleteComment, replyTarget]
+    [canDeleteComment, deleteComment]
   );
 
-  const renderCommentItem = ({ item }: { item: typeof threadedComments[0] }) =>
-    item.type === 'top' ? (
-      <Pressable
-        onLongPress={() => handleLongPressComment(item.comment)}
-        delayLongPress={500}
-        style={({ pressed }) => [
-          styles.cardBackCommentRow,
-          pressed && canDeleteComment(item.comment) && { opacity: 0.7 },
-        ]}
-      >
-        <View style={styles.cardBackCommentAvatarWrap}>
+  const renderCommentItem = ({ item }: { item: Comment }) => (
+    <Pressable
+      onLongPress={() => handleLongPressComment(item)}
+      delayLongPress={500}
+      style={({ pressed }) => [
+        styles.cardBackCommentRow,
+        pressed && canDeleteComment(item) && { opacity: 0.7 },
+      ]}
+    >
+      <View style={styles.cardBackCommentAvatarWrap}>
+        <TouchableOpacity
+          onPress={() => handlePressProfile(item.user_id)}
+          activeOpacity={0.7}
+          accessibilityLabel="View profile"
+          accessibilityRole="button"
+        >
+          <Avatar uri={item.profiles?.avatar_url ?? null} size={24} />
+        </TouchableOpacity>
+      </View>
+      <View style={styles.cardBackCommentContent}>
+        <View style={styles.cardBackCommentHeader}>
           <TouchableOpacity
-            onPress={() => handlePressProfile(item.comment.user_id)}
+            onPress={() => handlePressProfile(item.user_id)}
             activeOpacity={0.7}
+            style={styles.cardBackCommentNameTap}
             accessibilityLabel="View profile"
             accessibilityRole="button"
           >
-            <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={24} />
+            <Text style={styles.cardBackCommenterName}>
+              {item.user_id === userId ? 'You' : (item.profiles?.display_name ?? 'Deleted User')}
+            </Text>
           </TouchableOpacity>
+          <Text style={styles.cardBackCommentTime}>{timeAgo(item.created_at)}</Text>
         </View>
-        <View style={styles.cardBackCommentContent}>
-          <View style={styles.cardBackCommentHeader}>
-            <TouchableOpacity
-              onPress={() => handlePressProfile(item.comment.user_id)}
-              activeOpacity={0.7}
-              style={styles.cardBackCommentNameTap}
-              accessibilityLabel="View profile"
-              accessibilityRole="button"
-            >
-              <Text style={styles.cardBackCommenterName}>
-                {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
-              </Text>
-            </TouchableOpacity>
-            <Text style={styles.cardBackCommentTime}>{timeAgo(item.comment.created_at)}</Text>
-          </View>
-          <Text style={styles.cardBackCommentText}>{item.comment.content}</Text>
-          <TouchableOpacity
-            onPress={() =>
-              setReplyTarget({
-                id: item.comment.id,
-                username: item.comment.profiles?.username ?? 'deleted',
-                parentUserId: item.comment.user_id,
-              })
-            }
-            activeOpacity={0.7}
-            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-            accessibilityLabel="Reply"
-            accessibilityRole="button"
-          >
-            <Text style={styles.cardBackReplyButton}>Reply</Text>
-          </TouchableOpacity>
-        </View>
-      </Pressable>
-    ) : (
-      <Pressable
-        onLongPress={() => handleLongPressComment(item.comment)}
-        delayLongPress={500}
-        style={({ pressed }) => [
-          styles.cardBackCommentRow,
-          styles.cardBackReplyRow,
-          pressed && canDeleteComment(item.comment) && { opacity: 0.7 },
-        ]}
-      >
-        <View style={styles.cardBackCommentAvatarWrap}>
-          <TouchableOpacity
-            onPress={() => handlePressProfile(item.comment.user_id)}
-            activeOpacity={0.7}
-            accessibilityLabel="View profile"
-            accessibilityRole="button"
-          >
-            <Avatar uri={item.comment.profiles?.avatar_url ?? null} size={20} />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.cardBackCommentContent}>
-          <View style={styles.cardBackReplyingToRow}>
-            <Text style={styles.cardBackReplyingTo}>replying to </Text>
-            {item.parentUserId === userId ? (
-              <Text style={styles.cardBackReplyingTo}>You</Text>
-            ) : (
-              <TouchableOpacity
-                onPress={() => handlePressProfile(item.parentUserId)}
-                activeOpacity={0.7}
-              >
-                <Text style={styles.cardBackReplyingTo}>@{item.parentUsername}</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          <View style={styles.cardBackCommentHeader}>
-            <TouchableOpacity
-              onPress={() => handlePressProfile(item.comment.user_id)}
-              activeOpacity={0.7}
-              style={styles.cardBackCommentNameTap}
-            >
-              <Text style={styles.cardBackCommenterName}>
-                {item.comment.user_id === userId ? 'You' : (item.comment.profiles?.display_name ?? 'Deleted User')}
-              </Text>
-            </TouchableOpacity>
-            <Text style={styles.cardBackCommentTime}>{timeAgo(item.comment.created_at)}</Text>
-          </View>
-          <Text style={styles.cardBackCommentText}>{item.comment.content}</Text>
-        </View>
-      </Pressable>
-    );
+        <Text style={styles.cardBackCommentText}>{item.content}</Text>
+      </View>
+    </Pressable>
+  );
 
   const flipWrapperStyle = contentSized
     ? { width: cardWidth }
@@ -438,8 +357,8 @@ export function CommentSheet({
               </View>
             ) : (
               <FlatList
-                data={threadedComments}
-                keyExtractor={(item) => item.type === 'top' ? item.comment.id : `reply-${item.comment.id}`}
+                data={comments}
+                keyExtractor={(item) => item.id}
                 renderItem={renderCommentItem}
                 ListHeaderComponent={
                   hasMore ? (
@@ -472,32 +391,6 @@ export function CommentSheet({
               style={styles.cardBackInputSection}
               onStartShouldSetResponder={() => true}
             >
-              {replyTarget && (
-                <View style={styles.replyBanner}>
-                  <View style={styles.replyBannerRow}>
-                    <Text style={styles.replyBannerText}>Replying to </Text>
-                    {replyTarget.parentUserId === userId ? (
-                      <Text style={styles.replyBannerText}>You</Text>
-                    ) : (
-                      <TouchableOpacity
-                        onPress={() => handlePressProfile(replyTarget.parentUserId)}
-                        activeOpacity={0.7}
-                      >
-                        <Text style={styles.replyBannerText}>@{replyTarget.username}</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => setReplyTarget(null)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    activeOpacity={0.7}
-                    accessibilityLabel="Cancel reply"
-                    accessibilityRole="button"
-                  >
-                    <Feather name="x" size={16} color={theme.colors.textTertiary} />
-                  </TouchableOpacity>
-                </View>
-              )}
               <View style={styles.cardBackInputRow}>
                 <StyledTextInput
                   ref={inputRef}
@@ -629,9 +522,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: theme.listRowGap,
   },
-  cardBackReplyRow: {
-    marginLeft: 40,
-  },
   cardBackCommentAvatarWrap: {
     marginRight: 10,
   },
@@ -640,12 +530,6 @@ const styles = StyleSheet.create({
   },
   cardBackCommentNameTap: {
     flexShrink: 1,
-  },
-  cardBackReplyingToRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    marginBottom: 2,
   },
   cardBackCommentHeader: {
     flexDirection: 'row',
@@ -665,15 +549,6 @@ const styles = StyleSheet.create({
   cardBackCommentText: {
     fontSize: 14,
     color: theme.colors.text,
-    marginBottom: 2,
-  },
-  cardBackReplyButton: {
-    fontSize: 12,
-    color: theme.colors.primary,
-  },
-  cardBackReplyingTo: {
-    fontSize: 12,
-    color: theme.colors.textTertiary,
     marginBottom: 2,
   },
   cardBackInputSection: {
@@ -706,27 +581,6 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: theme.spacing.md,
-  },
-  replyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: 'rgba(255, 122, 143, 0.15)',
-    borderRadius: theme.borderRadius.sm,
-    padding: 8,
-    marginBottom: theme.spacing.sm,
-  },
-  replyBannerRow: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  replyBannerText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.text,
-    flex: 1,
   },
   postButtonDisabled: {
     opacity: 0.5,

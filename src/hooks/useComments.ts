@@ -1,18 +1,17 @@
 /**
  * useComments.ts
  *
- * Manages comments for a post: fetching, pagination, threading, posting, replies.
+ * Manages comments for a post: fetching, pagination, posting (flat list, no threading).
  * Shared between CommentSheet and FeedCommentModal.
  */
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '../lib/supabase';
 import { sendCommentNotification } from '../services/notifications.service';
-import { buildThreadedComments } from '../lib/commentUtils';
 import { CONFIG } from '../lib/config';
 
-type Comment = {
+export type Comment = {
   id: string;
   post_id: string;
   user_id: string;
@@ -42,11 +41,8 @@ export function useComments(
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [replyTarget, setReplyTarget] = useState<{ id: string; username: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const fetchIdRef = useRef(0);
-
-  const threadedComments = useMemo(() => buildThreadedComments(comments), [comments]);
 
   const fetchComments = useCallback(
     async (isLoadMore = false) => {
@@ -102,7 +98,7 @@ export function useComments(
             post_id: postId,
             user_id: currentUserId,
             content: content.trim(),
-            parent_id: replyTarget?.id ?? null,
+            parent_id: null,
           })
           .select(COMMENT_SELECT)
           .single();
@@ -122,8 +118,6 @@ export function useComments(
           });
         }
 
-        setReplyTarget(null);
-
         return true;
       } catch (err) {
         if (__DEV__) console.error('Failed to post comment:', err);
@@ -132,16 +126,8 @@ export function useComments(
         setSubmitting(false);
       }
     },
-    [postId, currentUserId, postUserId, replyTarget, submitting]
+    [postId, currentUserId, postUserId, submitting]
   );
-
-  const startReply = useCallback((commentId: string, username: string) => {
-    setReplyTarget({ id: commentId, username });
-  }, []);
-
-  const cancelReply = useCallback(() => {
-    setReplyTarget(null);
-  }, []);
 
   const deleteComment = useCallback(
     async (commentId: string): Promise<boolean> => {
@@ -165,17 +151,13 @@ export function useComments(
 
   return {
     comments,
-    threadedComments,
     loading,
     loadingMore,
     hasMore,
-    replyTarget,
     submitting,
     fetchComments,
     loadMore: () => fetchComments(true),
     postComment,
-    startReply,
-    cancelReply,
     deleteComment,
   };
 }
