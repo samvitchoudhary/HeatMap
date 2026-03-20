@@ -2,7 +2,7 @@
  * NotificationsScreen.tsx
  *
  * NOTE: This file is over 600 lines. Future refactoring candidates:
- * - Extract useNotificationsList hook (fetch, pagination, markAsRead, bulk delete, select mode)
+ * - Extract useNotificationsList hook (fetch, pagination, markAsRead, per-row delete)
  * - Extract NotificationItem component (row rendering with avatar/icon, text, and action buttons)
  * - Extract useFriendRequestActions hook (accept/decline, shared with FriendsScreen)
  * - Move normFromUser/normPost helpers to a shared lib/notificationUtils.ts
@@ -42,7 +42,11 @@ import type { RootStackNavigationProp } from '../navigation/types';
 import { useToast } from '../lib/ToastContext';
 import { useFriendshipActions } from '../hooks/useFriendshipActions';
 import { supabase } from '../lib/supabase';
-import { markNotificationRead, deleteNotifications, deleteNotification } from '../services/notifications.service';
+import {
+  markNotificationRead,
+  deleteNotification,
+  NOTIFICATION_LIST_SELECT,
+} from '../services/notifications.service';
 import { getFriendshipBetween } from '../services/friendships.service';
 
 const NOTIFICATIONS_PAGE_SIZE = 30;
@@ -105,6 +109,7 @@ function dedupeNotifications(notifications: NotificationWithRelations[]): Notifi
 }
 
 /** Action text after the bold display name (inline in one Text tree). */
+/** Action fragment after the sender name — reaction emoji comes from DB `notifications.emoji`. */
 function getNotificationActionText(n: NotificationWithRelations): string {
   switch (n.type) {
     case 'reaction':
@@ -134,8 +139,6 @@ export function NotificationsScreen() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const notificationsCountRef = useRef(0);
   const notificationsRef = useRef(notifications);
   const notifFetchIdRef = useRef(0);
@@ -182,9 +185,7 @@ export function NotificationsScreen() {
       try {
         const { data, error } = await supabase
           .from('notifications')
-          .select(
-            '*, from_user:from_user_id(display_name, username, avatar_url), post:post_id(id, image_url, latitude, longitude)'
-          )
+          .select(NOTIFICATION_LIST_SELECT)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .range(from, to);
@@ -262,15 +263,6 @@ export function NotificationsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      return () => {
-        setSelectMode(false);
-        setSelectedIds(new Set());
-      };
-    }, [])
-  );
-
-  useFocusEffect(
-    useCallback(() => {
       if (!userId) return;
       const timer = setTimeout(async () => {
         try {
@@ -305,44 +297,28 @@ export function NotificationsScreen() {
     [refreshUnreadCount]
   );
 
-  const handleBulkDeleteNotifications = useCallback(async () => {
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) return;
-    setNotifications((prev) => (prev ?? []).filter((n) => !selectedIds.has(n.id)));
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    try {
-      const { error } = await deleteNotifications(ids);
-      if (error) throw error;
-      await refreshUnreadCount();
-    } catch (err) {
-      if (__DEV__) console.error('Failed to bulk delete notifications:', err);
-      fetchNotifications(false);
-    }
-  }, [selectedIds, fetchNotifications, refreshUnreadCount]);
+  const handleDeleteNotification = useCallback(
+    async (notificationId: string) => {
+      setNotifications((prev) => (prev ?? []).filter((n) => n.id !== notificationId));
 
-  const handleLongPress = useCallback((notificationId: string) => {
-    setSelectMode(true);
-    setSelectedIds(new Set([notificationId]));
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, []);
+      try {
+        const { error } = await deleteNotification(notificationId);
+        if (error) {
+          if (__DEV__) console.error('Failed to delete notification:', error);
+          fetchNotifications(false);
+        } else {
+          await refreshUnreadCount();
+        }
+      } catch (err) {
+        if (__DEV__) console.error('Failed to delete notification:', err);
+        fetchNotifications(false);
+      }
+    },
+    [fetchNotifications, refreshUnreadCount]
+  );
 
   const handleNotificationPress = useCallback(
     async (n: NotificationWithRelations) => {
-      if (selectMode) {
-        setSelectedIds((prev) => {
-          const next = new Set(prev);
-          if (next.has(n.id)) {
-            next.delete(n.id);
-            if (next.size === 0) setSelectMode(false);
-          } else {
-            next.add(n.id);
-          }
-          return next;
-        });
-        return;
-      }
-
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await markAsRead(n.id);
 
@@ -366,7 +342,7 @@ export function NotificationsScreen() {
         rootNav?.navigate('FriendProfile', { userId: n.from_user_id });
       }
     },
-    [selectMode, getRootStackNav, markAsRead]
+    [getRootStackNav, markAsRead]
   );
 
   /** Remove friend_request row from DB by notification id, then local state + badge. */
@@ -454,7 +430,6 @@ export function NotificationsScreen() {
   const renderItem = ({ item }: { item: NotificationWithRelations }) => {
     const isFriendRequest = item.type === 'friend_request';
     const loading = actionLoadingId === item.id || actionLoading === item.id;
-    const isSelected = selectedIds.has(item.id);
     const displayName = normFromUser(item)?.display_name ?? 'User';
     const avatarUri = normFromUser(item)?.avatar_url ?? null;
     const postThumb = normPost(item)?.image_url;
@@ -479,48 +454,18 @@ export function NotificationsScreen() {
       </TouchableOpacity>
     );
 
-    if (selectMode) {
-      return (
-        <TouchableOpacity
-          style={[
-            isFriendRequest ? styles.rowFriend : styles.rowPost,
-            unreadStyle,
-          ]}
-          onPress={() => handleNotificationPress(item)}
-          onLongPress={() => handleLongPress(item.id)}
-          delayLongPress={400}
-          activeOpacity={0.7}
-          accessibilityLabel={
-            isFriendRequest
-              ? `${displayName} sent you a friend request`
-              : `${displayName} ${getNotificationActionText(item)}`
-          }
-          accessibilityRole="button"
-        >
-          <View style={styles.selectCircleWrap}>
-            <View style={[styles.selectCircle, isSelected && styles.selectCircleSelected]}>
-              {isSelected && <Feather name="check" size={14} color={theme.colors.white} />}
-            </View>
-          </View>
-          {avatarNode}
-          <View style={styles.selectModeTextCol}>
-            <Text style={styles.bodyText} numberOfLines={2}>
-              <Text style={styles.nameBold}>{displayName}</Text>
-              {isFriendRequest
-                ? ' sent you a friend request'
-                : ` ${getNotificationActionText(item)}`}
-            </Text>
-            {isFriendRequest ? (
-              <Text style={styles.timeSub}>{timeAgo(item.created_at)}</Text>
-            ) : null}
-          </View>
-          {!isFriendRequest ? (
-            <Text style={styles.timeRight}>{timeAgo(item.created_at)}</Text>
-          ) : null}
-          <View style={styles.thumbSpacer} />
-        </TouchableOpacity>
-      );
-    }
+    const deleteBtn = (
+      <TouchableOpacity
+        onPress={() => handleDeleteNotification(item.id)}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        style={styles.rowDeleteBtn}
+        activeOpacity={0.7}
+        accessibilityLabel="Delete notification"
+        accessibilityRole="button"
+      >
+        <Feather name="x" size={14} color={theme.colors.textTertiary} />
+      </TouchableOpacity>
+    );
 
     if (isFriendRequest) {
       return (
@@ -563,6 +508,7 @@ export function NotificationsScreen() {
           >
             <Feather name="x" size={16} color={theme.colors.textTertiary} />
           </TouchableOpacity>
+          {deleteBtn}
         </View>
       );
     }
@@ -609,6 +555,7 @@ export function NotificationsScreen() {
         ) : (
           <View style={styles.thumbSpacer} />
         )}
+        {deleteBtn}
       </View>
     );
   };
@@ -642,32 +589,6 @@ export function NotificationsScreen() {
         </View>
       ) : (
         <>
-          {selectMode && (
-            <View style={styles.selectModeBar}>
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectMode(false);
-                  setSelectedIds(new Set());
-                }}
-                activeOpacity={0.7}
-                accessibilityLabel="Cancel selection"
-                accessibilityRole="button"
-              >
-                <Text style={styles.selectModeCancel}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.selectModeCount}>{selectedIds.size} selected</Text>
-              <TouchableOpacity
-                onPress={handleBulkDeleteNotifications}
-                activeOpacity={0.7}
-                accessibilityLabel="Delete selected notifications"
-                accessibilityRole="button"
-              >
-                <Text style={styles.selectModeDelete}>
-                  Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
           <FlatList
             data={notifications ?? []}
           keyExtractor={(item) => item.id}
@@ -793,10 +714,14 @@ const styles = StyleSheet.create({
     marginLeft: 12,
     minWidth: 0,
   },
-  selectModeTextCol: {
-    flex: 1,
-    marginLeft: 12,
-    minWidth: 0,
+  rowDeleteBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 6,
+    flexShrink: 0,
   },
   bodyText: {
     fontSize: 13,
@@ -855,49 +780,5 @@ const styles = StyleSheet.create({
   },
   circleDisabled: {
     opacity: 0.7,
-  },
-  selectCircleWrap: {
-    marginRight: 10,
-    justifyContent: 'center',
-  },
-  selectModeBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: theme.colors.background,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.borderLight,
-  },
-  selectModeCancel: {
-    fontSize: 16,
-    color: theme.colors.primary,
-    fontWeight: '600',
-  },
-  selectModeCount: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: theme.colors.text,
-  },
-  selectModeDelete: {
-    fontSize: 16,
-    color: '#FF3B30',
-    fontWeight: '600',
-  },
-  selectCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: theme.colors.border,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  selectCircleSelected: {
-    borderColor: theme.colors.primary,
-    backgroundColor: theme.colors.primary,
   },
 });

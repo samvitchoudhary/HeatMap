@@ -9,9 +9,16 @@
 import { supabase } from '../lib/supabase';
 import { shouldSendNotification } from '../lib/notifications';
 
-/** Standard select columns for notifications */
+/** Base columns (no embeds) — includes `emoji` for reaction rows */
 export const NOTIFICATION_SELECT = `
-  id, user_id, type, from_user_id, post_id, comment_id, emoji, read, created_at
+  id, user_id, from_user_id, type, post_id, comment_id, emoji, read, created_at
+`;
+
+/** Notifications list + profile + post embeds (use for notification center / feeds) */
+export const NOTIFICATION_LIST_SELECT = `
+  id, user_id, from_user_id, type, post_id, comment_id, emoji, read, created_at,
+  from_user:from_user_id(id, username, display_name, avatar_url),
+  post:post_id(id, image_url, latitude, longitude)
 `;
 
 type NotificationType = 'reaction' | 'comment' | 'friend_request' | 'friend_accept' | 'tag';
@@ -60,7 +67,8 @@ type ReactionNotifArgs = {
 
 /**
  * Replace any prior reaction notification from this user on this post, then insert the new one.
- * Always deletes first (so changing emoji doesn't leave duplicates). Insert only if prefs allow.
+ * Uses DB RPC `replace_reaction_notification` (SECURITY DEFINER) so delete+insert are atomic and RLS cannot block delete while insert succeeds.
+ * If prefs disallow notifications, passes null emoji → delete only, no insert.
  */
 export async function notifyReaction(args: ReactionNotifArgs) {
   const { toUserId, fromUserId, postId, emoji } = args;
@@ -69,31 +77,23 @@ export async function notifyReaction(args: ReactionNotifArgs) {
     return { data: null, error: null };
   }
 
-  // DELETE must include user_id (recipient) so the row is uniquely targeted and RLS can allow sender deletes
-  const { error: delErr } = await supabase
-    .from('notifications')
-    .delete()
-    .eq('user_id', toUserId)
-    .eq('from_user_id', fromUserId)
-    .eq('post_id', postId)
-    .eq('type', 'reaction');
-
-  if (delErr && __DEV__) console.error('notifyReaction: delete previous reaction notification failed:', delErr);
-
   const ok = await shouldSendNotification(toUserId, 'reaction');
-  if (!ok) return { data: null, error: null };
-
-  return supabase.from('notifications').insert({
-    user_id: toUserId,
-    type: 'reaction',
-    from_user_id: fromUserId,
-    post_id: postId,
-    emoji,
+  // When prefs allow, pass the client's reaction emoji through to RPC (stored in `notifications.emoji`).
+  // When prefs disallow, pass null so RPC deletes any existing row and skips insert.
+  const { error } = await supabase.rpc('replace_reaction_notification', {
+    p_user_id: toUserId,
+    p_from_user_id: fromUserId,
+    p_post_id: postId,
+    p_emoji: ok ? emoji : null,
   });
+
+  if (error && __DEV__) console.error('notifyReaction: replace_reaction_notification RPC failed:', error);
+
+  return { data: null, error };
 }
 
 /**
- * Remove the reaction notification when the user un-reacts (same filters as notifyReaction delete).
+ * Remove the reaction notification when the user un-reacts (RPC with null emoji = delete only).
  */
 export async function removeReactionNotification(args: {
   recipientUserId: string;
@@ -101,13 +101,12 @@ export async function removeReactionNotification(args: {
   postId: string;
 }) {
   const { recipientUserId, fromUserId, postId } = args;
-  return supabase
-    .from('notifications')
-    .delete()
-    .eq('user_id', recipientUserId)
-    .eq('from_user_id', fromUserId)
-    .eq('post_id', postId)
-    .eq('type', 'reaction');
+  return supabase.rpc('replace_reaction_notification', {
+    p_user_id: recipientUserId,
+    p_from_user_id: fromUserId,
+    p_post_id: postId,
+    p_emoji: null,
+  });
 }
 
 /**
